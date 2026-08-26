@@ -628,7 +628,26 @@ with tab_auditoria:
 
 # --- 7. SECCIÓN CONFIGURACIÓN ---
 with tab_config:
-    st.markdown("### ⚙️ Configuración de Festivos por Centro")
+    st.markdown("### ⚙️ Configuración y Copias de Seguridad")
+    
+    st.markdown("#### 💾 Descargar Copia de Seguridad de Datos")
+    st.markdown("Haz clic en el siguiente botón para descargar el archivo con todos los registros actuales de vacaciones y ausencias a tu dispositivo:")
+    
+    try:
+        with open(RUTA_BDD, 'r', encoding='utf-8') as f:
+            json_data_str = f.read()
+    except FileNotFoundError:
+        json_data_str = "{}"
+        
+    st.download_button(
+        label="📥 Descargar archivo de datos (.json)",
+        data=json_data_str,
+        file_name="datos_tecnicos_repsol.json",
+        mime="application/json"
+    )
+    
+    st.markdown("---")
+    st.markdown("### 📅 Configuración de Festivos por Centro")
     cfg_centro = st.selectbox('Centro CI:', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
     cfg_mes = st.selectbox('Mes Festivo:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
     cfg_dia = st.selectbox('Día Festivo:', list(range(1, calendar.monthrange(dd_anio, cfg_mes)[1] + 1)), key='cfg_d')
