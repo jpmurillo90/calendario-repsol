@@ -2,7 +2,6 @@
 # SISTEMA INTEGRAL DE GESTIÓN DE CALENDARIOS REPSOL (HASTA 2030 + CONFIG ANUAL CI + HLD)V2
 # ==============================================================================
 
-!pip install -q ipywidgets openpyxl
 
 import calendar
 import json
