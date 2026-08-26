@@ -318,7 +318,6 @@ with col_v2:
 with col_v3:
     # Botón exportar HTML detallado
     if st.button('📥 Descargar HTML Detallado'):
-        # Lógica de exportación HTML
         fecha_actual_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         html_leyenda = "<div style='background-color: #F8F9FA; border: 1px solid #DCDCDC; border-radius: 6px; padding: 12px; margin-top: 20px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #002A3A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
         for k, (desc, color) in LEYENDA.items():
@@ -400,23 +399,23 @@ with tab_registrar:
         reg_mes_num = st.selectbox('Mes:', list(MESES.keys()), format_func=lambda x: MESES[x], key='reg_mes')
     with c3:
         num_dias_mes = calendar.monthrange(dd_anio, reg_mes_num)[1]
-        reg_d_ini = st.selectbox('Día Inicio:', list(range(1, num_dias_mes + 1)), key='reg_d_ini')
+        opciones_dias_ini = list(range(1, num_dias_mes + 1))
+        reg_d_ini = st.selectbox('Día Inicio:', opciones_dias_ini, key='reg_d_ini')
 
     c4, c5, c6 = st.columns(3)
     with c4:
-        reg_d_fin = st.selectbox('Día Fin:', list(range(1, num_dias_mes + 1), index=num_dias_mes-1), key='reg_d_fin')
+        opciones_dias_fin = list(range(1, num_dias_mes + 1))
+        reg_d_fin = st.selectbox('Día Fin:', opciones_dias_fin, index=len(opciones_dias_fin) - 1, key='reg_d_fin')
     with c5:
         opciones_marca = [(f"{k} - {v[0]}", k) for k, v in LEYENDA.items() if k not in ['FEST', 'SAB', 'DOM']]
         opciones_marca.append(('Limpiar Marca (Vacío)', ''))
         reg_tipo_tupla = st.selectbox('Marca:', opciones_marca, key='reg_tipo')
         reg_tipo = reg_tipo_tupla[1]
     with c6:
-        # Lógica de saldo en tiempo real para horas de disfrute
         info_tec = TECNICOS[reg_tec]
         hld_tot_anio = obtener_hld_totales_tecnico(reg_tec, dd_anio)
         vpa_tot_anio = obtener_vpa_totales_tecnico(reg_tec, dd_anio)
         
-        # Calcular consumos actuales
         vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
         vpa_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'VPA')
         hld_c = sum(v.get('horas_gastadas', 0.0) if isinstance(v, dict) else obtener_horas_hld(reg_tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio) for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'HLD')
@@ -432,7 +431,6 @@ with tab_registrar:
             hld_max_d = obtener_horas_hld(reg_tec, reg_mes_num, reg_d_ini, dd_anio)
             val_horas_disfrute = st.slider('Horas a Gastar (HLD):', 0.5, max(0.5, float(hld_max_d if hld_max_d > 0 else 7.0)), 0.5, step=0.5)
 
-    # Mostrar barra de saldos actual
     vac_pend = info_tec['vac_totales'] - vac_c
     vpa_pend = vpa_tot_anio - vpa_c
     hld_pend = hld_tot_anio - hld_c
@@ -472,7 +470,6 @@ with tab_registrar:
             
             guardar_en_drive(REGISTROS)
             
-            # Registrar en auditoría
             st.session_state.historial_auditoria.append({
                 'hora': datetime.now().strftime("%H:%M:%S"),
                 'tec': reg_tec,
@@ -483,14 +480,12 @@ with tab_registrar:
             if coincidencias_totales:
                 st.warning("⚠️ ¡Existen coincidencias/solapamientos de ausencias en el mismo centro!")
 
-    # Renderizar Calendario Individual o Matriz
     st.markdown(f"### 📅 Vista: {MESES[reg_mes_num]} {dd_anio}")
     if dd_vista == 'Calendario Individual':
         ci_tec = TECNICOS[reg_tec]['ci']
         cal = calendar.monthcalendar(dd_anio, reg_mes_num)
         festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(ci_tec, [])
         
-        # Generar tabla HTML limpia para Streamlit
         html_cal = f"<h4 style='color:#002A3A;'>Calendario de {reg_tec} ({ci_tec})</h4><table border='1' style='border-collapse:collapse; text-align:center; font-family:sans-serif; width:100%; font-size:12px;'>"
         html_cal += "<tr style='background-color:#002A3A; color:white;'><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th style='background-color:#7f7f7f;'>Sáb</th><th style='background-color:#7f7f7f;'>Dom</th></tr>"
         for semana in cal:
@@ -519,7 +514,6 @@ with tab_registrar:
         html_cal += "</table>"
         st.markdown(html_cal, unsafe_allow_html=True)
     else:
-        # Matriz Global
         num_dias = calendar.monthrange(dd_anio, reg_mes_num)[1]
         matriz_datos = []
         for tec, info in TECNICOS.items():
@@ -557,7 +551,6 @@ with tab_he:
         guardar_he_drive()
         st.success(f"✅ Se han registrado {txt_horas}h extra reales a {he_tec} (Equivalen a {txt_horas * 1.75:.2f}h compensadas).")
 
-    # Mostrar balance HE del técnico
     tot_r = sum(i['horas_reales'] for i in REGISTROS_HE.get(he_tec, []) if i['anio'] == he_anio)
     tot_c = calcular_he_compensadas_totales(he_tec, he_anio)
     tot_g = calcular_he_consumidas_horas(he_tec, he_anio)
