@@ -38,7 +38,6 @@ if not st.session_state.autenticado:
     password_input = st.sidebar.text_input("Contraseña", type="password")
 
     if st.sidebar.button("Entrar"):
-        # Usuarios por defecto si no están en st.secrets
         usuarios_validos = {
             "juanpedro": {"password": "123", "nombre": "Juan Pedro Murillo", "rol": "Editor"},
             "david": {"password": "123", "nombre": "David Muñoz", "rol": "Editor"},
@@ -46,7 +45,6 @@ if not st.session_state.autenticado:
             "lector": {"password": "123", "nombre": "Técnico Consulta", "rol": "Lector"}
         }
 
-        # Cargar desde st.secrets si existe el bloque
         if "usuarios" in st.secrets:
             usuarios_validos = st.secrets["usuarios"]
 
@@ -58,7 +56,7 @@ if not st.session_state.autenticado:
         else:
             st.sidebar.error("Usuario o contraseña incorrectos")
 
-    st.stop()  # Detiene la ejecución hasta que se inicie sesión
+    st.stop()
 else:
     st.sidebar.success(f"Conectado: {st.session_state.usuario_actual}")
     st.sidebar.info(f"Perfil: {st.session_state.rol_actual}")
@@ -487,7 +485,6 @@ tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditori
 with tab_registrar:
     st.markdown("### 📝 Registro de Calendarios y Ausencias")
     
-    # Aviso si es Lector
     if st.session_state.rol_actual != "Editor":
         st.info("👁️ Estás visualizando en modo **Lector**. Puedes consultar los calendarios pero no guardar cambios.")
 
@@ -543,7 +540,6 @@ with tab_registrar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Botón de Guardar protegido por Rol (Solo Editor)
     if st.session_state.rol_actual == "Editor":
         if st.button('Guardar Rango', type='primary'):
             if reg_d_ini > reg_d_fin:
@@ -764,7 +760,36 @@ with tab_horarios:
     st.dataframe(pd.DataFrame(h_data), use_container_width=True)
 
 with tab_hld:
-    st.markdown("### ⏳ Configuración de HLD Totales por Centro y Año")
-    hld_anio = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT[dd_anio])
-    hld_data = [{'Centro': ci, 'Total HLD (h)': val} for ci, val in hld_anio.items()]
+    st.markdown(f"### ⏳ Configuración de HLD Totales por Centro y Año ({dd_anio})")
+    st.markdown("Asignación de horas de libre disposición totales que recibe cada Complejo Industrial para este año:")
+    
+    hld_anio_actual = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT.get(dd_anio, {}))
+    hld_data = [{'Centro (CI)': ci, 'Total HLD (h)': f"{val}h"} for ci, val in hld_anio_actual.items()]
     st.dataframe(pd.DataFrame(hld_data), use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("#### ⚙️ Modificar Total de HLD por Centro y Año")
+    
+    col_h1, col_h2, col_h3 = st.columns(3)
+    with col_h1:
+        hld_anio_sel = st.selectbox('Año HLD:', ANOS_DISPONIBLES, key='hld_anio_sel_cfg')
+    with col_h2:
+        lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
+        hld_centro_sel = st.selectbox('Centro HLD:', lista_centros_ci, key='hld_centro_sel_cfg')
+    with col_h3:
+        valor_actual_hld = float(HLD_ANUAL_POR_ANIO.get(hld_anio_sel, HLD_ANUAL_DEFAULT.get(hld_anio_sel, {})).get(hld_centro_sel, 87.0))
+        hld_nuevo_val = st.number_input('Total HLD (h):', min_value=0.0, max_value=200.0, value=valor_actual_hld, step=0.5, key='hld_nuevo_val_cfg')
+        
+    if st.session_state.rol_actual == "Editor":
+        if st.button('💾 Guardar HLD Anual', type='primary'):
+            if hld_anio_sel not in HLD_ANUAL_POR_ANIO:
+                HLD_ANUAL_POR_ANIO[hld_anio_sel] = HLD_ANUAL_DEFAULT.get(hld_anio_sel, {
+                    'Petronor': 89.0, 'Coruña': 63.5, 'Tarragona': 87.0, 'Puertollano': 87.0, 'Cartagena': 76.0
+                }).copy()
+            
+            HLD_ANUAL_POR_ANIO[hld_anio_sel][hld_centro_sel] = hld_nuevo_val
+            guardar_hld_anual_drive()
+            st.success(f"✅ Se han actualizado las HLD para **{hld_centro_sel}** en el año **{hld_anio_sel}** a **{hld_nuevo_val}h**.")
+            st.rerun()
+    else:
+        st.button('💾 Guardar HLD Anual (Bloqueado para Lectores)', disabled=True)
