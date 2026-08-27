@@ -1,8 +1,3 @@
-# ==============================================================================
-# SISTEMA INTEGRAL DE GESTIÓN DE CALENDARIOS REPSOL (HASTA 2030 + CONFIG ANUAL CI + HLD) - STREAMLIT EDITION
-# ==============================================================================
-
-Python
 import calendar
 import json
 from datetime import datetime, date
@@ -13,7 +8,13 @@ import requests
 # ==========================================
 # CONFIGURACIÓN Y CONSTANTES
 # ==========================================
+ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
 RUTA_BDD = "datos_tecnicos_repsol.json"
+RUTA_FESTIVOS = "festivos_repsol.json"
+RUTA_HE = "he_repsol.json"
+RUTA_CONFIG_ANUAL = "config_anual_repsol.json"
+RUTA_HORARIOS_CI = "horarios_ci_repsol.json"
+RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 
 # ==========================================
 # FUNCIONES DE PERSISTENCIA (GITHUB GIST)
@@ -36,7 +37,6 @@ def obtener_url_gist():
         return ""
 
 def guardar_en_drive(registros_dict):
-    # Guardamos localmente como respaldo y también en el Gist
     datos_json = {f"{a}|{t}|{m}|{d}": v for (a, t, m, d), v in registros_dict.items()}
     with open(RUTA_BDD, 'w', encoding='utf-8') as f:
         json.dump(datos_json, f, ensure_ascii=False, indent=4)
@@ -79,7 +79,6 @@ def cargar_de_drive():
         except Exception:
             pass
             
-    # Si falla o no hay secretos configurados, lee del archivo local
     try:
         with open(RUTA_BDD, 'r', encoding='utf-8') as f:
             datos_json = json.load(f)
@@ -255,7 +254,6 @@ HLD_ANUAL_POR_ANIO = cargar_hld_anual_drive() or HLD_ANUAL_DEFAULT
 REGISTROS = cargar_de_drive()
 REGISTROS_HE = cargar_he_drive()
 
-# Inicializar historial de auditoría en session_state
 if 'historial_auditoria' not in st.session_state:
     st.session_state.historial_auditoria = []
 
@@ -286,7 +284,6 @@ def obtener_hld_totales_tecnico(tecnico, anio):
     ci = TECNICOS[tecnico]['ci']
     return HLD_ANUAL_POR_ANIO.get(anio, HLD_ANUAL_DEFAULT.get(anio, {} )).get(ci, 87.0)
 
-# 2. CÁLCULOS Y HORARIOS
 def obtener_horas_hld(tecnico, mes, dia, anio):
     weekday = calendar.weekday(anio, int(mes), int(dia))
     ci = TECNICOS[tecnico]['ci']
@@ -356,17 +353,14 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
                 coincidencias.append((tec, marca_str, desc_marca))
     return coincidencias
 
-# Interfaz Principal de Streamlit
 st.markdown("<h2 style='color:#005B7F; margin:0;'>Cuadrante de Calendarios Técnicos - SAT CI REPSOL</h2>", unsafe_allow_html=True)
 
-# Controles Superiores Globales
 col_v1, col_v2, col_v3 = st.columns([1.5, 1, 1])
 with col_v1:
     dd_vista = st.selectbox('Modo Vista:', ['Calendario Individual', 'Matriz Cuadrante Global (Equipo)'])
 with col_v2:
     dd_anio = st.selectbox('Año:', ANOS_DISPONIBLES)
 with col_v3:
-    # Botón exportar HTML detallado
     if st.button('📥 Descargar HTML Detallado'):
         fecha_actual_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         html_leyenda = "<div style='background-color: #F8F9FA; border: 1px solid #DCDCDC; border-radius: 6px; padding: 12px; margin-top: 20px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #002A3A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
@@ -434,12 +428,10 @@ with col_v3:
         html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F4F6F8;color:#333;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#002A3A;border-bottom:3px solid #005B7F;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#002A3A;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #ddd;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}</div></body></html>"
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
-# Pestañas principales de Streamlit
 tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
     '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
 ])
 
-# --- 1. SECCIÓN REGISTRAR ---
 with tab_registrar:
     st.markdown("### 📝 Registro de Calendarios y Ausencias")
     c1, c2, c3 = st.columns(3)
@@ -581,7 +573,6 @@ with tab_registrar:
             matriz_datos.append(fila)
         st.dataframe(pd.DataFrame(matriz_datos), use_container_width=True)
 
-# --- 2. SECCIÓN HORAS EXTRA ---
 with tab_he:
     st.markdown("### ⚡ Gestión y Acumulación de Horas Extra")
     st.markdown("Añade las horas reales trabajadas. Se multiplicarán automáticamente por 1.75 (equivalente a 1h 45min).")
@@ -606,7 +597,6 @@ with tab_he:
     tot_g = calcular_he_consumidas_horas(he_tec, he_anio)
     st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
 
-# --- 3. SECCIÓN COBERTURA ---
 with tab_cobertura:
     st.markdown("### 👥 Análisis de Cobertura Diaria")
     fecha_cob = st.date_input("Selecciona fecha de cobertura:", value=date(dd_anio, 8, 25))
@@ -631,7 +621,6 @@ with tab_cobertura:
         st.dataframe(pd.DataFrame(detalles_cov), use_container_width=True)
         st.metric(label="Disponibilidad Global de la Plantilla", value=f"{round((total_trab / len(TECNICOS)) * 100)}%")
 
-# --- 4. SECCIÓN BALANCE ---
 with tab_balance:
     st.markdown(f"### 📈 Balance Consolidado de Saldos - {dd_anio}")
     datos_bal = []
@@ -653,13 +642,10 @@ with tab_balance:
         })
     st.dataframe(pd.DataFrame(datos_bal), use_container_width=True)
 
-# --- 5. SECCIÓN INCIDENCIAS ---
 with tab_incidencias:
     st.markdown(f"### ⚠️ Control de Excesos y Alertas ({dd_anio})")
     alertas = []
     for tec, info in TECNICOS.items():
-        hld_tot = obtener_hld_totales_tecnico(tec, dd_anio)
-        vpa_tot = obtener_vpa_totales_tecnico(tec, dd_anio)
         vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
         if vac_c > info['vac_totales']:
             alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} de {info['vac_totales']}.")
@@ -668,7 +654,6 @@ with tab_incidencias:
     else:
         st.success("✅ Ningún técnico supera sus topes de saldo actuales.")
 
-# --- 6. SECCIÓN AUDITORÍA ---
 with tab_auditoria:
     st.markdown("### 📋 Historial de Cambios de la Sesión")
     if not st.session_state.historial_auditoria:
@@ -676,13 +661,9 @@ with tab_auditoria:
     else:
         st.dataframe(pd.DataFrame(st.session_state.historial_auditoria), use_container_width=True)
 
-# --- 7. SECCIÓN CONFIGURACIÓN ---
 with tab_config:
     st.markdown("### ⚙️ Configuración y Copias de Seguridad")
-    
     st.markdown("#### 💾 Descargar Copia de Seguridad de Datos")
-    st.markdown("Haz clic en el siguiente botón para descargar el archivo con todos los registros actuales de vacaciones y ausencias a tu dispositivo:")
-    
     try:
         with open(RUTA_BDD, 'r', encoding='utf-8') as f:
             json_data_str = f.read()
@@ -695,7 +676,6 @@ with tab_config:
         file_name="datos_tecnicos_repsol.json",
         mime="application/json"
     )
-    
     st.markdown("---")
     st.markdown("### 📅 Configuración de Festivos por Centro")
     cfg_centro = st.selectbox('Centro CI:', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
@@ -710,14 +690,12 @@ with tab_config:
             guardar_festivos_drive()
             st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido para {cfg_centro}.")
 
-# --- 8. SECCIÓN HORARIOS / CI ---
 with tab_horarios:
     st.markdown("### ⏰ Horarios Reales de Cliente por CI")
     horarios_anio = HORARIOS_CI_ANUAL.get(dd_anio, HORARIOS_CI_DEFAULT[dd_anio])
     h_data = [{'Centro': ci, 'Horario': d['horario'], 'H/Semana': d['h_sem'], 'Obs': d['obs']} for ci, d in horarios_anio.items()]
     st.dataframe(pd.DataFrame(h_data), use_container_width=True)
 
-# --- 9. SECCIÓN CONFIG. HLD ---
 with tab_hld:
     st.markdown("### ⏳ Configuración de HLD Totales por Centro y Año")
     hld_anio = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT[dd_anio])
