@@ -200,15 +200,38 @@ def cargar_config_anual_drive():
         return None
 
 def guardar_horarios_ci_drive():
-    datos_json = {str(anio): centros for anio, centros in HORARIOS_CI_ANUAL.items()}
+    datos_serializables = {}
+    for anio, centros in HORARIOS_CI_ANUAL.items():
+        datos_serializables[str(anio)] = {}
+        for ci, d in centros.items():
+            datos_serializables[str(anio)][ci] = {
+                'horario': d['horario'],
+                'h_sem': d['h_sem'],
+                'obs': d['obs'],
+                'bolsa_ini': d.get('bolsa_ini', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_ini'), date) else d.get('bolsa_ini', ''),
+                'bolsa_fin': d.get('bolsa_fin', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_fin'), date) else d.get('bolsa_fin', '')
+            }
     with open(RUTA_HORARIOS_CI, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+        json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
 
 def cargar_horarios_ci_drive():
     try:
         with open(RUTA_HORARIOS_CI, 'r', encoding='utf-8') as f:
             datos_json = json.load(f)
-            return {int(anio): centros for anio, centros in datos_json.items()}
+            resultado = {}
+            for anio_str, centros in datos_json.items():
+                resultado[int(anio_str)] = {}
+                for ci, d in centros.items():
+                    b_ini = datetime.strptime(d['bolsa_ini'], '%Y-%m-%d').date() if d.get('bolsa_ini') else None
+                    b_fin = datetime.strptime(d['bolsa_fin'], '%Y-%m-%d').date() if d.get('bolsa_fin') else None
+                    resultado[int(anio_str)][ci] = {
+                        'horario': d['horario'],
+                        'h_sem': d['h_sem'],
+                        'obs': d['obs'],
+                        'bolsa_ini': b_ini,
+                        'bolsa_fin': b_fin
+                    }
+            return resultado
     except FileNotFoundError:
         return None
 
@@ -278,11 +301,11 @@ CONFIG_ANUAL_DEFAULT = {
 
 HORARIOS_CI_DEFAULT = {
     anio: {
-        'Petronor': {'horario': "L-J 08'00h-17'10h<br>V 08'00h-13'27h", 'h_sem': "39'27h", 'obs': "-"},
-        'Coruña': {'horario': "L-V 07'20h-15'15h", 'h_sem': "39'36h", 'obs': "-"},
-        'Tarragona': {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "Parada programada / Excepción anual"},
-        'Puertollano': {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "-"},
-        'Cartagena': {'horario': "L-V 07'00h-15'00h", 'h_sem': "40h", 'obs': "Parada programada / Excepción anual"}
+        'Petronor': {'horario': "L-J 08'00h-17'10h<br>V 08'00h-13'27h", 'h_sem': "39'27h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None},
+        'Coruña': {'horario': "L-V 07'20h-15'15h", 'h_sem': "39'36h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None},
+        'Tarragona': {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "Parada programada / Excepción anual", 'bolsa_ini': date(anio, 9, 28), 'bolsa_fin': date(anio, 11, 2)},
+        'Puertollano': {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None},
+        'Cartagena': {'horario': "L-V 07'00h-15'00h", 'h_sem': "40h", 'obs': "Parada programada / Excepción anual", 'bolsa_ini': date(anio, 10, 1), 'bolsa_fin': date(anio, 11, 5)}
     } for anio in ANOS_DISPONIBLES
 }
 
@@ -343,6 +366,19 @@ def obtener_horas_hld(tecnico, mes, dia, anio):
         return 0.0
 
     es_verano = (int(mes) == 7 or int(mes) == 8)
+    
+    # Comprobar si está en periodo de bolsa de horas de parada (+2h de L-J)
+    horarios_anio = HORARIOS_CI_ANUAL.get(anio, HORARIOS_CI_DEFAULT[anio])
+    if ci in horarios_anio:
+        b_ini = horarios_anio[ci].get('bolsa_ini')
+        b_fin = horarios_anio[ci].get('bolsa_fin')
+        if b_ini and b_fin:
+            try:
+                f_actual = date(anio, int(mes), int(dia))
+                if b_ini <= f_actual <= b_fin and weekday < 4:
+                    return 9.0 + 2.0  # Base habitual + 2h extra de bolsa
+            except Exception:
+                pass
 
     if es_verano:
         return 7.0
@@ -754,10 +790,77 @@ with tab_config:
         st.button('Añadir Festivo (Bloqueado)', disabled=True)
 
 with tab_horarios:
-    st.markdown("### ⏰ Horarios Reales de Cliente por CI")
+    st.markdown(f"### ⏰ Horarios Reales de Cliente por CI ({dd_anio})")
+    st.markdown("Detalle de los turnos oficiales, cómputo de horas semanales y periodos de bolsa de horas configurables por año:")
+    
     horarios_anio = HORARIOS_CI_ANUAL.get(dd_anio, HORARIOS_CI_DEFAULT[dd_anio])
-    h_data = [{'Centro': ci, 'Horario': d['horario'], 'H/Semana': d['h_sem'], 'Obs': d['obs']} for ci, d in horarios_anio.items()]
+    h_data = []
+    for ci, d in horarios_anio.items():
+        b_i = d.get('bolsa_ini')
+        b_f = d.get('bolsa_fin')
+        str_bolsa = f"Del {b_i.strftime('%d/%m/%Y')} al {b_f.strftime('%d/%m/%Y')} (+2h L-J)" if b_i and b_f else "Sin bolsa activa"
+        h_data.append({
+            'Centro': ci, 
+            'Horario': d['horario'], 
+            'H/Semana': d['h_sem'], 
+            'Bolsa Horas Parada': str_bolsa,
+            'Observaciones': d['obs']
+        })
     st.dataframe(pd.DataFrame(h_data), use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("#### ✏️ Modificar Horario, H/Semana y Bolsa de Horas de CI por Año")
+    
+    col_hz1, col_hz2 = st.columns(2)
+    with col_hz1:
+        hz_anio_sel = st.selectbox('Año Horario:', ANOS_DISPONIBLES, key='hz_anio_sel')
+    with col_hz2:
+        lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
+        hz_centro_sel = st.selectbox('Centro CI:', lista_centros_ci, key='hz_centro_sel')
+        
+    current_hz_data = HORARIOS_CI_ANUAL.get(hz_anio_sel, HORARIOS_CI_DEFAULT[hz_anio_sel]).get(hz_centro_sel, {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None})
+    
+    col_hz3, col_hz4 = st.columns(2)
+    with col_hz3:
+        hz_horario_input = st.text_input('Horario Oficial:', value=current_hz_data['horario'], key='hz_horario_input')
+    with col_hz4:
+        hz_hsem_input = st.text_input('Horas / Semana (H/Sem):', value=current_hz_data['h_sem'], key='hz_hsem_input')
+        
+    col_hz5, col_hz6 = st.columns(2)
+    with col_hz5:
+        usar_bolsa = st.checkbox("Activar Bolsa de Horas (+2h de L-J)", value=bool(current_hz_data.get('bolsa_ini')), key='hz_usar_bolsa')
+    with col_hz6:
+        hz_obs_input = st.text_input('Observaciones / Excepciones:', value=current_hz_data['obs'], key='hz_obs_input')
+        
+    b_ini_val = current_hz_data.get('bolsa_ini') or date(hz_anio_sel, 9, 28)
+    b_fin_val = current_hz_data.get('bolsa_fin') or date(hz_anio_sel, 11, 2)
+    
+    hz_bolsa_ini_input = None
+    hz_bolsa_fin_input = None
+    if usar_bolsa:
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            hz_bolsa_ini_input = st.date_input("Inicio Bolsa (+2h L-J):", value=b_ini_val, key='hz_bolsa_ini_input')
+        with col_b2:
+            hz_bolsa_fin_input = st.date_input("Fin Bolsa (+2h L-J):", value=b_fin_val, key='hz_bolsa_fin_input')
+
+    if st.session_state.rol_actual == "Editor":
+        if st.button('💾 Guardar Cambios de Horario y Bolsa', type='primary'):
+            if hz_anio_sel not in HORARIOS_CI_ANUAL:
+                HORARIOS_CI_ANUAL[hz_anio_sel] = HORARIOS_CI_DEFAULT[hz_anio_sel].copy()
+            
+            HORARIOS_CI_ANUAL[hz_anio_sel][hz_centro_sel] = {
+                'horario': hz_horario_input,
+                'h_sem': hz_hsem_input,
+                'obs': hz_obs_input,
+                'bolsa_ini': hz_bolsa_ini_input if usar_bolsa else None,
+                'bolsa_fin': hz_bolsa_fin_input if usar_bolsa else None
+            }
+            guardar_horarios_ci_drive()
+            st.success(f"✅ Horario y configuración de bolsa actualizados para **{hz_centro_sel}** en el año **{hz_anio_sel}**.")
+            st.rerun()
+    else:
+        st.button('💾 Guardar Cambios de Horario (Bloqueado para Lectores)', disabled=True)
 
 with tab_hld:
     st.markdown(f"### ⏳ Configuración de HLD Totales por Centro y Año ({dd_anio})")
