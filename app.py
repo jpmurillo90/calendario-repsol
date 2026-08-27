@@ -23,42 +23,42 @@ st.set_page_config(
 )
 
 # ==========================================
-# ESTILOS CSS CORPORATIVOS (UI/UX PROFESIONAL)
+# ESTILOS CSS CORPORATIVOS (CLAROS Y PROFESIONALES)
 # ==========================================
 st.markdown("""
 <style>
-    /* Estilo general de fondo y tipografía */
+    /* Fondo general de la aplicación limpio */
     .stApp {
-        background-color: #F4F6F9;
+        background-color: #F8FAFC;
     }
     
-    /* Tarjetas contenedoras elegantes */
+    /* Tarjetas contenedoras elegantes con fondo blanco */
     .card-corporate {
         background-color: #ffffff;
-        border: 1px solid #E1E8ED;
+        border: 1px solid #E2E8F0;
         border-radius: 8px;
         padding: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         margin-bottom: 16px;
     }
 
-    /* Encabezados personalizados */
+    /* Encabezados oscuros para máxima nitidez */
     h1, h2, h3 {
-        color: #002A3A !important;
+        color: #0F172A !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    /* Estilización de la barra lateral */
+    /* Estilización de la barra lateral (AHORA CLARA Y LIMPIA) */
     [data-testid="stSidebar"] {
-        background-color: #001B2E;
-        color: #ffffff;
+        background-color: #FFFFFF;
+        border-right: 1px solid #E2E8F0;
     }
     [data-testid="stSidebar"] .stMarkdown h1, 
     [data-testid="stSidebar"] .stMarkdown h2, 
     [data-testid="stSidebar"] .stMarkdown h3, 
     [data-testid="stSidebar"] .stMarkdown label,
     [data-testid="stSidebar"] span {
-        color: #E2E8F0 !important;
+        color: #1E293B !important;
     }
 
     /* Botones principales corporativos */
@@ -77,7 +77,7 @@ if 'autenticado' not in st.session_state:
     st.session_state.usuario_actual = None
     st.session_state.rol_actual = None
 
-# Mostrar Logotipo corporativo en la barra lateral
+# Mostrar Logotipo corporativo en la barra lateral clara
 st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
@@ -488,12 +488,12 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
                 coincidencias.append((tec, marca_str, desc_marca))
     return coincidencias
 
-# Header Principal de la App Estilizado
+# Header Principal de la App Luminoso y Profesional
 st.markdown("""
-<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #002A3A 0%, #005B7F 100%); color: white; padding: 20px; border-radius: 8px;">
+<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #FFFFFF 0%, #F1F5F9 100%); color: #0F172A; padding: 20px; border-radius: 8px; border-left: 5px solid #005B7F;">
     <div>
-        <h1 style="color: white !important; margin: 0; font-size: 24px;">Cuadrante de Calendarios Técnicos</h1>
-        <p style="margin: 5px 0 0 0; font-size: 14px; color: #E2E8F0;">SAT CI REPSOL — Gestión Integral de Recursos</p>
+        <h1 style="color: #0F172A !important; margin: 0; font-size: 22px;">Cuadrante de Calendarios Técnicos</h1>
+        <p style="margin: 5px 0 0 0; font-size: 13px; color: #475569;">SAT CI REPSOL — Gestión Integral de Recursos</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -507,9 +507,9 @@ with col_v3:
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
     if st.button('📥 Descargar HTML Detallado', use_container_width=True):
         fecha_actual_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-        html_leyenda = "<div style='background-color: #F8F9FA; border: 1px solid #DCDCDC; border-radius: 6px; padding: 12px; margin-top: 20px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #002A3A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
+        html_leyenda = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 20px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
         for k, (desc, color) in LEYENDA.items():
-            html_leyenda += f"<div style='display: flex; align-items: center; background: white; border: 1px solid #E0E0E0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #999; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
+            html_leyenda += f"<div style='display: flex; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #94A3B8; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
         html_leyenda += "</div></div>"
         
         datos_resumen = []
@@ -546,7 +546,7 @@ with col_v3:
             t_html = "<table class='tabla-corporativa tabla-detalle'><thead><tr><th>Técnico</th><th>Centro</th>"
             for d in range(1, num_dias + 1):
                 weekday = calendar.weekday(dd_anio, mes_num, d)
-                t_html += f"<th>{d}<br><span style='font-size:9px; color:#ccc;'>{dias_semana_abrev[weekday]}</span></th>"
+                t_html += f"<th>{d}<br><span style='font-size:9px; color:#64748B;'>{dias_semana_abrev[weekday]}</span></th>"
             t_html += "</tr></thead><tbody>"
             for tec, info in TECNICOS.items():
                 t_html += f"<tr><td><b>{tec}</b></td><td>{info['ci']}</td>"
@@ -564,12 +564,12 @@ with col_v3:
                         if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    t_html += f"<td style='background-color: {bg_color}; text-align: center;'><b>{marca}</b></td>"
+                    t_html += f"<td style='background-color: {bg_color}; text-align: center; color: #0F172A;'><b>{marca}</b></td>"
                 t_html += "</tr>"
             t_html += "</tbody></table>"
             secciones_meses_html += f"<div class='mes-container'><h3>📅 Mes: {mes_nom} {dd_anio}</h3><div class='table-responsive'>{t_html}</div></div>"
         
-        html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F4F6F8;color:#333;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#002A3A;border-bottom:3px solid #005B7F;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#002A3A;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #ddd;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}</div></body></html>"
+        html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F8FAFC;color:#0F172A;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#0F172A;border-bottom:3px solid #005B7F;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#0F172A;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #E2E8F0;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}</div></body></html>"
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
 tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
@@ -626,7 +626,7 @@ with tab_registrar:
     hld_pend = hld_tot_anio - hld_c
     
     st.markdown(f"""
-    <div class="card-corporate" style='background-color:#F8FAFC; border-left:4px solid #005B7F; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px;'>
+    <div class="card-corporate" style='background-color:#FFFFFF; border-left:4px solid #005B7F; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px; color:#0F172A;'>
         <div><b>👤 Técnico:</b> {reg_tec} ({dd_anio})</div>
         <div>🏖️ <b>Vac:</b> {vac_c}/{info_tec['vac_totales']} (<b>{vac_pend}</b>)</div>
         <div>⏱️ <b>VPA:</b> {vpa_c}/{vpa_tot_anio} (<b>{vpa_pend}</b>)</div>
@@ -680,13 +680,13 @@ with tab_registrar:
         cal = calendar.monthcalendar(dd_anio, reg_mes_num)
         festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(ci_tec, [])
         
-        html_cal = f"<h4 style='color:#002A3A;'>Calendario de {reg_tec} ({ci_tec})</h4><table border='1' style='border-collapse:collapse; text-align:center; font-family:sans-serif; width:100%; font-size:12px;'>"
-        html_cal += "<tr style='background-color:#002A3A; color:white;'><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th style='background-color:#7f7f7f;'>Sáb</th><th style='background-color:#7f7f7f;'>Dom</th></tr>"
+        html_cal = f"<h4 style='color:#0F172A;'>Calendario de {reg_tec} ({ci_tec})</h4><table border='1' style='border-collapse:collapse; text-align:center; font-family:sans-serif; width:100%; font-size:12px; border-color: #CBD5E1;'>"
+        html_cal += "<tr style='background-color:#0F172A; color:white;'><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th style='background-color:#64748B;'>Sáb</th><th style='background-color:#64748B;'>Dom</th></tr>"
         for semana in cal:
             html_cal += "<tr>"
             for idx, dia in enumerate(semana):
                 if dia == 0:
-                    html_cal += "<td style='background-color:#f2f2f2; height:50px;'></td>"
+                    html_cal += "<td style='background-color:#F1F5F9; height:50px;'></td>"
                 else:
                     val_reg = REGISTROS.get((dd_anio, reg_tec, str(reg_mes_num), str(dia)), REGISTROS.get(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", ''))
                     marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
@@ -703,7 +703,7 @@ with tab_registrar:
                         if not marca: marca = 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    html_cal += f"<td style='background-color:{bg_color}; height:50px;'><b>{dia}</b><br><span style='font-size:10px;'>{marca}</span></td>"
+                    html_cal += f"<td style='background-color:{bg_color}; height:50px; color:#0F172A;'><b>{dia}</b><br><span style='font-size:10px;'>{marca}</span></td>"
             html_cal += "</tr>"
         html_cal += "</table>"
         st.markdown(html_cal, unsafe_allow_html=True)
@@ -726,9 +726,9 @@ with tab_registrar:
         st.dataframe(pd.DataFrame(matriz_datos), use_container_width=True)
 
     # LEYENDA DE CÓDIGOS Y ESTADOS
-    html_leyenda_reg = "<div style='background-color: #F8F9FA; border: 1px solid #DCDCDC; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #002A3A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
+    html_leyenda_reg = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
     for k, (desc, color) in LEYENDA.items():
-        html_leyenda_reg += f"<div style='display: flex; align-items: center; background: white; border: 1px solid #E0E0E0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #999; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
+        html_leyenda_reg += f"<div style='display: flex; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #94A3B8; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
     html_leyenda_reg += "</div></div>"
     st.markdown(html_leyenda_reg, unsafe_allow_html=True)
 
