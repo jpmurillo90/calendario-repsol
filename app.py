@@ -27,12 +27,9 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* Fondo general de la aplicación limpio y profesional */
     .stApp {
         background-color: #F8FAFC;
     }
-    
-    /* Contenedores tipo tarjeta corporativa */
     .card-corporate {
         background-color: #ffffff;
         border: 1px solid #E2E8F0;
@@ -41,14 +38,10 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         margin-bottom: 20px;
     }
-
-    /* Encabezados de alta definición */
     h1, h2, h3 {
         color: #0F172A !important;
         font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
-
-    /* Estilización de la barra lateral limpia */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF;
         border-right: 1px solid #E2E8F0;
@@ -60,8 +53,6 @@ st.markdown("""
     [data-testid="stSidebar"] span {
         color: #1E293B !important;
     }
-
-    /* Estilización moderna de pestañas (Tabs) */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #F1F5F9;
@@ -81,8 +72,6 @@ st.markdown("""
         background-color: #0F172A !important;
         color: #FFFFFF !important;
     }
-
-    /* Botones principales corporativos */
     .stButton>button {
         border-radius: 6px;
         font-weight: 600;
@@ -99,7 +88,6 @@ if 'autenticado' not in st.session_state:
     st.session_state.usuario_actual = None
     st.session_state.rol_actual = None
 
-# Mostrar Logotipo corporativo en la barra lateral
 st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
@@ -508,7 +496,7 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
             if TECNICOS[tec]['ci'] == ci_actual and marca_str != '':
                 desc_marca = LEYENDA.get(marca_str, (marca_str, ''))[0]
                 coincidencias.append((tec, marca_str, desc_marca))
-    return coincidencias
+    return     coincidencias
 
 # ==========================================
 # HEADER EJECUTIVO PRINCIPAL
@@ -740,21 +728,46 @@ with tab_registrar:
         st.markdown(html_cal, unsafe_allow_html=True)
     else:
         num_dias = calendar.monthrange(dd_anio, reg_mes_num)[1]
-        matriz_datos = []
+        dias_semana_abrev = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+        
+        html_matriz = """
+        <style>
+          .tabla-matriz-global { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; white-space: nowrap; }
+          .tabla-matriz-global th { background-color: #0F172A; color: white; padding: 6px; text-align: center; border: 1px solid #CBD5E1; }
+          .tabla-matriz-global td { padding: 6px; text-align: center; border: 1px solid #CBD5E1; font-weight: bold; color: #0F172A; }
+        </style>
+        <div style="overflow-x: auto;">
+        <table class="tabla-matriz-global">
+          <thead>
+            <tr>
+              <th>Técnico</th>
+              <th>Centro</th>
+        """
+        for d in range(1, num_dias + 1):
+            weekday = calendar.weekday(dd_anio, reg_mes_num, d)
+            html_matriz += f"<th>{d}<br><span style='font-size:9px; color:#94A3B8;'>{dias_semana_abrev[weekday]}</span></th>"
+        html_matriz += "</tr></thead><tbody>"
+        
         for tec, info in TECNICOS.items():
-            fila = {'Técnico': tec, 'CI': info['ci']}
+            html_matriz += f"<tr><td style='text-align: left;'><b>{tec}</b></td><td>{info['ci']}</td>"
             festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info['ci'], [])
             for d in range(1, num_dias + 1):
                 val_reg = REGISTROS.get((dd_anio, tec, str(reg_mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{reg_mes_num}|{d}", ''))
                 marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
+                bg_color = '#ffffff'
                 weekday = calendar.weekday(dd_anio, reg_mes_num, d)
                 if (reg_mes_num, d) in festivos:
+                    bg_color = LEYENDA['FEST'][1]
                     if not marca: marca = 'FEST'
-                elif weekday >= 5 and not marca:
-                    marca = 'SAB' if weekday == 5 else 'DOM'
-                fila[f'{d}'] = marca if marca else ''
-            matriz_datos.append(fila)
-        st.dataframe(pd.DataFrame(matriz_datos), use_container_width=True)
+                elif weekday >= 5:
+                    bg_color = LEYENDA['SAB'][1] if weekday == 5 else LEYENDA['DOM'][1]
+                    if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
+                elif marca in LEYENDA:
+                    bg_color = LEYENDA[marca][1]
+                html_matriz += f"<td style='background-color: {bg_color};'>{marca}</td>"
+            html_matriz += "</tr>"
+        html_matriz += "</tbody></table></div>"
+        st.markdown(html_matriz, unsafe_allow_html=True)
 
     # LEYENDA DE CÓDIGOS Y ESTADOS
     html_leyenda_reg = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
@@ -848,7 +861,7 @@ with tab_incidencias:
         st.success("✅ Sin incidencias críticas ni saturación en los topes de saldo actuales.")
 
 with tab_auditoria:
-    st.markdown("### 📋 Registro de Auditoría y Trazabilidad")
+    st.markdown(f"### 📋 Registro de Auditoría y Trazabilidad")
     if not st.session_state.historial_auditoria:
         st.info("No se han registrado modificaciones o eventos de auditoría en la sesión actual.")
     else:
