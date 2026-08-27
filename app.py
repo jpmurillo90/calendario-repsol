@@ -17,6 +17,58 @@ RUTA_HORARIOS_CI = "horarios_ci_repsol.json"
 RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 
 # ==========================================
+# SISTEMA DE AUTENTICACIÓN (LOGIN)
+# ==========================================
+st.set_page_config(
+    page_title="Calendario Técnico - Repsol Puertollano",
+    page_icon="📅",
+    layout="wide"
+)
+
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+    st.session_state.usuario_actual = None
+    st.session_state.rol_actual = None
+
+st.sidebar.title("🔐 Control de Acceso")
+
+if not st.session_state.autenticado:
+    st.sidebar.subheader("Iniciar Sesión")
+    usuario_input = st.sidebar.text_input("Usuario")
+    password_input = st.sidebar.text_input("Contraseña", type="password")
+
+    if st.sidebar.button("Entrar"):
+        # Usuarios por defecto si no están en st.secrets
+        usuarios_validos = {
+            "juanpedro": {"password": "123", "nombre": "Juan Pedro Murillo", "rol": "Editor"},
+            "david": {"password": "123", "nombre": "David Muñoz", "rol": "Editor"},
+            "sandra": {"password": "123", "nombre": "Sandra Bellido", "rol": "Editor"},
+            "lector": {"password": "123", "nombre": "Técnico Consulta", "rol": "Lector"}
+        }
+
+        # Cargar desde st.secrets si existe el bloque
+        if "usuarios" in st.secrets:
+            usuarios_validos = st.secrets["usuarios"]
+
+        if usuario_input in usuarios_validos and usuarios_validos[usuario_input]["password"] == password_input:
+            st.session_state.autenticado = True
+            st.session_state.usuario_actual = usuarios_validos[usuario_input]["nombre"]
+            st.session_state.rol_actual = usuarios_validos[usuario_input]["rol"]
+            st.rerun()
+        else:
+            st.sidebar.error("Usuario o contraseña incorrectos")
+
+    st.stop()  # Detiene la ejecución hasta que se inicie sesión
+else:
+    st.sidebar.success(f"Conectado: {st.session_state.usuario_actual}")
+    st.sidebar.info(f"Perfil: {st.session_state.rol_actual}")
+    if st.sidebar.button("Cerrar Sesión"):
+        st.session_state.autenticado = False
+        st.session_state.usuario_actual = None
+        st.session_state.rol_actual = None
+        st.rerun()
+
+# ==========================================
 # FUNCIONES DE PERSISTENCIA (GITHUB GIST)
 # ==========================================
 def obtener_cabeceras_gist():
@@ -434,6 +486,11 @@ tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditori
 
 with tab_registrar:
     st.markdown("### 📝 Registro de Calendarios y Ausencias")
+    
+    # Aviso si es Lector
+    if st.session_state.rol_actual != "Editor":
+        st.info("👁️ Estás visualizando en modo **Lector**. Puedes consultar los calendarios pero no guardar cambios.")
+
     c1, c2, c3 = st.columns(3)
     with c1:
         reg_tec = st.selectbox('Técnico:', list(TECNICOS.keys()), key='reg_tec')
@@ -486,41 +543,45 @@ with tab_registrar:
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button('Guardar Rango', type='primary'):
-        if reg_d_ini > reg_d_fin:
-            st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
-        else:
-            coincidencias_totales = []
-            for dia in range(reg_d_ini, reg_d_fin + 1):
-                c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
-                if c: coincidencias_totales.append((dia, c))
+    # Botón de Guardar protegido por Rol (Solo Editor)
+    if st.session_state.rol_actual == "Editor":
+        if st.button('Guardar Rango', type='primary'):
+            if reg_d_ini > reg_d_fin:
+                st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
+            else:
+                coincidencias_totales = []
+                for dia in range(reg_d_ini, reg_d_fin + 1):
+                    c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
+                    if c: coincidencias_totales.append((dia, c))
+                    
+                    clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
+                    if reg_tipo == '':
+                        REGISTROS.pop(clave_reg, None)
+                        REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
+                    elif reg_tipo == 'HE':
+                        h_jornada = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia)
+                        h_efectivas = min(val_horas_disfrute, h_jornada)
+                        REGISTROS[clave_reg] = {'tipo': 'HE', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                    elif reg_tipo == 'HLD':
+                        h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
+                        h_efectivas = min(val_horas_disfrute, h_teorico)
+                        REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                    else:
+                        REGISTROS[clave_reg] = reg_tipo
                 
-                clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
-                if reg_tipo == '':
-                    REGISTROS.pop(clave_reg, None)
-                    REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
-                elif reg_tipo == 'HE':
-                    h_jornada = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia)
-                    h_efectivas = min(val_horas_disfrute, h_jornada)
-                    REGISTROS[clave_reg] = {'tipo': 'HE', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
-                elif reg_tipo == 'HLD':
-                    h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
-                    h_efectivas = min(val_horas_disfrute, h_teorico)
-                    REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
-                else:
-                    REGISTROS[clave_reg] = reg_tipo
-            
-            guardar_en_drive(REGISTROS)
-            
-            st.session_state.historial_auditoria.append({
-                'hora': datetime.now().strftime("%H:%M:%S"),
-                'tec': reg_tec,
-                'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
-                'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
-            })
-            st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
-            if coincidencias_totales:
-                st.warning("⚠️ ¡Existen coincidencias/solapamientos de ausencias en el mismo centro!")
+                guardar_en_drive(REGISTROS)
+                
+                st.session_state.historial_auditoria.append({
+                    'hora': datetime.now().strftime("%H:%M:%S"),
+                    'tec': reg_tec,
+                    'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
+                    'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
+                })
+                st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
+                if coincidencias_totales:
+                    st.warning("⚠️ ¡Existen coincidencias/solapamientos de ausencias en el mismo centro!")
+    else:
+        st.button('Guardar Rango (Bloqueado para Lectores)', disabled=True)
 
     st.markdown(f"### 📅 Vista: {MESES[reg_mes_num]} {dd_anio}")
     if dd_vista == 'Calendario Individual':
@@ -585,12 +646,15 @@ with tab_he:
     with col_h2:
         txt_motivo = st.text_input('Motivo / Aviso:', placeholder='Ej. Urgencia en planta')
         
-    if st.button('Registrar Horas Extra'):
-        if he_tec not in REGISTROS_HE:
-            REGISTROS_HE[he_tec] = []
-        REGISTROS_HE[he_tec].append({'anio': he_anio, 'horas_reales': txt_horas, 'motivo': txt_motivo or 'Sin motivo'})
-        guardar_he_drive()
-        st.success(f"✅ Se han registrado {txt_horas}h extra reales a {he_tec} (Equivalen a {txt_horas * 1.75:.2f}h compensadas).")
+    if st.session_state.rol_actual == "Editor":
+        if st.button('Registrar Horas Extra'):
+            if he_tec not in REGISTROS_HE:
+                REGISTROS_HE[he_tec] = []
+            REGISTROS_HE[he_tec].append({'anio': he_anio, 'horas_reales': txt_horas, 'motivo': txt_motivo or 'Sin motivo'})
+            guardar_he_drive()
+            st.success(f"✅ Se han registrado {txt_horas}h extra reales a {he_tec} (Equivalen a {txt_horas * 1.75:.2f}h compensadas).")
+    else:
+        st.button('Registrar Horas Extra (Bloqueado)', disabled=True)
 
     tot_r = sum(i['horas_reales'] for i in REGISTROS_HE.get(he_tec, []) if i['anio'] == he_anio)
     tot_c = calcular_he_compensadas_totales(he_tec, he_anio)
@@ -682,13 +746,16 @@ with tab_config:
     cfg_mes = st.selectbox('Mes Festivo:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
     cfg_dia = st.selectbox('Día Festivo:', list(range(1, calendar.monthrange(dd_anio, cfg_mes)[1] + 1)), key='cfg_d')
     
-    if st.button('Añadir Festivo'):
-        if dd_anio not in FESTIVOS_POR_ANIO: FESTIVOS_POR_ANIO[dd_anio] = {}
-        if cfg_centro not in FESTIVOS_POR_ANIO[dd_anio]: FESTIVOS_POR_ANIO[dd_anio][cfg_centro] = []
-        if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[dd_anio][cfg_centro]:
-            FESTIVOS_POR_ANIO[dd_anio][cfg_centro].append((cfg_mes, cfg_dia))
-            guardar_festivos_drive()
-            st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido para {cfg_centro}.")
+    if st.session_state.rol_actual == "Editor":
+        if st.button('Añadir Festivo'):
+            if dd_anio not in FESTIVOS_POR_ANIO: FESTIVOS_POR_ANIO[dd_anio] = {}
+            if cfg_centro not in FESTIVOS_POR_ANIO[dd_anio]: FESTIVOS_POR_ANIO[dd_anio][cfg_centro] = []
+            if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[dd_anio][cfg_centro]:
+                FESTIVOS_POR_ANIO[dd_anio][cfg_centro].append((cfg_mes, cfg_dia))
+                guardar_festivos_drive()
+                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido para {cfg_centro}.")
+    else:
+        st.button('Añadir Festivo (Bloqueado)', disabled=True)
 
 with tab_horarios:
     st.markdown("### ⏰ Horarios Reales de Cliente por CI")
