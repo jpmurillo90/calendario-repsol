@@ -17,38 +17,38 @@ RUTA_HORARIOS_CI = "horarios_ci_repsol.json"
 RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 
 st.set_page_config(
-    page_title="Calendario Técnico - Indra & Repsol",
+    page_title="Enterprise Resource & Calendar Management | Indra & Repsol",
     page_icon="🏢",
     layout="wide"
 )
 
 # ==========================================
-# ESTILOS CSS CORPORATIVOS (CLAROS Y PROFESIONALES)
+# ESTILOS CSS CORPORATIVOS AVANZADOS
 # ==========================================
 st.markdown("""
 <style>
-    /* Fondo general de la aplicación limpio */
+    /* Fondo general de la aplicación limpio y profesional */
     .stApp {
         background-color: #F8FAFC;
     }
     
-    /* Tarjetas contenedoras elegantes con fondo blanco */
+    /* Contenedores tipo tarjeta corporativa */
     .card-corporate {
         background-color: #ffffff;
         border: 1px solid #E2E8F0;
-        border-radius: 8px;
-        padding: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        margin-bottom: 16px;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        margin-bottom: 20px;
     }
 
-    /* Encabezados oscuros para máxima nitidez */
+    /* Encabezados de alta definición */
     h1, h2, h3 {
         color: #0F172A !important;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
 
-    /* Estilización de la barra lateral (AHORA CLARA Y LIMPIA) */
+    /* Estilización de la barra lateral limpia */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF;
         border-right: 1px solid #E2E8F0;
@@ -61,10 +61,32 @@ st.markdown("""
         color: #1E293B !important;
     }
 
+    /* Estilización moderna de pestañas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #F1F5F9;
+        padding: 8px;
+        border-radius: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 40px;
+        background-color: #FFFFFF;
+        border-radius: 6px;
+        color: #475569;
+        font-weight: 600;
+        border: 1px solid #E2E8F0;
+        padding: 0 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #0F172A !important;
+        color: #FFFFFF !important;
+    }
+
     /* Botones principales corporativos */
     .stButton>button {
         border-radius: 6px;
         font-weight: 600;
+        transition: all 0.2s ease-in-out;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -77,17 +99,17 @@ if 'autenticado' not in st.session_state:
     st.session_state.usuario_actual = None
     st.session_state.rol_actual = None
 
-# Mostrar Logotipo corporativo en la barra lateral clara
+# Mostrar Logotipo corporativo en la barra lateral
 st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
 
 if not st.session_state.autenticado:
-    st.sidebar.subheader("Iniciar Sesión")
+    st.sidebar.subheader("Identificación de Usuario")
     usuario_input = st.sidebar.text_input("Usuario")
     password_input = st.sidebar.text_input("Contraseña", type="password")
 
-    if st.sidebar.button("Entrar", use_container_width=True):
+    if st.sidebar.button("Acceder al Sistema", use_container_width=True):
         usuarios_validos = {
             "juanpedro": {"password": "123", "nombre": "Juan Pedro Murillo", "rol": "Editor"},
             "david": {"password": "123", "nombre": "David Muñoz", "rol": "Editor"},
@@ -104,12 +126,12 @@ if not st.session_state.autenticado:
             st.session_state.rol_actual = usuarios_validos[usuario_input]["rol"]
             st.rerun()
         else:
-            st.sidebar.error("Usuario o contraseña incorrectos")
+            st.sidebar.error("Credenciales no válidas")
 
     st.stop()
 else:
     st.sidebar.success(f"Conectado: {st.session_state.usuario_actual}")
-    st.sidebar.info(f"Perfil: {st.session_state.rol_actual}")
+    st.sidebar.info(f"Nivel de Acceso: {st.session_state.rol_actual}")
     if st.sidebar.button("Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
@@ -488,12 +510,18 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
                 coincidencias.append((tec, marca_str, desc_marca))
     return coincidencias
 
-# Header Principal de la App Luminoso y Profesional
+# ==========================================
+# HEADER EJECUTIVO PRINCIPAL
+# ==========================================
 st.markdown("""
-<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #FFFFFF 0%, #F1F5F9 100%); color: #0F172A; padding: 20px; border-radius: 8px; border-left: 5px solid #005B7F;">
+<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #005B7F; padding: 24px;">
     <div>
-        <h1 style="color: #0F172A !important; margin: 0; font-size: 22px;">Cuadrante de Calendarios Técnicos</h1>
-        <p style="margin: 5px 0 0 0; font-size: 13px; color: #475569;">SAT CI REPSOL — Gestión Integral de Recursos</p>
+        <h1 style="color: #0F172A !important; margin: 0; font-size: 24px; font-weight: 700;">Sistema de Gestión de Calendarios Técnicos</h1>
+        <p style="margin: 6px 0 0 0; font-size: 14px; color: #475569; font-weight: 500;">Plataforma Operativa Integrada — SAT CI REPSOL & Indra Group</p>
+    </div>
+    <div style="text-align: right; font-size: 12px; color: #64748B;">
+        <span>Ambiente: <b>Producción Enterprise</b></span><br>
+        <span>Sincronización: <b>Automática (Cloud)</b></span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -502,10 +530,10 @@ col_v1, col_v2, col_v3 = st.columns([1.5, 1, 1])
 with col_v1:
     dd_vista = st.selectbox('Modo Vista:', ['Calendario Individual', 'Matriz Cuadrante Global (Equipo)'])
 with col_v2:
-    dd_anio = st.selectbox('Año:', ANOS_DISPONIBLES)
+    dd_anio = st.selectbox('Año Operativo:', ANOS_DISPONIBLES)
 with col_v3:
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    if st.button('📥 Descargar HTML Detallado', use_container_width=True):
+    if st.button('📥 Exportar HTML Detallado', use_container_width=True):
         fecha_actual_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         html_leyenda = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 20px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
         for k, (desc, color) in LEYENDA.items():
@@ -572,15 +600,18 @@ with col_v3:
         html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F8FAFC;color:#0F172A;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#0F172A;border-bottom:3px solid #005B7F;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#0F172A;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #E2E8F0;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}</div></body></html>"
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
+# ==========================================
+# PESTAÑAS PRINCIPALES DEL SISTEMA
+# ==========================================
 tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
     '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
 ])
 
 with tab_registrar:
-    st.markdown("### 📝 Registro de Calendarios y Ausencias")
+    st.markdown("### 📝 Gestión de Cuadrantes y Registro de Ausencias")
     
     if st.session_state.rol_actual != "Editor":
-        st.info("👁️ Estás visualizando en modo **Lector**. Puedes consultar los calendarios pero no guardar cambios.")
+        st.info("👁️ Estás visualizando en modo **Lector**. Puedes consultar los calendarios pero no modificar datos.")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -599,7 +630,7 @@ with tab_registrar:
     with c5:
         opciones_marca = [(f"{k} - {v[0]}", k) for k, v in LEYENDA.items() if k not in ['FEST', 'SAB', 'DOM']]
         opciones_marca.append(('Limpiar Marca (Vacío)', ''))
-        reg_tipo_tupla = st.selectbox('Marca:', opciones_marca, key='reg_tipo')
+        reg_tipo_tupla = st.selectbox('Tipo de Ausencia / Marca:', opciones_marca, key='reg_tipo')
         reg_tipo = reg_tipo_tupla[1]
     with c6:
         info_tec = TECNICOS[reg_tec]
@@ -674,7 +705,7 @@ with tab_registrar:
     else:
         st.button('Guardar Rango (Bloqueado para Lectores)', disabled=True, use_container_width=True)
 
-    st.markdown(f"### 📅 Vista: {MESES[reg_mes_num]} {dd_anio}")
+    st.markdown(f"### 📅 Visualización: {MESES[reg_mes_num]} {dd_anio}")
     if dd_vista == 'Calendario Individual':
         ci_tec = TECNICOS[reg_tec]['ci']
         cal = calendar.monthcalendar(dd_anio, reg_mes_num)
@@ -734,15 +765,15 @@ with tab_registrar:
 
 with tab_he:
     st.markdown("### ⚡ Gestión y Acumulación de Horas Extra")
-    st.markdown("Añade las horas reales trabajadas. Se multiplicarán automáticamente por 1.75 (equivalente a 1h 45min).")
-    he_anio = st.selectbox('Año HE:', ANOS_DISPONIBLES, key='he_anio_sel')
-    he_tec = st.selectbox('Técnico HE:', list(TECNICOS.keys()), key='he_tec_sel')
+    st.markdown("Registro de bolsa de horas extraordinarias reales. Conversión automática ponderada (x1.75).")
+    he_anio = st.selectbox('Año Operativo HE:', ANOS_DISPONIBLES, key='he_anio_sel')
+    he_tec = st.selectbox('Técnico Asignado:', list(TECNICOS.keys()), key='he_tec_sel')
     
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        txt_horas = st.number_input('Horas Reales:', min_value=0.5, value=1.0, step=0.5)
+        txt_horas = st.number_input('Horas Reales Trabajadas:', min_value=0.5, value=1.0, step=0.5)
     with col_h2:
-        txt_motivo = st.text_input('Motivo / Aviso:', placeholder='Ej. Urgencia en planta')
+        txt_motivo = st.text_input('Motivo / Justificación:', placeholder='Ej. Urgencia técnica en planta')
         
     if st.session_state.rol_actual == "Editor":
         if st.button('Registrar Horas Extra', use_container_width=True):
@@ -760,8 +791,8 @@ with tab_he:
     st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
 
 with tab_cobertura:
-    st.markdown("### 👥 Análisis de Cobertura Diaria")
-    fecha_cob = st.date_input("Selecciona fecha de cobertura:", value=date(dd_anio, 8, 25))
+    st.markdown("### 👥 Análisis Operativo de Cobertura Diaria")
+    fecha_cob = st.date_input("Seleccionar fecha de control:", value=date(dd_anio, 8, 27))
     if fecha_cob:
         anio_c, mes_c, dia_c = fecha_cob.year, fecha_cob.month, fecha_cob.day
         detalles_cov = []
@@ -775,16 +806,16 @@ with tab_cobertura:
             es_festivo = (mes_c, dia_c) in festivos or weekday >= 5
             
             if marca == '' and not es_festivo:
-                estado = "TRABAJA"
+                estado = "DISPONIBLE / TRABAJA"
                 total_trab += 1
             else:
-                estado = f"NO TRABAJA ({marca if marca else 'FEST/FINDE'})"
-            detalles_cov.append({'CI': ci, 'Técnico': tec, 'Estado': estado})
+                estado = f"AUSENTE ({marca if marca else 'FESTIVO/FINDE'})"
+            detalles_cov.append({'Centro de Trabajo': ci, 'Técnico': tec, 'Estado Operativo': estado})
         st.dataframe(pd.DataFrame(detalles_cov), use_container_width=True)
-        st.metric(label="Disponibilidad Global de la Plantilla", value=f"{round((total_trab / len(TECNICOS)) * 100)}%")
+        st.metric(label="Índice Global de Cobertura de Plantilla", value=f"{round((total_trab / len(TECNICOS)) * 100)}%")
 
 with tab_balance:
-    st.markdown(f"### 📈 Balance Consolidado de Saldos - {dd_anio}")
+    st.markdown(f"### 📈 Balance Consolidado de Saldos y Recursos ({dd_anio})")
     datos_bal = []
     for tec, info in TECNICOS.items():
         hld_tot = obtener_hld_totales_tecnico(tec, dd_anio)
@@ -805,27 +836,27 @@ with tab_balance:
     st.dataframe(pd.DataFrame(datos_bal), use_container_width=True)
 
 with tab_incidencias:
-    st.markdown(f"### ⚠️ Control de Excesos y Alertas ({dd_anio})")
+    st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas ({dd_anio})")
     alertas = []
     for tec, info in TECNICOS.items():
         vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
         if vac_c > info['vac_totales']:
-            alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} de {info['vac_totales']}.")
+            alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} días de su asignación de {info['vac_totales']}.")
     if alertas:
         for al in alertas: st.error(al)
     else:
-        st.success("✅ Ningún técnico supera sus topes de saldo actuales.")
+        st.success("✅ Sin incidencias críticas ni saturación en los topes de saldo actuales.")
 
 with tab_auditoria:
-    st.markdown("### 📋 Historial de Cambios de la Sesión")
+    st.markdown("### 📋 Registro de Auditoría y Trazabilidad")
     if not st.session_state.historial_auditoria:
-        st.info("No se han registrado modificaciones en esta sesión todavía.")
+        st.info("No se han registrado modificaciones o eventos de auditoría en la sesión actual.")
     else:
         st.dataframe(pd.DataFrame(st.session_state.historial_auditoria), use_container_width=True)
 
 with tab_config:
-    st.markdown("### ⚙️ Configuración y Copias de Seguridad")
-    st.markdown("#### 💾 Descargar Copia de Seguridad de Datos")
+    st.markdown("### ⚙️ Configuración del Sistema y Resguardo de Datos")
+    st.markdown("#### 💾 Copia de Seguridad Local")
     try:
         with open(RUTA_BDD, 'r', encoding='utf-8') as f:
             json_data_str = f.read()
@@ -833,31 +864,31 @@ with tab_config:
         json_data_str = "{}"
         
     st.download_button(
-        label="📥 Descargar archivo de datos (.json)",
+        label="📥 Descargar Base de Datos (.json)",
         data=json_data_str,
         file_name="datos_tecnicos_repsol.json",
         mime="application/json",
         use_container_width=True
     )
     st.markdown("---")
-    st.markdown("### 📅 Configuración de Festivos por Centro")
-    cfg_centro = st.selectbox('Centro CI:', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
-    cfg_mes = st.selectbox('Mes Festivo:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
-    cfg_dia = st.selectbox('Día Festivo:', list(range(1, calendar.monthrange(dd_anio, cfg_mes)[1] + 1)), key='cfg_d')
+    st.markdown("### 📅 Mantenimiento de Calendario de Festivos por Centro")
+    cfg_centro = st.selectbox('Centro de Trabajo (CI):', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
+    cfg_mes = st.selectbox('Mes:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
+    cfg_dia = st.selectbox('Día:', list(range(1, calendar.monthrange(dd_anio, cfg_mes)[1] + 1)), key='cfg_d')
     
     if st.session_state.rol_actual == "Editor":
-        if st.button('Añadir Festivo', use_container_width=True):
+        if st.button('Añadir Día Festivo', use_container_width=True):
             if dd_anio not in FESTIVOS_POR_ANIO: FESTIVOS_POR_ANIO[dd_anio] = {}
             if cfg_centro not in FESTIVOS_POR_ANIO[dd_anio]: FESTIVOS_POR_ANIO[dd_anio][cfg_centro] = []
             if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[dd_anio][cfg_centro]:
                 FESTIVOS_POR_ANIO[dd_anio][cfg_centro].append((cfg_mes, cfg_dia))
                 guardar_festivos_drive()
-                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido para {cfg_centro}.")
+                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido correctamente para {cfg_centro}.")
     else:
-        st.button('Añadir Festivo (Bloqueado)', disabled=True, use_container_width=True)
+        st.button('Añadir Día Festivo (Bloqueado)', disabled=True, use_container_width=True)
 
 with tab_horarios:
-    st.markdown(f"### ⏰ Horarios Reales de Cliente por CI ({dd_anio})")
+    st.markdown(f"### ⏰ Horarios Oficiales de Cliente por Centro ({dd_anio})")
     horarios_anio = HORARIOS_CI_ANUAL.get(dd_anio, HORARIOS_CI_DEFAULT[dd_anio])
     h_data = []
     for ci, d in horarios_anio.items():
@@ -874,28 +905,28 @@ with tab_horarios:
     st.dataframe(pd.DataFrame(h_data), use_container_width=True)
     
     st.markdown("---")
-    st.markdown("#### ✏️ Modificar Horario, H/Semana y Bolsa de Horas de CI por Año")
+    st.markdown("#### ✏️ Actualización de Jornadas, Horarios y Bolsas de Parada")
     
     col_hz1, col_hz2 = st.columns(2)
     with col_hz1:
-        hz_anio_sel = st.selectbox('Año Horario:', ANOS_DISPONIBLES, key='hz_anio_sel')
+        hz_anio_sel = st.selectbox('Año del Horario:', ANOS_DISPONIBLES, key='hz_anio_sel')
     with col_hz2:
         lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
-        hz_centro_sel = st.selectbox('Centro CI:', lista_centros_ci, key='hz_centro_sel')
+        hz_centro_sel = st.selectbox('Centro:', lista_centros_ci, key='hz_centro_sel')
         
     current_hz_data = HORARIOS_CI_ANUAL.get(hz_anio_sel, HORARIOS_CI_DEFAULT[hz_anio_sel]).get(hz_centro_sel, {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None})
     
     col_hz3, col_hz4 = st.columns(2)
     with col_hz3:
-        hz_horario_input = st.text_input('Horario Oficial:', value=current_hz_data['horario'], key='hz_horario_input')
+        hz_horario_input = st.text_input('Definición de Horario:', value=current_hz_data['horario'], key='hz_horario_input')
     with col_hz4:
-        hz_hsem_input = st.text_input('Horas / Semana (H/Sem):', value=current_hz_data['h_sem'], key='hz_hsem_input')
+        hz_hsem_input = st.text_input('Cómputo Horas / Semana:', value=current_hz_data['h_sem'], key='hz_hsem_input')
         
     col_hz5, col_hz6 = st.columns(2)
     with col_hz5:
-        usar_bolsa = st.checkbox("Activar Bolsa de Horas (+2h de L-J)", value=bool(current_hz_data.get('bolsa_ini')), key='hz_usar_bolsa')
+        usar_bolsa = st.checkbox("Activar Bolsa de Parada (+2h de L-J)", value=bool(current_hz_data.get('bolsa_ini')), key='hz_usar_bolsa')
     with col_hz6:
-        hz_obs_input = st.text_input('Observaciones / Excepciones:', value=current_hz_data['obs'], key='hz_obs_input')
+        hz_obs_input = st.text_input('Comentarios u Observaciones:', value=current_hz_data['obs'], key='hz_obs_input')
         
     b_ini_val = current_hz_data.get('bolsa_ini') or date(hz_anio_sel, 9, 28)
     b_fin_val = current_hz_data.get('bolsa_fin') or date(hz_anio_sel, 11, 2)
@@ -905,12 +936,12 @@ with tab_horarios:
     if usar_bolsa:
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            hz_bolsa_ini_input = st.date_input("Inicio Bolsa (+2h L-J):", value=b_ini_val, key='hz_bolsa_ini_input')
+            hz_bolsa_ini_input = st.date_input("Fecha Inicio Bolsa:", value=b_ini_val, key='hz_bolsa_ini_input')
         with col_b2:
-            hz_bolsa_fin_input = st.date_input("Fin Bolsa (+2h L-J):", value=b_fin_val, key='hz_bolsa_fin_input')
+            hz_bolsa_fin_input = st.date_input("Fecha Fin Bolsa:", value=b_fin_val, key='hz_bolsa_fin_input')
 
     if st.session_state.rol_actual == "Editor":
-        if st.button('💾 Guardar Cambios de Horario y Bolsa', type='primary', use_container_width=True):
+        if st.button('💾 Guardar Parámetros de Horario', type='primary', use_container_width=True):
             if hz_anio_sel not in HORARIOS_CI_ANUAL:
                 HORARIOS_CI_ANUAL[hz_anio_sel] = HORARIOS_CI_DEFAULT[hz_anio_sel].copy()
             
@@ -922,32 +953,32 @@ with tab_horarios:
                 'bolsa_fin': hz_bolsa_fin_input if usar_bolsa else None
             }
             guardar_horarios_ci_drive()
-            st.success(f"✅ Horario y configuración de bolsa actualizados para **{hz_centro_sel}** en el año **{hz_anio_sel}**.")
+            st.success(f"✅ Configuración horaria actualizada para **{hz_centro_sel}** en el período **{hz_anio_sel}**.")
             st.rerun()
     else:
-        st.button('💾 Guardar Cambios de Horario (Bloqueado para Lectores)', disabled=True, use_container_width=True)
+        st.button('💾 Guardar Parámetros de Horario (Bloqueado)', disabled=True, use_container_width=True)
 
 with tab_hld:
-    st.markdown(f"### ⏳ Configuración de HLD Totales por Centro y Año ({dd_anio})")
+    st.markdown(f"### ⏳ Configuración de HLD Anuales por Centro ({dd_anio})")
     hld_anio_actual = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT.get(dd_anio, {}))
-    hld_data = [{'Centro (CI)': ci, 'Total HLD (h)': f"{val}h"} for ci, val in hld_anio_actual.items()]
+    hld_data = [{'Centro (CI)': ci, 'Total HLD Asignado (h)': f"{val}h"} for ci, val in hld_anio_actual.items()]
     st.dataframe(pd.DataFrame(hld_data), use_container_width=True)
     
     st.markdown("---")
-    st.markdown("#### ⚙️ Modificar Total de HLD por Centro y Año")
+    st.markdown("#### ⚙️ Parámetros de Asignación HLD")
     
     col_h1, col_h2, col_h3 = st.columns(3)
     with col_h1:
         hld_anio_sel = st.selectbox('Año HLD:', ANOS_DISPONIBLES, key='hld_anio_sel_cfg')
     with col_h2:
         lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
-        hld_centro_sel = st.selectbox('Centro HLD:', lista_centros_ci, key='hld_centro_sel_cfg')
+        hld_centro_sel = st.selectbox('Centro:', lista_centros_ci, key='hld_centro_sel_cfg')
     with col_h3:
         valor_actual_hld = float(HLD_ANUAL_POR_ANIO.get(hld_anio_sel, HLD_ANUAL_DEFAULT.get(hld_anio_sel, {})).get(hld_centro_sel, 87.0))
-        hld_nuevo_val = st.number_input('Total HLD (h):', min_value=0.0, max_value=200.0, value=valor_actual_hld, step=0.5, key='hld_nuevo_val_cfg')
+        hld_nuevo_val = st.number_input('Total Horas HLD:', min_value=0.0, max_value=200.0, value=valor_actual_hld, step=0.5, key='hld_nuevo_val_cfg')
         
     if st.session_state.rol_actual == "Editor":
-        if st.button('💾 Guardar HLD Anual', type='primary', use_container_width=True):
+        if st.button('💾 Guardar Configuración HLD', type='primary', use_container_width=True):
             if hld_anio_sel not in HLD_ANUAL_POR_ANIO:
                 HLD_ANUAL_POR_ANIO[hld_anio_sel] = HLD_ANUAL_DEFAULT.get(hld_anio_sel, {
                     'Petronor': 89.0, 'Coruña': 63.5, 'Tarragona': 87.0, 'Puertollano': 87.0, 'Cartagena': 76.0
@@ -955,7 +986,7 @@ with tab_hld:
             
             HLD_ANUAL_POR_ANIO[hld_anio_sel][hld_centro_sel] = hld_nuevo_val
             guardar_hld_anual_drive()
-            st.success(f"✅ Se han actualizado las HLD para **{hld_centro_sel}** en el año **{hld_anio_sel}** a **{hld_nuevo_val}h**.")
+            st.success(f"✅ Asignación HLD actualizada para **{hld_centro_sel}** en el año **{hld_anio_sel}** ({hld_nuevo_val}h).")
             st.rerun()
     else:
-        st.button('💾 Guardar HLD Anual (Bloqueado para Lectores)', disabled=True, use_container_width=True)
+        st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
