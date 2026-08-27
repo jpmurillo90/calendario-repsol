@@ -2,34 +2,84 @@
 # SISTEMA INTEGRAL DE GESTIÓN DE CALENDARIOS REPSOL (HASTA 2030 + CONFIG ANUAL CI + HLD) - STREAMLIT EDITION
 # ==============================================================================
 
+Python
 import calendar
 import json
 from datetime import datetime, date
 import pandas as pd
 import streamlit as st
+import requests
 
-# Configuración inicial de la página de Streamlit
-st.set_page_config(
-    page_title="Calendario SAT CI Repsol",
-    page_icon="📅",
-    layout="wide"
-)
+# ==========================================
+# CONFIGURACIÓN Y CONSTANTES
+# ==========================================
+RUTA_BDD = "datos_tecnicos_repsol.json"
 
-RUTA_BDD = 'datos_tecnicos_repsol.json'
-RUTA_FESTIVOS = 'festivos_repsol.json'
-RUTA_HE = 'horas_extra_repsol.json'
-RUTA_CONFIG_ANUAL = 'config_anual_repsol.json'
-RUTA_HORARIOS_CI = 'horarios_ci_anual_repsol.json'
-RUTA_HLD_ANUAL = 'hld_anual_repsol.json'
+# ==========================================
+# FUNCIONES DE PERSISTENCIA (GITHUB GIST)
+# ==========================================
+def obtener_cabeceras_gist():
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        return {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+    except Exception:
+        return {}
 
-ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
+def obtener_url_gist():
+    try:
+        gist_id = st.secrets["GIST_ID"]
+        return f"https://api.github.com/gists/{gist_id}"
+    except Exception:
+        return ""
 
 def guardar_en_drive(registros_dict):
+    # Guardamos localmente como respaldo y también en el Gist
     datos_json = {f"{a}|{t}|{m}|{d}": v for (a, t, m, d), v in registros_dict.items()}
     with open(RUTA_BDD, 'w', encoding='utf-8') as f:
         json.dump(datos_json, f, ensure_ascii=False, indent=4)
+        
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    if url and headers:
+        payload = {
+            "files": {
+                "datos_tecnicos_repsol.json": {
+                    "content": json.dumps(datos_json, ensure_ascii=False, indent=4)
+                }
+            }
+        }
+        try:
+            requests.patch(url, headers=headers, json=payload)
+        except Exception:
+            pass
 
 def cargar_de_drive():
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    
+    if url and headers:
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                files = response.json().get("files", {})
+                if "datos_tecnicos_repsol.json" in files:
+                    contenido = files["datos_tecnicos_repsol.json"]["content"]
+                    datos_json = json.loads(contenido)
+                    resultado = {}
+                    for k, v in datos_json.items():
+                        parts = k.split('|')
+                        if len(parts) == 3:
+                            resultado[(2026, parts[0], parts[1], parts[2])] = v
+                        else:
+                            resultado[(int(parts[0]), parts[1], parts[2], parts[3])] = v
+                    return resultado
+        except Exception:
+            pass
+            
+    # Si falla o no hay secretos configurados, lee del archivo local
     try:
         with open(RUTA_BDD, 'r', encoding='utf-8') as f:
             datos_json = json.load(f)
