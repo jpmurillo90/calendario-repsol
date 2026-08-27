@@ -666,6 +666,15 @@ with tab_registrar:
             matriz_datos.append(fila)
         st.dataframe(pd.DataFrame(matriz_datos), use_container_width=True)
 
+    # ==========================================
+    # LEYENDA DE CÓDIGOS Y ESTADOS (AÑADIDA AQUÍ)
+    # ==========================================
+    html_leyenda_reg = "<div style='background-color: #F8F9FA; border: 1px solid #DCDCDC; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #002A3A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
+    for k, (desc, color) in LEYENDA.items():
+        html_leyenda_reg += f"<div style='display: flex; align-items: center; background: white; border: 1px solid #E0E0E0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #999; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
+    html_leyenda_reg += "</div></div>"
+    st.markdown(html_leyenda_reg, unsafe_allow_html=True)
+
 with tab_he:
     st.markdown("### ⚡ Gestión y Acumulación de Horas Extra")
     st.markdown("Añade las horas reales trabajadas. Se multiplicarán automáticamente por 1.75 (equivalente a 1h 45min).")
