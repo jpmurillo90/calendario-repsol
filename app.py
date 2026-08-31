@@ -391,7 +391,6 @@ REGISTROS_HE = cargar_he_drive()
 if 'historial_auditoria' not in st.session_state:
     st.session_state.historial_auditoria = []
 
-# Inicializar estados para controlar el flujo de solapamiento en el botón
 if 'intentando_guardar' not in st.session_state:
     st.session_state.intentando_guardar = False
 if 'coincidencias_pendientes' not in st.session_state:
@@ -490,7 +489,6 @@ def calcular_he_consumidas_horas(tecnico, anio):
     return round(total_consumido_h, 2)
 
 def extraer_info_registro(val_reg, tec, anio, mes, dia):
-    """Devuelve (marca_visual, desglose_texto) para pintar celdas y reportes."""
     if not val_reg:
         return '', ''
     
@@ -734,7 +732,6 @@ with tab_registrar:
             if reg_d_ini > reg_d_fin:
                 st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
             else:
-                # 1. Validación de Disponibilidad / Saldos máximos para evitar negativos
                 dias_a_registrar = reg_d_fin - reg_d_ini + 1
                 error_saldo = False
                 mensaje_error_saldo = ""
@@ -748,7 +745,6 @@ with tab_registrar:
                         error_saldo = True
                         mensaje_error_saldo = f"❌ No se puede registrar: Intentas asignar {dias_a_registrar} día(s) de VPA, pero a {reg_tec} solo le quedan {vpa_pend} disponibles."
                 elif reg_tipo == 'HLD':
-                    # Estimación de horas HLD para el rango
                     total_hld_requeridas = sum(obtener_horas_hld(reg_tec, reg_mes_num, d, dd_anio) for d in range(reg_d_ini, reg_d_fin + 1))
                     if hld_pend < total_hld_requeridas:
                         error_saldo = True
@@ -762,7 +758,6 @@ with tab_registrar:
                 if error_saldo:
                     st.error(mensaje_error_saldo)
                 else:
-                    # 2. Comprobación de Solapamientos
                     coincidencias_totales = []
                     if reg_tipo != '':
                         for dia in range(reg_d_ini, reg_d_fin + 1):
@@ -777,7 +772,6 @@ with tab_registrar:
                         st.session_state.intentando_guardar = False
                         st.session_state.coincidencias_pendientes = []
                         
-                        # Guardado directo si no hay solapamientos
                         for dia in range(reg_d_ini, reg_d_fin + 1):
                             clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
                             if reg_tipo == '':
@@ -812,7 +806,6 @@ with tab_registrar:
                         st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
                         st.rerun()
 
-        # Si el sistema detectó solapamiento al intentar guardar y está pendiente de confirmación
         if st.session_state.intentando_guardar and st.session_state.coincidencias_pendientes:
             mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
             for dia, lista_c in st.session_state.coincidencias_pendientes:
@@ -858,7 +851,6 @@ with tab_registrar:
                     
                     guardar_en_drive(REGISTROS)
                     
-                    # REGISTRO AUTOMÁTICO EN EL HISTORIAL DE INCIDENCIAS
                     texto_incidencia = f"Solapamiento en {TECNICOS[reg_tec]['ci']}: {reg_tec} ({reg_tipo}) coincide con {'; '.join(detalle_solapamientos_str)} en {MESES[reg_mes_num]} {dd_anio}"
                     if 'historial_incidencias_solapamiento' not in st.session_state:
                         st.session_state.historial_incidencias_solapamiento = []
@@ -964,7 +956,6 @@ with tab_registrar:
         html_matriz += "</tbody></table></div>"
         st.markdown(html_matriz, unsafe_allow_html=True)
 
-    # LEYENDA DE CÓDIGOS Y ESTADOS
     html_leyenda_reg = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
     for k, (desc, color) in LEYENDA.items():
         html_leyenda_reg += f"<div style='display: flex; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #94A3B8; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
@@ -1110,7 +1101,6 @@ with tab_balance:
 with tab_incidencias:
     st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas de Solapamiento ({dd_anio})")
     
-    # 1. Alertas de Exceso de Vacaciones
     alertas = []
     for tec, info in TECNICOS.items():
         vac_c = 0
@@ -1323,3 +1313,4 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
+```[cite: 2]
