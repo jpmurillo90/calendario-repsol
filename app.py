@@ -88,7 +88,11 @@ if 'autenticado' not in st.session_state:
     st.session_state.usuario_actual = None
     st.session_state.rol_actual = None
 
-st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
+try:
+    st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
+except Exception:
+    st.sidebar.markdown("### Indra Group")
+
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
 
@@ -105,7 +109,7 @@ if not st.session_state.autenticado:
             "lector": {"password": "123", "nombre": "Técnico Consulta", "rol": "Lector"}
         }
 
-        if "usuarios" in st.secrets:
+        if hasattr(st, "secrets") and "usuarios" in st.secrets:
             usuarios_validos = st.secrets["usuarios"]
 
         if usuario_input in usuarios_validos and usuarios_validos[usuario_input]["password"] == password_input:
@@ -148,8 +152,11 @@ def obtener_url_gist():
 
 def guardar_en_drive(registros_dict):
     datos_json = {f"{a}|{t}|{m}|{d}": v for (a, t, m, d), v in registros_dict.items()}
-    with open(RUTA_BDD, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        with open(RUTA_BDD, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
         
     url = obtener_url_gist()
     headers = obtener_cabeceras_gist()
@@ -162,7 +169,7 @@ def guardar_en_drive(registros_dict):
             }
         }
         try:
-            requests.patch(url, headers=headers, json=payload)
+            requests.patch(url, headers=headers, json=payload, timeout=5)
         except Exception:
             pass
 
@@ -172,7 +179,7 @@ def cargar_de_drive():
     
     if url and headers:
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 files = response.json().get("files", {})
                 if "datos_tecnicos_repsol.json" in files:
@@ -204,9 +211,12 @@ def cargar_de_drive():
         return {}
 
 def guardar_festivos_drive():
-    datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
-    with open(RUTA_FESTIVOS, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
+        with open(RUTA_FESTIVOS, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_festivos_drive():
     try:
@@ -217,8 +227,11 @@ def cargar_festivos_drive():
         return None
 
 def guardar_he_drive():
-    with open(RUTA_HE, 'w', encoding='utf-8') as f:
-        json.dump(REGISTROS_HE, f, ensure_ascii=False, indent=4)
+    try:
+        with open(RUTA_HE, 'w', encoding='utf-8') as f:
+            json.dump(REGISTROS_HE, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_he_drive():
     try:
@@ -228,18 +241,21 @@ def cargar_he_drive():
         return {}
 
 def guardar_config_anual_drive():
-    datos_serializables = {}
-    for anio, cfg in CONFIG_ANUAL_POR_ANIO.items():
-        datos_serializables[str(anio)] = {
-            'petronor_lj': cfg['petronor_lj'],
-            'petronor_v': cfg['petronor_v'],
-            'cartagena_ini': cfg['cartagena_ini'].strftime('%Y-%m-%d'),
-            'cartagena_fin': cfg['cartagena_fin'].strftime('%Y-%m-%d'),
-            'tarragona_ini': cfg['tarragona_ini'].strftime('%Y-%m-%d'),
-            'tarragona_fin': cfg['tarragona_fin'].strftime('%Y-%m-%d')
-        }
-    with open(RUTA_CONFIG_ANUAL, 'w', encoding='utf-8') as f:
-        json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    try:
+        datos_serializables = {}
+        for anio, cfg in CONFIG_ANUAL_POR_ANIO.items():
+            datos_serializables[str(anio)] = {
+                'petronor_lj': cfg['petronor_lj'],
+                'petronor_v': cfg['petronor_v'],
+                'cartagena_ini': cfg['cartagena_ini'].strftime('%Y-%m-%d'),
+                'cartagena_fin': cfg['cartagena_fin'].strftime('%Y-%m-%d'),
+                'tarragona_ini': cfg['tarragona_ini'].strftime('%Y-%m-%d'),
+                'tarragona_fin': cfg['tarragona_fin'].strftime('%Y-%m-%d')
+            }
+        with open(RUTA_CONFIG_ANUAL, 'w', encoding='utf-8') as f:
+            json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_config_anual_drive():
     try:
@@ -260,19 +276,22 @@ def cargar_config_anual_drive():
         return None
 
 def guardar_horarios_ci_drive():
-    datos_serializables = {}
-    for anio, centros in HORARIOS_CI_ANUAL.items():
-        datos_serializables[str(anio)] = {}
-        for ci, d in centros.items():
-            datos_serializables[str(anio)][ci] = {
-                'horario': d['horario'],
-                'h_sem': d['h_sem'],
-                'obs': d['obs'],
-                'bolsa_ini': d.get('bolsa_ini', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_ini'), date) else d.get('bolsa_ini', ''),
-                'bolsa_fin': d.get('bolsa_fin', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_fin'), date) else d.get('bolsa_fin', '')
-            }
-    with open(RUTA_HORARIOS_CI, 'w', encoding='utf-8') as f:
-        json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    try:
+        datos_serializables = {}
+        for anio, centros in HORARIOS_CI_ANUAL.items():
+            datos_serializables[str(anio)] = {}
+            for ci, d in centros.items():
+                datos_serializables[str(anio)][ci] = {
+                    'horario': d['horario'],
+                    'h_sem': d['h_sem'],
+                    'obs': d['obs'],
+                    'bolsa_ini': d.get('bolsa_ini', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_ini'), date) else d.get('bolsa_ini', ''),
+                    'bolsa_fin': d.get('bolsa_fin', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_fin'), date) else d.get('bolsa_fin', '')
+                }
+        with open(RUTA_HORARIOS_CI, 'w', encoding='utf-8') as f:
+            json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_horarios_ci_drive():
     try:
@@ -296,9 +315,12 @@ def cargar_horarios_ci_drive():
         return None
 
 def guardar_hld_anual_drive():
-    datos_json = {str(anio): hld_dict for anio, hld_dict in HLD_ANUAL_POR_ANIO.items()}
-    with open(RUTA_HLD_ANUAL, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        datos_json = {str(anio): hld_dict for anio, hld_dict in HLD_ANUAL_POR_ANIO.items()}
+        with open(RUTA_HLD_ANUAL, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_hld_anual_drive():
     try:
@@ -584,7 +606,7 @@ with col_v3:
                         if tipo_v == 'V': vac_c += 1
                         elif tipo_v == 'VPA': vpa_c += 1
                         elif tipo_v == 'HLD':
-                            hld_c += val.get('horas_gastadas', obtener_horas_hld(tec, m, d, dd_anio))
+                            hld_c += val.get('horas_gastadas', 0.0)
                         elif tipo_v == 'HE+HLD':
                             hld_c += val.get('hld_horas', 0.0)
                     else:
@@ -1313,4 +1335,3 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
-```[cite: 2]
