@@ -814,7 +814,6 @@ with tab_he:
     tot_g = calcular_he_consumidas_horas(he_tec, he_anio)
     st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales netas: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
 
-    # --- TABLA DE RESUMEN DE REGISTROS DE HE CON HIDE_INDEX=TRUE ---
     st.markdown("---")
     st.markdown(f"#### 📋 Historial de Registros HE para {he_tec} ({he_anio})")
     
@@ -933,20 +932,66 @@ with tab_config:
     )
     st.markdown("---")
     st.markdown("### 📅 Mantenimiento de Calendario de Festivos por Centro")
-    cfg_centro = st.selectbox('Centro de Trabajo (CI):', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
-    cfg_mes = st.selectbox('Mes:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
-    cfg_dia = st.selectbox('Día:', list(range(1, calendar.monthrange(dd_anio, cfg_mes)[1] + 1)), key='cfg_d')
+    
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    with col_f1:
+        cfg_anio = st.selectbox('Año del Festivo:', ANOS_DISPONIBLES, key='cfg_anio_fest')
+    with col_f2:
+        cfg_centro = st.selectbox('Centro de Trabajo (CI):', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
+    with col_f3:
+        cfg_mes = st.selectbox('Mes:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
+    with col_f4:
+        cfg_dia = st.selectbox('Día:', list(range(1, calendar.monthrange(cfg_anio, cfg_mes)[1] + 1)), key='cfg_d')
     
     if st.session_state.rol_actual == "Editor":
         if st.button('Añadir Día Festivo', use_container_width=True):
-            if dd_anio not in FESTIVOS_POR_ANIO: FESTIVOS_POR_ANIO[dd_anio] = {}
-            if cfg_centro not in FESTIVOS_POR_ANIO[dd_anio]: FESTIVOS_POR_ANIO[dd_anio][cfg_centro] = []
-            if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[dd_anio][cfg_centro]:
-                FESTIVOS_POR_ANIO[dd_anio][cfg_centro].append((cfg_mes, cfg_dia))
+            if cfg_anio not in FESTIVOS_POR_ANIO: 
+                FESTIVOS_POR_ANIO[cfg_anio] = {}
+            if cfg_centro not in FESTIVOS_POR_ANIO[cfg_anio]: 
+                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro] = []
+            
+            if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[cfg_anio][cfg_centro]:
+                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].append((cfg_mes, cfg_dia))
+                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].sort(key=lambda x: (x[0], x[1]))
                 guardar_festivos_drive()
-                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{dd_anio} añadido correctamente para {cfg_centro}.")
+                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{cfg_anio} añadido correctamente para {cfg_centro}.")
+                st.rerun()
+            else:
+                st.warning("⚠️ Este día ya figura como festivo para este centro en el año seleccionado.")
     else:
         st.button('Añadir Día Festivo (Bloqueado)', disabled=True, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown(f"#### 📋 Listado de Festivos Actuales para {cfg_centro} ({cfg_anio})")
+    
+    festivos_actuales_centro = FESTIVOS_POR_ANIO.get(cfg_anio, {}).get(cfg_centro, [])
+    
+    if not festivos_actuales_centro:
+        st.info("No hay días festivos configurados para este centro en el año seleccionado.")
+    else:
+        datos_tabla_festivos = []
+        for idx, (m, d) in enumerate(festivos_actuales_centro):
+            nombre_mes = MESES.get(m, str(m))
+            datos_tabla_festivos.append({
+                'ID': idx,
+                'Día': d,
+                'Mes': nombre_mes,
+                'Fecha Completa': f"{d:02d}/{m:02d}/{cfg_anio}"
+            })
+            
+        st.dataframe(pd.DataFrame(datos_tabla_festivos), use_container_width=True, hide_index=True)
+        
+        if st.session_state.rol_actual == "Editor":
+            id_borrar_festivo = st.selectbox(
+                "Seleccionar ID de festivo para eliminar por error:", 
+                [item['ID'] for item in datos_tabla_festivos],
+                key='id_borrar_festivo_sel'
+            )
+            if st.button("🗑️ Eliminar Festivo Seleccionado", type="secondary", use_container_width=True):
+                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].pop(id_borrar_festivo)
+                guardar_festivos_drive()
+                st.success("Festivo eliminado correctamente.")
+                st.rerun()
 
 with tab_horarios:
     st.markdown(f"### ⏰ Horarios Oficiales de Cliente por Centro ({dd_anio})")
