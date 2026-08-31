@@ -391,6 +391,12 @@ REGISTROS_HE = cargar_he_drive()
 if 'historial_auditoria' not in st.session_state:
     st.session_state.historial_auditoria = []
 
+# Inicializar estados para controlar el flujo de solapamiento en el botón
+if 'intentando_guardar' not in st.session_state:
+    st.session_state.intentando_guardar = False
+if 'coincidencias_pendientes' not in st.session_state:
+    st.session_state.coincidencias_pendientes = []
+
 def obtener_vpa_totales_tecnico(tecnico, anio):
     if anio == ANOS_DISPONIBLES[0]:
         return TECNICOS[tecnico].get('vpa_base', 0)
@@ -721,31 +727,79 @@ with tab_registrar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Validación previa de coincidencias en el rango para mostrar la advertencia detallada
-    coincidencias_totales = []
-    if reg_tipo != '':
-        for dia in range(reg_d_ini, reg_d_fin + 1):
-            c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
-            if c:
-                coincidencias_totales.append((dia, c))
-
-    confirmado_solapamiento = True
-    if coincidencias_totales:
-        mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
-        for dia, lista_c in coincidencias_totales:
-            for tec_col, marca_col, desc_marca in lista_c:
-                mensaje_alerta += f"- El día **{dia} de {MESES[reg_mes_num]}**, el otro técnico del mismo centro (**{tec_col}**) está de **{desc_marca} ({marca_col})**.\n"
-        mensaje_alerta += "\n¿Aun así deseas registrar esta ausencia?"
-        st.warning(mensaje_alerta)
-        confirmado_solapamiento = st.checkbox("Confirmo que deseo registrar esto a pesar de la coincidencia", value=False)
-
     if st.session_state.rol_actual == "Editor":
         boton_guardar = st.button('Guardar Rango de Fechas', type='primary', use_container_width=True)
+        
         if boton_guardar:
+            # Al pulsar guardar, evaluamos las coincidencias exclusivamente para el rango seleccionado
+            coincidencias_totales = []
+            if reg_tipo != '':
+                for dia in range(reg_d_ini, reg_d_fin + 1):
+                    c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
+                    if c:
+                        coincidencias_totales.append((dia, c))
+            
+            if coincidencias_totales:
+                st.session_state.intentando_guardar = True
+                st.session_state.coincidencias_pendientes = coincidencias_totales
+            else:
+                st.session_state.intentando_guardar = False
+                st.session_state.coincidencias_pendientes = []
+
+        # Si el sistema detectó solapamiento al intentar guardar y aún no se ha confirmado
+        if st.session_state.intentando_guardar and st.session_state.coincidencias_pendientes:
+            mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
+            for dia, lista_c in st.session_state.coincidencias_pendientes:
+                for tec_col, marca_col, desc_marca in lista_c:
+                    mensaje_alerta += f"- El día **{dia} de {MESES[reg_mes_num]}**, el otro técnico del mismo centro (**{tec_col}**) está de **{desc_marca} ({marca_col})**.\n"
+            mensaje_alerta += "\n¿Aun así deseas registrar esta ausencia?"
+            st.warning(mensaje_alerta)
+            
+            confirmado_solapamiento = st.checkbox("Confirmo que deseo registrar esto a pesar de la coincidencia", value=False)
+            
+            if st.button("Confirmar y Guardar Definitivamente", type="primary"):
+                if not confirmado_solapamiento:
+                    st.error("❌ Debes marcar la casilla de confirmación para proceder.")
+                else:
+                    for dia in range(reg_d_ini, reg_d_fin + 1):
+                        clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
+                        if reg_tipo == '':
+                            REGISTROS.pop(clave_reg, None)
+                            REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
+                        elif reg_tipo == 'HE':
+                            h_jornada = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia)
+                            h_efectivas = min(val_horas_disfrute, h_jornada)
+                            REGISTROS[clave_reg] = {'tipo': 'HE', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                        elif reg_tipo == 'HLD':
+                            h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
+                            h_efectivas = min(val_horas_disfrute, h_teorico)
+                            REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                        elif reg_tipo == 'HE+HLD':
+                            REGISTROS[clave_reg] = {
+                                'tipo': 'HE+HLD', 
+                                'he_horas': val_he_mix, 
+                                'hld_horas': val_hld_mix, 
+                                'anio': dd_anio, 
+                                'tec': reg_tec
+                            }
+                        else:
+                            REGISTROS[clave_reg] = reg_tipo
+                    
+                    guardar_en_drive(REGISTROS)
+                    st.session_state.historial_auditoria.append({
+                        'hora': datetime.now().strftime("%H:%M:%S"),
+                        'tec': reg_tec,
+                        'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
+                        'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
+                    })
+                    st.session_state.intentando_guardar = False
+                    st.session_state.coincidencias_pendientes = []
+                    st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
+                    st.rerun()
+
+        elif boton_guardar and not st.session_state.intentando_guardar:
             if reg_d_ini > reg_d_fin:
                 st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
-            elif coincidencias_totales and not confirmado_solapamiento:
-                st.error("❌ Debes marcar la casilla de confirmación para proceder con el registro a pesar de las coincidencias.")
             else:
                 for dia in range(reg_d_ini, reg_d_fin + 1):
                     clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
@@ -772,7 +826,6 @@ with tab_registrar:
                         REGISTROS[clave_reg] = reg_tipo
                 
                 guardar_en_drive(REGISTROS)
-                
                 st.session_state.historial_auditoria.append({
                     'hora': datetime.now().strftime("%H:%M:%S"),
                     'tec': reg_tec,
