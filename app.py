@@ -580,7 +580,16 @@ with col_v3:
                         if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    t_html += f"<td style='background-color: {bg_color}; text-align: center; color: #0F172A;'><b>{marca}</b></td>"
+                    
+                    # Formateo de horas para exportación HTML
+                    extra_txt = ""
+                    if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
+                        hg = val_reg.get('horas_gastadas', 0.0)
+                        h_max = obtener_horas_jornada_real(tec, dd_anio, mes_num, d) if marca == 'HE' else obtener_horas_hld(tec, mes_num, d, dd_anio)
+                        tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
+                        extra_txt = f"<br><span style='font-size:8px; color:#334155;'>{tipo_parcial}</span>"
+
+                    t_html += f"<td style='background-color: {bg_color}; text-align: center; color: #0F172A;'><b>{marca}</b>{extra_txt}</td>"
                 t_html += "</tr>"
             t_html += "</tbody></table>"
             secciones_meses_html += f"<div class='mes-container'><h3>📅 Mes: {mes_nom} {dd_anio}</h3><div class='table-responsive'>{t_html}</div></div>"
@@ -730,7 +739,16 @@ with tab_registrar:
                         if not marca: marca = 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    html_cal += f"<td style='background-color:{bg_color}; height:50px; color:#0F172A;'><b>{dia}</b><br><span style='font-size:10px;'>{marca}</span></td>"
+                    
+                    # Inserción visual de horas para HLD y HE en vista individual
+                    extra_txt = ""
+                    if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
+                        hg = val_reg.get('horas_gastadas', 0.0)
+                        h_max = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia) if marca == 'HE' else obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
+                        tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
+                        extra_txt = f"<br><span style='font-size:9px; color:#334155; font-weight:normal;'>{tipo_parcial}</span>"
+
+                    html_cal += f"<td style='background-color:{bg_color}; height:50px; color:#0F172A;'><b>{dia}</b><br><span style='font-size:10px;'>{marca}</span>{extra_txt}</td>"
             html_cal += "</tr>"
         html_cal += "</table>"
         st.markdown(html_cal, unsafe_allow_html=True)
@@ -772,7 +790,16 @@ with tab_registrar:
                     if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
                 elif marca in LEYENDA:
                     bg_color = LEYENDA[marca][1]
-                html_matriz += f"<td style='background-color: {bg_color};'>{marca}</td>"
+                
+                # Inserción visual de horas para HLD y HE en matriz global
+                extra_txt = ""
+                if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
+                    hg = val_reg.get('horas_gastadas', 0.0)
+                    h_max = obtener_horas_jornada_real(tec, dd_anio, reg_mes_num, d) if marca == 'HE' else obtener_horas_hld(tec, reg_mes_num, d, dd_anio)
+                    tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
+                    extra_txt = f"<br><span style='font-size:8px; font-weight:normal; color:#334155;'>{tipo_parcial}</span>"
+
+                html_matriz += f"<td style='background-color: {bg_color};'>{marca}{extra_txt}</td>"
             html_matriz += "</tr>"
         html_matriz += "</tbody></table></div>"
         st.markdown(html_matriz, unsafe_allow_html=True)
