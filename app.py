@@ -635,10 +635,18 @@ with tab_registrar:
         
         val_horas_disfrute = 0.0
         if reg_tipo == 'HE':
-            val_horas_disfrute = st.slider('Horas a Gastar (HE):', 0.5, max(0.5, float(he_disp)), 0.5, step=0.5)
+            max_val = max(0.5, float(he_disp))
+            min_val = 0.5
+            if max_val <= min_val:
+                max_val = min_val + 0.5
+            val_horas_disfrute = st.slider('Horas a Gastar (HE):', min_val, max_val, min_val, step=0.5)
         elif reg_tipo == 'HLD':
             hld_max_d = obtener_horas_hld(reg_tec, reg_mes_num, reg_d_ini, dd_anio)
-            val_horas_disfrute = st.slider('Horas a Gastar (HLD):', 0.5, max(0.5, float(hld_max_d if hld_max_d > 0 else 7.0)), 0.5, step=0.5)
+            max_val = max(0.5, float(hld_max_d if hld_max_d > 0 else 7.0))
+            min_val = 0.5
+            if max_val <= min_val:
+                max_val = min_val + 0.5
+            val_horas_disfrute = st.slider('Horas a Gastar (HLD):', min_val, max_val, min_val, step=0.5)
 
     vac_pend = info_tec['vac_totales'] - vac_c
     vpa_pend = vpa_tot_anio - vpa_c
