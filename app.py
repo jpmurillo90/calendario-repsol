@@ -814,7 +814,7 @@ with tab_he:
     tot_g = calcular_he_consumidas_horas(he_tec, he_anio)
     st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales netas: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
 
-    # --- NUEVO: TABLA DE RESUMEN DE REGISTROS DE HE CON OPCIÓN DE ELIMINAR ---
+    # --- TABLA DE RESUMEN DE REGISTROS DE HE CON HIDE_INDEX=TRUE ---
     st.markdown("---")
     st.markdown(f"#### 📋 Historial de Registros HE para {he_tec} ({he_anio})")
     
@@ -837,7 +837,7 @@ with tab_he:
                 'Registrado por': item.get('usuario', 'Desconocido')
             })
         
-        st.dataframe(pd.DataFrame(datos_tabla_he), use_container_width=True)
+        st.dataframe(pd.DataFrame(datos_tabla_he), use_container_width=True, hide_index=True)
         
         if st.session_state.rol_actual == "Editor":
             id_a_borrar = st.selectbox(
@@ -872,7 +872,7 @@ with tab_cobertura:
             else:
                 estado = f"AUSENTE ({marca if marca else 'FESTIVO/FINDE'})"
             detalles_cov.append({'Centro de Trabajo': ci, 'Técnico': tec, 'Estado Operativo': estado})
-        st.dataframe(pd.DataFrame(detalles_cov), use_container_width=True)
+        st.dataframe(pd.DataFrame(detalles_cov), use_container_width=True, hide_index=True)
         st.metric(label="Índice Global de Cobertura de Plantilla", value=f"{round((total_trab / len(TECNICOS)) * 100)}%")
 
 with tab_balance:
@@ -894,7 +894,7 @@ with tab_balance:
             'HLD Cons.': round(hld_c, 2), 'HLD Pend.': round(hld_tot - hld_c, 2),
             'HE Comp.': he_comp, 'HE Disp.': round(he_comp - he_gast, 2)
         })
-    st.dataframe(pd.DataFrame(datos_bal), use_container_width=True)
+    st.dataframe(pd.DataFrame(datos_bal), use_container_width=True, hide_index=True)
 
 with tab_incidencias:
     st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas ({dd_anio})")
@@ -913,7 +913,7 @@ with tab_auditoria:
     if not st.session_state.historial_auditoria:
         st.info("No se han registrado modificaciones o eventos de auditoría en la sesión actual.")
     else:
-        st.dataframe(pd.DataFrame(st.session_state.historial_auditoria), use_container_width=True)
+        st.dataframe(pd.DataFrame(st.session_state.historial_auditoria), use_container_width=True, hide_index=True)
 
 with tab_config:
     st.markdown("### ⚙️ Configuración del Sistema y Resguardo de Datos")
@@ -963,7 +963,7 @@ with tab_horarios:
             'Bolsa Horas Parada': str_bolsa,
             'Observaciones': d['obs']
         })
-    st.dataframe(pd.DataFrame(h_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(h_data), use_container_width=True, hide_index=True)
     
     st.markdown("---")
     st.markdown("#### ✏️ Actualización de Jornadas, Horarios y Bolsas de Parada")
@@ -1023,7 +1023,7 @@ with tab_hld:
     st.markdown(f"### ⏳ Configuración de HLD Anuales por Centro ({dd_anio})")
     hld_anio_actual = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT.get(dd_anio, {}))
     hld_data = [{'Centro (CI)': ci, 'Total HLD Asignado (h)': f"{val}h"} for ci, val in hld_anio_actual.items()]
-    st.dataframe(pd.DataFrame(hld_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(hld_data), use_container_width=True, hide_index=True)
     
     st.markdown("---")
     st.markdown("#### ⚙️ Parámetros de Asignación HLD")
