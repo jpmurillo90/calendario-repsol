@@ -127,7 +127,7 @@ else:
         st.rerun()
 
 # ==========================================
-# FUNCIONES DE PERSISTENCIA (GITHUB GIST)
+# FUNCIONES DE PERSISTENCIA
 # ==========================================
 def obtener_cabeceras_gist():
     try:
@@ -496,7 +496,7 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
             if TECNICOS[tec]['ci'] == ci_actual and marca_str != '':
                 desc_marca = LEYENDA.get(marca_str, (marca_str, ''))[0]
                 coincidencias.append((tec, marca_str, desc_marca))
-    return     coincidencias
+    return coincidencias
 
 # ==========================================
 # HEADER EJECUTIVO PRINCIPAL
@@ -752,7 +752,7 @@ with tab_registrar:
             html_matriz += f"<tr><td style='text-align: left;'><b>{tec}</b></td><td>{info['ci']}</td>"
             festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info['ci'], [])
             for d in range(1, num_dias + 1):
-                val_reg = REGISTROS.get((dd_anio, tec, str(reg_mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{reg_mes_num}|{d}", ''))
+                val_reg = REGISTROS.get((dd_anio, tec, str(reg_mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{reg_mes_num}|{dia}", ''))
                 marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
                 bg_color = '#ffffff'
                 weekday = calendar.weekday(dd_anio, reg_mes_num, d)
@@ -778,30 +778,78 @@ with tab_registrar:
 
 with tab_he:
     st.markdown("### ⚡ Gestión y Acumulación de Horas Extra")
-    st.markdown("Registro de bolsa de horas extraordinarias reales. Conversión automática ponderada (x1.75).")
+    st.markdown("Registro de bolsa de horas extraordinarias reales. Conversión automática ponderada (x1.75). Se permiten valores negativos (para restar o corregir errores).")
     he_anio = st.selectbox('Año Operativo HE:', ANOS_DISPONIBLES, key='he_anio_sel')
     he_tec = st.selectbox('Técnico Asignado:', list(TECNICOS.keys()), key='he_tec_sel')
     
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        txt_horas = st.number_input('Horas Reales Trabajadas:', min_value=0.5, value=1.0, step=0.5)
+        txt_horas = st.number_input('Horas Reales Trabajadas (admite negativos para correcciones):', min_value=-100.0, max_value=100.0, value=1.0, step=0.5)
     with col_h2:
-        txt_motivo = st.text_input('Motivo / Justificación:', placeholder='Ej. Urgencia técnica en planta')
+        txt_motivo = st.text_input('Motivo / Justificación:', placeholder='Ej. Corrección de error o Urgencia técnica')
         
     if st.session_state.rol_actual == "Editor":
         if st.button('Registrar Horas Extra', use_container_width=True):
             if he_tec not in REGISTROS_HE:
                 REGISTROS_HE[he_tec] = []
-            REGISTROS_HE[he_tec].append({'anio': he_anio, 'horas_reales': txt_horas, 'motivo': txt_motivo or 'Sin motivo'})
+            
+            usuario_registro = st.session_state.get('usuario_actual', 'Sistema')
+            fecha_registro = datetime.now().strftime("%d/%m/%Y %H:%M")
+            
+            REGISTROS_HE[he_tec].append({
+                'anio': he_anio, 
+                'horas_reales': txt_horas, 
+                'motivo': txt_motivo or 'Sin motivo',
+                'usuario': usuario_registro,
+                'fecha': fecha_registro
+            })
             guardar_he_drive()
-            st.success(f"✅ Se han registrado {txt_horas}h extra reales a {he_tec} (Equivalen a {txt_horas * 1.75:.2f}h compensadas).")
+            st.success(f"✅ Se han procesado {txt_horas}h extra reales a {he_tec}.")
+            st.rerun()
     else:
         st.button('Registrar Horas Extra (Bloqueado)', disabled=True, use_container_width=True)
 
     tot_r = sum(i['horas_reales'] for i in REGISTROS_HE.get(he_tec, []) if i['anio'] == he_anio)
     tot_c = calcular_he_compensadas_totales(he_tec, he_anio)
     tot_g = calcular_he_consumidas_horas(he_tec, he_anio)
-    st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
+    st.info(f"📊 **Resumen HE ({he_tec} - {he_anio}):** Reales netas: {tot_r}h | Compensadas (x1.75): {tot_c:.2f}h | Gastadas: {tot_g:.2f}h | **Disponibles: {tot_c - tot_g:.2f}h**")
+
+    # --- NUEVO: TABLA DE RESUMEN DE REGISTROS DE HE CON OPCIÓN DE ELIMINAR ---
+    st.markdown("---")
+    st.markdown(f"#### 📋 Historial de Registros HE para {he_tec} ({he_anio})")
+    
+    lista_he_tec_anio = [
+        (idx, item) for idx, item in enumerate(REGISTROS_HE.get(he_tec, [])) 
+        if item['anio'] == he_anio
+    ]
+    
+    if not lista_he_tec_anio:
+        st.info("No hay registros de horas extra para este técnico en el año seleccionado.")
+    else:
+        datos_tabla_he = []
+        for idx, item in lista_he_tec_anio:
+            datos_tabla_he.append({
+                'ID': idx,
+                'Fecha Registro': item.get('fecha', 'N/D'),
+                'Horas Reales': item['horas_reales'],
+                'Horas Compensadas (x1.75)': round(item['horas_reales'] * 1.75, 2),
+                'Motivo': item['motivo'],
+                'Registrado por': item.get('usuario', 'Desconocido')
+            })
+        
+        st.dataframe(pd.DataFrame(datos_tabla_he), use_container_width=True)
+        
+        if st.session_state.rol_actual == "Editor":
+            id_a_borrar = st.selectbox(
+                "Seleccionar ID de registro HE para eliminar por error:", 
+                [item[0] for item in lista_he_tec_anio],
+                key='id_borrar_he'
+            )
+            if st.button("🗑️ Eliminar Registro Seleccionado", type="secondary"):
+                REGISTROS_HE[he_tec].pop(id_a_borrar)
+                guardar_he_drive()
+                st.success("Registro eliminado correctamente.")
+                st.rerun()
 
 with tab_cobertura:
     st.markdown("### 👥 Análisis Operativo de Cobertura Diaria")
