@@ -88,7 +88,11 @@ if 'autenticado' not in st.session_state:
     st.session_state.usuario_actual = None
     st.session_state.rol_actual = None
 
-st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
+try:
+    st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
+except Exception:
+    st.sidebar.markdown("### Indra Group")
+
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
 
@@ -105,7 +109,7 @@ if not st.session_state.autenticado:
             "lector": {"password": "123", "nombre": "Técnico Consulta", "rol": "Lector"}
         }
 
-        if "usuarios" in st.secrets:
+        if hasattr(st, "secrets") and "usuarios" in st.secrets:
             usuarios_validos = st.secrets["usuarios"]
 
         if usuario_input in usuarios_validos and usuarios_validos[usuario_input]["password"] == password_input:
@@ -148,8 +152,11 @@ def obtener_url_gist():
 
 def guardar_en_drive(registros_dict):
     datos_json = {f"{a}|{t}|{m}|{d}": v for (a, t, m, d), v in registros_dict.items()}
-    with open(RUTA_BDD, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        with open(RUTA_BDD, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
         
     url = obtener_url_gist()
     headers = obtener_cabeceras_gist()
@@ -162,7 +169,7 @@ def guardar_en_drive(registros_dict):
             }
         }
         try:
-            requests.patch(url, headers=headers, json=payload)
+            requests.patch(url, headers=headers, json=payload, timeout=5)
         except Exception:
             pass
 
@@ -172,7 +179,7 @@ def cargar_de_drive():
     
     if url and headers:
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 files = response.json().get("files", {})
                 if "datos_tecnicos_repsol.json" in files:
@@ -204,9 +211,12 @@ def cargar_de_drive():
         return {}
 
 def guardar_festivos_drive():
-    datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
-    with open(RUTA_FESTIVOS, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
+        with open(RUTA_FESTIVOS, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_festivos_drive():
     try:
@@ -217,8 +227,11 @@ def cargar_festivos_drive():
         return None
 
 def guardar_he_drive():
-    with open(RUTA_HE, 'w', encoding='utf-8') as f:
-        json.dump(REGISTROS_HE, f, ensure_ascii=False, indent=4)
+    try:
+        with open(RUTA_HE, 'w', encoding='utf-8') as f:
+            json.dump(REGISTROS_HE, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_he_drive():
     try:
@@ -228,18 +241,21 @@ def cargar_he_drive():
         return {}
 
 def guardar_config_anual_drive():
-    datos_serializables = {}
-    for anio, cfg in CONFIG_ANUAL_POR_ANIO.items():
-        datos_serializables[str(anio)] = {
-            'petronor_lj': cfg['petronor_lj'],
-            'petronor_v': cfg['petronor_v'],
-            'cartagena_ini': cfg['cartagena_ini'].strftime('%Y-%m-%d'),
-            'cartagena_fin': cfg['cartagena_fin'].strftime('%Y-%m-%d'),
-            'tarragona_ini': cfg['tarragona_ini'].strftime('%Y-%m-%d'),
-            'tarragona_fin': cfg['tarragona_fin'].strftime('%Y-%m-%d')
-        }
-    with open(RUTA_CONFIG_ANUAL, 'w', encoding='utf-8') as f:
-        json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    try:
+        datos_serializables = {}
+        for anio, cfg in CONFIG_ANUAL_POR_ANIO.items():
+            datos_serializables[str(anio)] = {
+                'petronor_lj': cfg['petronor_lj'],
+                'petronor_v': cfg['petronor_v'],
+                'cartagena_ini': cfg['cartagena_ini'].strftime('%Y-%m-%d'),
+                'cartagena_fin': cfg['cartagena_fin'].strftime('%Y-%m-%d'),
+                'tarragona_ini': cfg['tarragona_ini'].strftime('%Y-%m-%d'),
+                'tarragona_fin': cfg['tarragona_fin'].strftime('%Y-%m-%d')
+            }
+        with open(RUTA_CONFIG_ANUAL, 'w', encoding='utf-8') as f:
+            json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_config_anual_drive():
     try:
@@ -260,19 +276,22 @@ def cargar_config_anual_drive():
         return None
 
 def guardar_horarios_ci_drive():
-    datos_serializables = {}
-    for anio, centros in HORARIOS_CI_ANUAL.items():
-        datos_serializables[str(anio)] = {}
-        for ci, d in centros.items():
-            datos_serializables[str(anio)][ci] = {
-                'horario': d['horario'],
-                'h_sem': d['h_sem'],
-                'obs': d['obs'],
-                'bolsa_ini': d.get('bolsa_ini', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_ini'), date) else d.get('bolsa_ini', ''),
-                'bolsa_fin': d.get('bolsa_fin', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_fin'), date) else d.get('bolsa_fin', '')
-            }
-    with open(RUTA_HORARIOS_CI, 'w', encoding='utf-8') as f:
-        json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    try:
+        datos_serializables = {}
+        for anio, centros in HORARIOS_CI_ANUAL.items():
+            datos_serializables[str(anio)] = {}
+            for ci, d in centros.items():
+                datos_serializables[str(anio)][ci] = {
+                    'horario': d['horario'],
+                    'h_sem': d['h_sem'],
+                    'obs': d['obs'],
+                    'bolsa_ini': d.get('bolsa_ini', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_ini'), date) else d.get('bolsa_ini', ''),
+                    'bolsa_fin': d.get('bolsa_fin', '').strftime('%Y-%m-%d') if isinstance(d.get('bolsa_fin'), date) else d.get('bolsa_fin', '')
+                }
+        with open(RUTA_HORARIOS_CI, 'w', encoding='utf-8') as f:
+            json.dump(datos_serializables, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_horarios_ci_drive():
     try:
@@ -296,9 +315,12 @@ def cargar_horarios_ci_drive():
         return None
 
 def guardar_hld_anual_drive():
-    datos_json = {str(anio): hld_dict for anio, hld_dict in HLD_ANUAL_POR_ANIO.items()}
-    with open(RUTA_HLD_ANUAL, 'w', encoding='utf-8') as f:
-        json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    try:
+        datos_json = {str(anio): hld_dict for anio, hld_dict in HLD_ANUAL_POR_ANIO.items()}
+        with open(RUTA_HLD_ANUAL, 'w', encoding='utf-8') as f:
+            json.dump(datos_json, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def cargar_hld_anual_drive():
     try:
@@ -391,7 +413,6 @@ REGISTROS_HE = cargar_he_drive()
 if 'historial_auditoria' not in st.session_state:
     st.session_state.historial_auditoria = []
 
-# Inicializar estados para controlar el flujo de solapamiento en el botón
 if 'intentando_guardar' not in st.session_state:
     st.session_state.intentando_guardar = False
 if 'coincidencias_pendientes' not in st.session_state:
@@ -490,7 +511,6 @@ def calcular_he_consumidas_horas(tecnico, anio):
     return round(total_consumido_h, 2)
 
 def extraer_info_registro(val_reg, tec, anio, mes, dia):
-    """Devuelve (marca_visual, desglose_texto) para pintar celdas y reportes."""
     if not val_reg:
         return '', ''
     
@@ -586,7 +606,7 @@ with col_v3:
                         if tipo_v == 'V': vac_c += 1
                         elif tipo_v == 'VPA': vpa_c += 1
                         elif tipo_v == 'HLD':
-                            hld_c += val.get('horas_gastadas', obtener_horas_hld(tec, m, d, dd_anio))
+                            hld_c += val.get('horas_gastadas', 0.0)
                         elif tipo_v == 'HE+HLD':
                             hld_c += val.get('hld_horas', 0.0)
                     else:
@@ -734,7 +754,6 @@ with tab_registrar:
             if reg_d_ini > reg_d_fin:
                 st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
             else:
-                # 1. Validación de Disponibilidad / Saldos máximos para evitar negativos
                 dias_a_registrar = reg_d_fin - reg_d_ini + 1
                 error_saldo = False
                 mensaje_error_saldo = ""
@@ -748,7 +767,6 @@ with tab_registrar:
                         error_saldo = True
                         mensaje_error_saldo = f"❌ No se puede registrar: Intentas asignar {dias_a_registrar} día(s) de VPA, pero a {reg_tec} solo le quedan {vpa_pend} disponibles."
                 elif reg_tipo == 'HLD':
-                    # Estimación de horas HLD para el rango
                     total_hld_requeridas = sum(obtener_horas_hld(reg_tec, reg_mes_num, d, dd_anio) for d in range(reg_d_ini, reg_d_fin + 1))
                     if hld_pend < total_hld_requeridas:
                         error_saldo = True
@@ -762,7 +780,6 @@ with tab_registrar:
                 if error_saldo:
                     st.error(mensaje_error_saldo)
                 else:
-                    # 2. Comprobación de Solapamientos
                     coincidencias_totales = []
                     if reg_tipo != '':
                         for dia in range(reg_d_ini, reg_d_fin + 1):
@@ -777,7 +794,6 @@ with tab_registrar:
                         st.session_state.intentando_guardar = False
                         st.session_state.coincidencias_pendientes = []
                         
-                        # Guardado directo si no hay solapamientos
                         for dia in range(reg_d_ini, reg_d_fin + 1):
                             clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
                             if reg_tipo == '':
@@ -812,7 +828,6 @@ with tab_registrar:
                         st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
                         st.rerun()
 
-        # Si el sistema detectó solapamiento al intentar guardar y está pendiente de confirmación
         if st.session_state.intentando_guardar and st.session_state.coincidencias_pendientes:
             mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
             for dia, lista_c in st.session_state.coincidencias_pendientes:
@@ -858,7 +873,6 @@ with tab_registrar:
                     
                     guardar_en_drive(REGISTROS)
                     
-                    # REGISTRO AUTOMÁTICO EN EL HISTORIAL DE INCIDENCIAS
                     texto_incidencia = f"Solapamiento en {TECNICOS[reg_tec]['ci']}: {reg_tec} ({reg_tipo}) coincide con {'; '.join(detalle_solapamientos_str)} en {MESES[reg_mes_num]} {dd_anio}"
                     if 'historial_incidencias_solapamiento' not in st.session_state:
                         st.session_state.historial_incidencias_solapamiento = []
@@ -964,7 +978,6 @@ with tab_registrar:
         html_matriz += "</tbody></table></div>"
         st.markdown(html_matriz, unsafe_allow_html=True)
 
-    # LEYENDA DE CÓDIGOS Y ESTADOS
     html_leyenda_reg = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
     for k, (desc, color) in LEYENDA.items():
         html_leyenda_reg += f"<div style='display: flex; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #94A3B8; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
@@ -1047,7 +1060,7 @@ with tab_he:
 
 with tab_cobertura:
     st.markdown("### 👥 Análisis Operativo de Cobertura Diaria")
-    fecha_cob = st.date_input("Seleccionar fecha de control:", value=date(dd_anio, 8, 27))
+    fecha_cob = st.date_input("Seleccionar fecha de control:", value=date.today())
     if fecha_cob:
         anio_c, mes_c, dia_c = fecha_cob.year, fecha_cob.month, fecha_cob.day
         detalles_cov = []
@@ -1110,7 +1123,6 @@ with tab_balance:
 with tab_incidencias:
     st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas de Solapamiento ({dd_anio})")
     
-    # 1. Alertas de Exceso de Vacaciones
     alertas = []
     for tec, info in TECNICOS.items():
         vac_c = 0
