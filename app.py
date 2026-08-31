@@ -391,6 +391,7 @@ REGISTROS_HE = cargar_he_drive()
 if 'historial_auditoria' not in st.session_state:
     st.session_state.historial_auditoria = []
 
+# Inicializar estados para controlar el flujo de solapamiento en el botón
 if 'intentando_guardar' not in st.session_state:
     st.session_state.intentando_guardar = False
 if 'coincidencias_pendientes' not in st.session_state:
@@ -489,6 +490,7 @@ def calcular_he_consumidas_horas(tecnico, anio):
     return round(total_consumido_h, 2)
 
 def extraer_info_registro(val_reg, tec, anio, mes, dia):
+    """Devuelve (marca_visual, desglose_texto) para pintar celdas y reportes."""
     if not val_reg:
         return '', ''
     
@@ -729,6 +731,7 @@ with tab_registrar:
         boton_guardar = st.button('Guardar Rango de Fechas', type='primary', use_container_width=True)
         
         if boton_guardar:
+            # Al pulsar guardar, evaluamos las coincidencias exclusivamente para el rango seleccionado
             coincidencias_totales = []
             if reg_tipo != '':
                 for dia in range(reg_d_ini, reg_d_fin + 1):
@@ -743,6 +746,7 @@ with tab_registrar:
                 st.session_state.intentando_guardar = False
                 st.session_state.coincidencias_pendientes = []
 
+        # Si el sistema detectó solapamiento al intentar guardar y aún no se ha confirmado
         if st.session_state.intentando_guardar and st.session_state.coincidencias_pendientes:
             mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
             for dia, lista_c in st.session_state.coincidencias_pendientes:
@@ -910,6 +914,7 @@ with tab_registrar:
         html_matriz += "</tbody></table></div>"
         st.markdown(html_matriz, unsafe_allow_html=True)
 
+    # LEYENDA DE CÓDIGOS Y ESTADOS
     html_leyenda_reg = "<div style='background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; margin-top: 25px; margin-bottom: 25px; font-family: sans-serif;'><h4 style='margin: 0 0 8px 0; color: #0F172A; font-size: 14px;'>📖 Leyenda de Códigos y Estados</h4><div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
     for k, (desc, color) in LEYENDA.items():
         html_leyenda_reg += f"<div style='display: flex; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 4px 8px; font-size: 11px;'><span style='background-color: {color}; border: 1px solid #94A3B8; width: 14px; height: 14px; display: inline-block; margin-right: 6px; border-radius: 2px;'></span><b>{k}:</b>&nbsp;{desc}</div>"
@@ -1257,3 +1262,4 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
+
