@@ -721,16 +721,33 @@ with tab_registrar:
     </div>
     """, unsafe_allow_html=True)
 
+    # Validación previa de coincidencias en el rango para mostrar la advertencia detallada
+    coincidencias_totales = []
+    if reg_tipo != '':
+        for dia in range(reg_d_ini, reg_d_fin + 1):
+            c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
+            if c:
+                coincidencias_totales.append((dia, c))
+
+    confirmado_solapamiento = True
+    if coincidencias_totales:
+        mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
+        for dia, lista_c in coincidencias_totales:
+            for tec_col, marca_col, desc_marca in lista_c:
+                mensaje_alerta += f"- El día **{dia} de {MESES[reg_mes_num]}**, el otro técnico del mismo centro (**{tec_col}**) está de **{desc_marca} ({marca_col})**.\n"
+        mensaje_alerta += "\n¿Aun así deseas registrar esta ausencia?"
+        st.warning(mensaje_alerta)
+        confirmado_solapamiento = st.checkbox("Confirmo que deseo registrar esto a pesar de la coincidencia", value=False)
+
     if st.session_state.rol_actual == "Editor":
-        if st.button('Guardar Rango de Fechas', type='primary', use_container_width=True):
+        boton_guardar = st.button('Guardar Rango de Fechas', type='primary', use_container_width=True)
+        if boton_guardar:
             if reg_d_ini > reg_d_fin:
                 st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
+            elif coincidencias_totales and not confirmado_solapamiento:
+                st.error("❌ Debes marcar la casilla de confirmación para proceder con el registro a pesar de las coincidencias.")
             else:
-                coincidencias_totales = []
                 for dia in range(reg_d_ini, reg_d_fin + 1):
-                    c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
-                    if c: coincidencias_totales.append((dia, c))
-                    
                     clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
                     if reg_tipo == '':
                         REGISTROS.pop(clave_reg, None)
@@ -763,8 +780,6 @@ with tab_registrar:
                     'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
                 })
                 st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
-                if coincidencias_totales:
-                    st.warning("⚠️ ¡Existen coincidencias/solapamientos de ausencias en el mismo centro!")
     else:
         st.button('Guardar Rango (Bloqueado para Lectores)', disabled=True, use_container_width=True)
 
