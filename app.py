@@ -326,6 +326,7 @@ LEYENDA = {
     'VPA': ('Vac. Pendientes Año Anterior', '#E2EFDA'),
     'HE': ('Horas Extras Disfrutadas / Parciales', '#FCE4D6'),
     'HLD': ('Hora de Libre Disposición / Parciales', '#BDD7EE'),
+    'HE+HLD': ('Mixto: HE y HLD en el mismo día', '#E1D5E7'),
     'BL': ('Baja Laboral', '#FFF2CC'),
     'FF1': ('Fallecimiento Familiar 1grado', '#F2F2F2'),
     'FF2': ('Fallecimiento Familiar 2grado', '#F2F2F2'),
@@ -464,8 +465,12 @@ def calcular_he_compensadas_totales(tecnico, anio):
 def calcular_he_consumidas_horas(tecnico, anio):
     total_consumido_h = 0.0
     for key, val in REGISTROS.items():
-        if isinstance(val, dict) and val.get('anio') == anio and val.get('tec') == tecnico and val.get('tipo') == 'HE':
-            total_consumido_h += val.get('horas_gastadas', 0.0)
+        if isinstance(val, dict) and val.get('anio') == anio and val.get('tec') == tecnico:
+            tipo_reg = val.get('tipo')
+            if tipo_reg == 'HE':
+                total_consumido_h += val.get('horas_gastadas', 0.0)
+            elif tipo_reg == 'HE+HLD':
+                total_consumido_h += val.get('he_horas', 0.0)
         else:
             parts = key.split('|') if isinstance(key, str) else None
             if parts and len(parts) == 4:
@@ -477,6 +482,32 @@ def calcular_he_consumidas_horas(tecnico, anio):
                 if a == anio and t == tecnico and val == 'HE':
                     total_consumido_h += obtener_horas_jornada_real(tecnico, anio, m, d)
     return round(total_consumido_h, 2)
+
+def extraer_info_registro(val_reg, tec, anio, mes, dia):
+    """Devuelve (marca_visual, desglose_texto) para pintar celdas y reportes."""
+    if not val_reg:
+        return '', ''
+    
+    if isinstance(val_reg, str):
+        return val_reg, ''
+        
+    tipo = val_reg.get('tipo', '')
+    if tipo == 'HE':
+        hg = val_reg.get('horas_gastadas', 0.0)
+        h_max = obtener_horas_jornada_real(tec, anio, mes, dia)
+        parcial = "Completo" if hg >= h_max else f"{hg}h"
+        return 'HE', f"<br><span style='font-size:8px; color:#334155;'>HE: {parcial}</span>"
+    elif tipo == 'HLD':
+        hg = val_reg.get('horas_gastadas', 0.0)
+        h_max = obtener_horas_hld(tec, mes, dia, anio)
+        parcial = "Completo" if hg >= h_max else f"{hg}h"
+        return 'HLD', f"<br><span style='font-size:8px; color:#334155;'>HLD: {parcial}</span>"
+    elif tipo == 'HE+HLD':
+        he_h = val_reg.get('he_horas', 0.0)
+        hld_h = val_reg.get('hld_horas', 0.0)
+        return 'HE+HLD', f"<br><span style='font-size:8px; color:#334155;'>HE:{he_h}h | HLD:{hld_h}h</span>"
+    else:
+        return tipo, ''
 
 def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
     if tipo_marca == '': return []
@@ -544,11 +575,19 @@ with col_v3:
                 else:
                     continue
                 if a == dd_anio and t == tec:
-                    marca_str = val['tipo'] if isinstance(val, dict) else val
-                    if marca_str == 'V': vac_c += 1
-                    elif marca_str == 'VPA': vpa_c += 1
-                    elif marca_str == 'HLD':
-                        hld_c += val.get('horas_gastadas', obtener_horas_hld(tec, m, d, dd_anio)) if isinstance(val, dict) else obtener_horas_hld(tec, m, d, dd_anio)
+                    if isinstance(val, dict):
+                        tipo_v = val.get('tipo')
+                        if tipo_v == 'V': vac_c += 1
+                        elif tipo_v == 'VPA': vpa_c += 1
+                        elif tipo_v == 'HLD':
+                            hld_c += val.get('horas_gastadas', obtener_horas_hld(tec, m, d, dd_anio))
+                        elif tipo_v == 'HE+HLD':
+                            hld_c += val.get('hld_horas', 0.0)
+                    else:
+                        if val == 'V': vac_c += 1
+                        elif val == 'VPA': vpa_c += 1
+                        elif val == 'HLD':
+                            hld_c += obtener_horas_hld(tec, m, d, dd_anio)
             he_comp = calcular_he_compensadas_totales(tec, dd_anio)
             he_gast = calcular_he_consumidas_horas(tec, dd_anio)
             datos_resumen.append({'Centro': info['ci'], 'Técnico': tec, 'Vac. Cons.': vac_c, 'Vac. Pend.': info['vac_totales'] - vac_c, 'VPA Cons.': vpa_c, 'VPA Pend.': vpa_tot_t - vpa_c, 'HLD Cons.': round(hld_c, 2), 'HLD Pend.': round(hld_tot_t - hld_c, 2), 'HE Comp.': he_comp, 'HE Disp.': round(he_comp - he_gast, 2)})
@@ -569,7 +608,7 @@ with col_v3:
                 festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info['ci'], [])
                 for d in range(1, num_dias + 1):
                     val_reg = REGISTROS.get((dd_anio, tec, str(mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{mes_num}|{d}", ''))
-                    marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
+                    marca, extra_txt = extraer_info_registro(val_reg, tec, dd_anio, mes_num, d)
                     bg_color = '#ffffff'
                     weekday = calendar.weekday(dd_anio, mes_num, d)
                     if (mes_num, d) in festivos:
@@ -580,14 +619,6 @@ with col_v3:
                         if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    
-                    # Formateo de horas para exportación HTML
-                    extra_txt = ""
-                    if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
-                        hg = val_reg.get('horas_gastadas', 0.0)
-                        h_max = obtener_horas_jornada_real(tec, dd_anio, mes_num, d) if marca == 'HE' else obtener_horas_hld(tec, mes_num, d, dd_anio)
-                        tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
-                        extra_txt = f"<br><span style='font-size:8px; color:#334155;'>{tipo_parcial}</span>"
 
                     t_html += f"<td style='background-color: {bg_color}; text-align: center; color: #0F172A;'><b>{marca}</b>{extra_txt}</td>"
                 t_html += "</tr>"
@@ -636,26 +667,45 @@ with tab_registrar:
         
         vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
         vpa_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'VPA')
-        hld_c = sum(v.get('horas_gastadas', 0.0) if isinstance(v, dict) else obtener_horas_hld(reg_tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio) for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'HLD')
+        
+        hld_c = 0.0
+        for k, v in REGISTROS.items():
+            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec:
+                if isinstance(v, dict):
+                    if v.get('tipo') == 'HLD':
+                        hld_c += v.get('horas_gastadas', 0.0)
+                    elif v.get('tipo') == 'HE+HLD':
+                        hld_c += v.get('hld_horas', 0.0)
+                elif v == 'HLD':
+                    hld_c += obtener_horas_hld(reg_tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio)
         
         he_comp = calcular_he_compensadas_totales(reg_tec, dd_anio)
         he_gast = calcular_he_consumidas_horas(reg_tec, dd_anio)
         he_disp = round(he_comp - he_gast, 2)
         
         val_horas_disfrute = 0.0
+        val_he_mix = 0.0
+        val_hld_mix = 0.0
+        
         if reg_tipo == 'HE':
             max_val = max(0.5, float(he_disp))
             min_val = 0.5
-            if max_val <= min_val:
-                max_val = min_val + 0.5
+            if max_val <= min_val: max_val = min_val + 0.5
             val_horas_disfrute = st.slider('Horas a Gastar (HE):', min_val, max_val, min_val, step=0.5)
         elif reg_tipo == 'HLD':
             hld_max_d = obtener_horas_hld(reg_tec, reg_mes_num, reg_d_ini, dd_anio)
             max_val = max(0.5, float(hld_max_d if hld_max_d > 0 else 7.0))
             min_val = 0.5
-            if max_val <= min_val:
-                max_val = min_val + 0.5
+            if max_val <= min_val: max_val = min_val + 0.5
             val_horas_disfrute = st.slider('Horas a Gastar (HLD):', min_val, max_val, min_val, step=0.5)
+        elif reg_tipo == 'HE+HLD':
+            jornada_total = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, reg_d_ini)
+            st.markdown(f"<small>Jornada estimada: <b>{jornada_total}h</b>. Configura las horas de cada bolsa para completar el día:</small>", unsafe_allow_html=True)
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                val_he_mix = st.number_input('Horas HE:', min_value=0.0, max_value=float(he_disp), value=min(4.0, max(0.0, float(he_disp))), step=0.5)
+            with col_m2:
+                val_hld_mix = st.number_input('Horas HLD:', min_value=0.0, max_value=float(jornada_total), value=min(4.0, float(jornada_total)), step=0.5)
 
     vac_pend = info_tec['vac_totales'] - vac_c
     vpa_pend = vpa_tot_anio - vpa_c
@@ -693,6 +743,14 @@ with tab_registrar:
                         h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
                         h_efectivas = min(val_horas_disfrute, h_teorico)
                         REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                    elif reg_tipo == 'HE+HLD':
+                        REGISTROS[clave_reg] = {
+                            'tipo': 'HE+HLD', 
+                            'he_horas': val_he_mix, 
+                            'hld_horas': val_hld_mix, 
+                            'anio': dd_anio, 
+                            'tec': reg_tec
+                        }
                     else:
                         REGISTROS[clave_reg] = reg_tipo
                 
@@ -725,7 +783,7 @@ with tab_registrar:
                     html_cal += "<td style='background-color:#F1F5F9; height:50px;'></td>"
                 else:
                     val_reg = REGISTROS.get((dd_anio, reg_tec, str(reg_mes_num), str(dia)), REGISTROS.get(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", ''))
-                    marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
+                    marca, extra_txt = extraer_info_registro(val_reg, reg_tec, dd_anio, reg_mes_num, dia)
                     bg_color = '#ffffff'
                     weekday = calendar.weekday(dd_anio, reg_mes_num, dia)
                     if (reg_mes_num, dia) in festivos:
@@ -739,14 +797,6 @@ with tab_registrar:
                         if not marca: marca = 'DOM'
                     elif marca in LEYENDA:
                         bg_color = LEYENDA[marca][1]
-                    
-                    # Inserción visual de horas para HLD y HE en vista individual
-                    extra_txt = ""
-                    if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
-                        hg = val_reg.get('horas_gastadas', 0.0)
-                        h_max = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia) if marca == 'HE' else obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
-                        tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
-                        extra_txt = f"<br><span style='font-size:9px; color:#334155; font-weight:normal;'>{tipo_parcial}</span>"
 
                     html_cal += f"<td style='background-color:{bg_color}; height:50px; color:#0F172A;'><b>{dia}</b><br><span style='font-size:10px;'>{marca}</span>{extra_txt}</td>"
             html_cal += "</tr>"
@@ -779,7 +829,7 @@ with tab_registrar:
             festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info['ci'], [])
             for d in range(1, num_dias + 1):
                 val_reg = REGISTROS.get((dd_anio, tec, str(reg_mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{reg_mes_num}|{dia}", ''))
-                marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
+                marca, extra_txt = extraer_info_registro(val_reg, tec, dd_anio, reg_mes_num, d)
                 bg_color = '#ffffff'
                 weekday = calendar.weekday(dd_anio, reg_mes_num, d)
                 if (reg_mes_num, d) in festivos:
@@ -790,14 +840,6 @@ with tab_registrar:
                     if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
                 elif marca in LEYENDA:
                     bg_color = LEYENDA[marca][1]
-                
-                # Inserción visual de horas para HLD y HE en matriz global
-                extra_txt = ""
-                if marca in ['HLD', 'HE'] and isinstance(val_reg, dict):
-                    hg = val_reg.get('horas_gastadas', 0.0)
-                    h_max = obtener_horas_jornada_real(tec, dd_anio, reg_mes_num, d) if marca == 'HE' else obtener_horas_hld(tec, reg_mes_num, d, dd_anio)
-                    tipo_parcial = "Completo" if hg >= h_max else f"{hg}h"
-                    extra_txt = f"<br><span style='font-size:8px; font-weight:normal; color:#334155;'>{tipo_parcial}</span>"
 
                 html_matriz += f"<td style='background-color: {bg_color};'>{marca}{extra_txt}</td>"
             html_matriz += "</tr>"
@@ -895,7 +937,7 @@ with tab_cobertura:
         for tec, info in TECNICOS.items():
             ci = info['ci']
             val_reg = REGISTROS.get((anio_c, tec, str(mes_c), str(dia_c)), REGISTROS.get(f"{anio_c}|{tec}|{mes_c}|{dia_c}", ''))
-            marca = val_reg['tipo'] if isinstance(val_reg, dict) else val_reg
+            marca, _ = extraer_info_registro(val_reg, tec, anio_c, mes_c, dia_c)
             weekday = calendar.weekday(anio_c, mes_c, dia_c)
             festivos = FESTIVOS_POR_ANIO.get(anio_c, {}).get(ci, [])
             es_festivo = (mes_c, dia_c) in festivos or weekday >= 5
@@ -915,9 +957,26 @@ with tab_balance:
     for tec, info in TECNICOS.items():
         hld_tot = obtener_hld_totales_tecnico(tec, dd_anio)
         vpa_tot = obtener_vpa_totales_tecnico(tec, dd_anio)
-        vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
-        vpa_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'VPA')
-        hld_c = sum(v.get('horas_gastadas', 0.0) if isinstance(v, dict) else obtener_horas_hld(tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio) for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'HLD')
+        
+        vac_c = 0
+        vpa_c = 0
+        hld_c = 0.0
+        for k, v in REGISTROS.items():
+            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec:
+                if isinstance(v, dict):
+                    tipo_v = v.get('tipo')
+                    if tipo_v == 'V': vac_c += 1
+                    elif tipo_v == 'VPA': vpa_c += 1
+                    elif tipo_v == 'HLD':
+                        hld_c += v.get('horas_gastadas', 0.0)
+                    elif tipo_v == 'HE+HLD':
+                        hld_c += v.get('hld_horas', 0.0)
+                else:
+                    if v == 'V': vac_c += 1
+                    elif v == 'VPA': vpa_c += 1
+                    elif v == 'HLD':
+                        hld_c += obtener_horas_hld(tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio)
+
         he_comp = calcular_he_compensadas_totales(tec, dd_anio)
         he_gast = calcular_he_consumidas_horas(tec, dd_anio)
         
@@ -934,7 +993,11 @@ with tab_incidencias:
     st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas ({dd_anio})")
     alertas = []
     for tec, info in TECNICOS.items():
-        vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
+        vac_c = 0
+        for k, v in REGISTROS.items():
+            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec:
+                if isinstance(v, dict) and v.get('tipo') == 'V': vac_c += 1
+                elif not isinstance(v, dict) and v == 'V': vac_c += 1
         if vac_c > info['vac_totales']:
             alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} días de su asignación de {info['vac_totales']}.")
     if alertas:
