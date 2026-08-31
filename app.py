@@ -731,22 +731,88 @@ with tab_registrar:
         boton_guardar = st.button('Guardar Rango de Fechas', type='primary', use_container_width=True)
         
         if boton_guardar:
-            # Al pulsar guardar, evaluamos las coincidencias exclusivamente para el rango seleccionado
-            coincidencias_totales = []
-            if reg_tipo != '':
-                for dia in range(reg_d_ini, reg_d_fin + 1):
-                    c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
-                    if c:
-                        coincidencias_totales.append((dia, c))
-            
-            if coincidencias_totales:
-                st.session_state.intentando_guardar = True
-                st.session_state.coincidencias_pendientes = coincidencias_totales
+            if reg_d_ini > reg_d_fin:
+                st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
             else:
-                st.session_state.intentando_guardar = False
-                st.session_state.coincidencias_pendientes = []
+                # 1. Validación de Disponibilidad / Saldos máximos para evitar negativos
+                dias_a_registrar = reg_d_fin - reg_d_ini + 1
+                error_saldo = False
+                mensaje_error_saldo = ""
 
-        # Si el sistema detectó solapamiento al intentar guardar y aún no se ha confirmado
+                if reg_tipo == 'V':
+                    if vac_pend < dias_a_registrar:
+                        error_saldo = True
+                        mensaje_error_saldo = f"❌ No se puede registrar: Intentas asignar {dias_a_registrar} día(s) de Vacaciones, pero a {reg_tec} solo le quedan {vac_pend} disponibles."
+                elif reg_tipo == 'VPA':
+                    if vpa_pend < dias_a_registrar:
+                        error_saldo = True
+                        mensaje_error_saldo = f"❌ No se puede registrar: Intentas asignar {dias_a_registrar} día(s) de VPA, pero a {reg_tec} solo le quedan {vpa_pend} disponibles."
+                elif reg_tipo == 'HLD':
+                    # Estimación de horas HLD para el rango
+                    total_hld_requeridas = sum(obtener_horas_hld(reg_tec, reg_mes_num, d, dd_anio) for d in range(reg_d_ini, reg_d_fin + 1))
+                    if hld_pend < total_hld_requeridas:
+                        error_saldo = True
+                        mensaje_error_saldo = f"❌ No se puede registrar: Las horas HLD requeridas ({total_hld_requeridas}h) superan el saldo pendiente disponible ({hld_pend}h)."
+                elif reg_tipo == 'HE':
+                    total_he_requeridas = val_horas_disfrute * dias_a_registrar
+                    if he_disp < total_he_requeridas:
+                        error_saldo = True
+                        mensaje_error_saldo = f"❌ No se puede registrar: Las horas HE requeridas ({total_he_requeridas}h) superan las disponibles ({he_disp}h)."
+
+                if error_saldo:
+                    st.error(mensaje_error_saldo)
+                else:
+                    # 2. Comprobación de Solapamientos
+                    coincidencias_totales = []
+                    if reg_tipo != '':
+                        for dia in range(reg_d_ini, reg_d_fin + 1):
+                            c = verificar_coincidencias(reg_tec, reg_mes_num, str(dia), reg_tipo, dd_anio)
+                            if c:
+                                coincidencias_totales.append((dia, c))
+                    
+                    if coincidencias_totales:
+                        st.session_state.intentando_guardar = True
+                        st.session_state.coincidencias_pendientes = coincidencias_totales
+                    else:
+                        st.session_state.intentando_guardar = False
+                        st.session_state.coincidencias_pendientes = []
+                        
+                        # Guardado directo si no hay solapamientos
+                        for dia in range(reg_d_ini, reg_d_fin + 1):
+                            clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
+                            if reg_tipo == '':
+                                REGISTROS.pop(clave_reg, None)
+                                REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
+                            elif reg_tipo == 'HE':
+                                h_jornada = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia)
+                                h_efectivas = min(val_horas_disfrute, h_jornada)
+                                REGISTROS[clave_reg] = {'tipo': 'HE', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                            elif reg_tipo == 'HLD':
+                                h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
+                                h_efectivas = min(val_horas_disfrute, h_teorico)
+                                REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
+                            elif reg_tipo == 'HE+HLD':
+                                REGISTROS[clave_reg] = {
+                                    'tipo': 'HE+HLD', 
+                                    'he_horas': val_he_mix, 
+                                    'hld_horas': val_hld_mix, 
+                                    'anio': dd_anio, 
+                                    'tec': reg_tec
+                                }
+                            else:
+                                REGISTROS[clave_reg] = reg_tipo
+                        
+                        guardar_en_drive(REGISTROS)
+                        st.session_state.historial_auditoria.append({
+                            'hora': datetime.now().strftime("%H:%M:%S"),
+                            'tec': reg_tec,
+                            'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
+                            'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
+                        })
+                        st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
+                        st.rerun()
+
+        # Si el sistema detectó solapamiento al intentar guardar y está pendiente de confirmación
         if st.session_state.intentando_guardar and st.session_state.coincidencias_pendientes:
             mensaje_alerta = "⚠️ **¡Atención! Solapamiento detectado en el mismo centro:**\n\n"
             for dia, lista_c in st.session_state.coincidencias_pendientes:
@@ -761,6 +827,11 @@ with tab_registrar:
                 if not confirmado_solapamiento:
                     st.error("❌ Debes marcar la casilla de confirmación para proceder.")
                 else:
+                    detalle_solapamientos_str = []
+                    for dia, lista_c in st.session_state.coincidencias_pendientes:
+                        nombres_coincidentes = ", ".join([f"{t[0]} ({t[2]})" for t in lista_c])
+                        detalle_solapamientos_str.append(f"Día {dia} ({nombres_coincidentes})")
+
                     for dia in range(reg_d_ini, reg_d_fin + 1):
                         clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
                         if reg_tipo == '':
@@ -786,53 +857,30 @@ with tab_registrar:
                             REGISTROS[clave_reg] = reg_tipo
                     
                     guardar_en_drive(REGISTROS)
+                    
+                    # REGISTRO AUTOMÁTICO EN EL HISTORIAL DE INCIDENCIAS
+                    texto_incidencia = f"Solapamiento en {TECNICOS[reg_tec]['ci']}: {reg_tec} ({reg_tipo}) coincide con {'; '.join(detalle_solapamientos_str)} en {MESES[reg_mes_num]} {dd_anio}"
+                    if 'historial_incidencias_solapamiento' not in st.session_state:
+                        st.session_state.historial_incidencias_solapamiento = []
+                    
+                    st.session_state.historial_incidencias_solapamiento.append({
+                        'hora': datetime.now().strftime("%H:%M:%S"),
+                        'centro': TECNICOS[reg_tec]['ci'],
+                        'tecnico': reg_tec,
+                        'descripcion': texto_incidencia,
+                        'usuario': st.session_state.get('usuario_actual', 'Sistema')
+                    })
+
                     st.session_state.historial_auditoria.append({
                         'hora': datetime.now().strftime("%H:%M:%S"),
                         'tec': reg_tec,
-                        'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
-                        'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
+                        'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio} (Con Solapamiento)",
+                        'tipo': reg_tipo
                     })
                     st.session_state.intentando_guardar = False
                     st.session_state.coincidencias_pendientes = []
-                    st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
+                    st.success(f"✅ Registros guardados y solapamiento registrado en Incidencias correctamente.")
                     st.rerun()
-
-        elif boton_guardar and not st.session_state.intentando_guardar:
-            if reg_d_ini > reg_d_fin:
-                st.error("❌ Error: El día de inicio debe ser menor o igual al día fin.")
-            else:
-                for dia in range(reg_d_ini, reg_d_fin + 1):
-                    clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
-                    if reg_tipo == '':
-                        REGISTROS.pop(clave_reg, None)
-                        REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
-                    elif reg_tipo == 'HE':
-                        h_jornada = obtener_horas_jornada_real(reg_tec, dd_anio, reg_mes_num, dia)
-                        h_efectivas = min(val_horas_disfrute, h_jornada)
-                        REGISTROS[clave_reg] = {'tipo': 'HE', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
-                    elif reg_tipo == 'HLD':
-                        h_teorico = obtener_horas_hld(reg_tec, reg_mes_num, dia, dd_anio)
-                        h_efectivas = min(val_horas_disfrute, h_teorico)
-                        REGISTROS[clave_reg] = {'tipo': 'HLD', 'horas_gastadas': h_efectivas, 'anio': dd_anio, 'tec': reg_tec}
-                    elif reg_tipo == 'HE+HLD':
-                        REGISTROS[clave_reg] = {
-                            'tipo': 'HE+HLD', 
-                            'he_horas': val_he_mix, 
-                            'hld_horas': val_hld_mix, 
-                            'anio': dd_anio, 
-                            'tec': reg_tec
-                        }
-                    else:
-                        REGISTROS[clave_reg] = reg_tipo
-                
-                guardar_en_drive(REGISTROS)
-                st.session_state.historial_auditoria.append({
-                    'hora': datetime.now().strftime("%H:%M:%S"),
-                    'tec': reg_tec,
-                    'rango': f"Del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} {dd_anio}",
-                    'tipo': reg_tipo if reg_tipo else 'Limpieza (Vacío)'
-                })
-                st.success(f"✅ Registros guardados correctamente del {reg_d_ini} al {reg_d_fin} de {MESES[reg_mes_num]} para {reg_tec}.")
     else:
         st.button('Guardar Rango (Bloqueado para Lectores)', disabled=True, use_container_width=True)
 
@@ -1058,7 +1106,9 @@ with tab_balance:
     st.dataframe(pd.DataFrame(datos_bal), use_container_width=True, hide_index=True)
 
 with tab_incidencias:
-    st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas ({dd_anio})")
+    st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas de Solapamiento ({dd_anio})")
+    
+    # 1. Alertas de Exceso de Vacaciones
     alertas = []
     for tec, info in TECNICOS.items():
         vac_c = 0
@@ -1068,10 +1118,19 @@ with tab_incidencias:
                 elif not isinstance(v, dict) and v == 'V': vac_c += 1
         if vac_c > info['vac_totales']:
             alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} días de su asignación de {info['vac_totales']}.")
+    
     if alertas:
         for al in alertas: st.error(al)
     else:
         st.success("✅ Sin incidencias críticas ni saturación en los topes de saldo actuales.")
+
+    st.markdown("---")
+    st.markdown("#### 🔄 Historial de Solapamientos Registrados en Centros")
+    historial_solap = st.session_state.get('historial_incidencias_solapamiento', [])
+    if not historial_solap:
+        st.info("No se han registrado incidencias de solapamiento de personal en los centros durante esta sesión.")
+    else:
+        st.dataframe(pd.DataFrame(historial_solap), use_container_width=True, hide_index=True)
 
 with tab_auditoria:
     st.markdown(f"### 📋 Registro de Auditoría y Trazabilidad")
