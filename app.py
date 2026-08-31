@@ -1,6 +1,6 @@
 import calendar
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pandas as pd
 import streamlit as st
 import requests
@@ -1061,10 +1061,16 @@ with tab_he:
 with tab_cobertura:
     st.markdown("### 👥 Análisis Operativo de Cobertura Diaria")
     fecha_cob = st.date_input("Seleccionar fecha de control:", value=date.today())
+    
     if fecha_cob:
         anio_c, mes_c, dia_c = fecha_cob.year, fecha_cob.month, fecha_cob.day
-        detalles_cov = []
-        total_trab = 0
+        
+        # 1. Tabla superior: COBERTURA TÉCNICOS
+        st.markdown("#### 📋 Estado de Técnicos en la Fecha Seleccionada")
+        detalles_cov_tec = []
+        total_trab_global = 0
+        total_tecnicos = len(TECNICOS)
+        
         for tec, info in TECNICOS.items():
             ci = info['ci']
             val_reg = REGISTROS.get((anio_c, tec, str(mes_c), str(dia_c)), REGISTROS.get(f"{anio_c}|{tec}|{mes_c}|{dia_c}", ''))
@@ -1074,13 +1080,139 @@ with tab_cobertura:
             es_festivo = (mes_c, dia_c) in festivos or weekday >= 5
             
             if marca == '' and not es_festivo:
-                estado = "DISPONIBLE / TRABAJA"
-                total_trab += 1
+                estado_hoy = "TRABAJA"
+                obs = f"Trabaja {int(obtener_horas_jornada_real(tec, anio_c, mes_c, dia_c))} h"
+                total_trab_global += 1
             else:
-                estado = f"AUSENTE ({marca if marca else 'FESTIVO/FINDE'})"
-            detalles_cov.append({'Centro de Trabajo': ci, 'Técnico': tec, 'Estado Operativo': estado})
-        st.dataframe(pd.DataFrame(detalles_cov), use_container_width=True, hide_index=True)
-        st.metric(label="Índice Global de Cobertura de Plantilla", value=f"{round((total_trab / len(TECNICOS)) * 100)}%")
+                estado_hoy = "NO TRABAJA"
+                if marca == 'V':
+                    obs = "Vacaciones"
+                elif marca == 'VPA':
+                    obs = "Vac. Pendientes Año Ant."
+                elif marca == 'BL':
+                    obs = "Baja Laboral"
+                elif marca == 'FEST':
+                    obs = "Festivo / No Laborable"
+                elif marca in ['SAB', 'DOM']:
+                    obs = "Fin de semana"
+                else:
+                    obs = LEYENDA.get(marca, (marca, ''))[0] if marca else "No laborable / Finde"
+            
+            detalles_cov_tec.append({
+                'CI': ci,
+                'TÉCNICO': tec,
+                'CÓDIGO DE ESTADO': marca if marca else ('-' if not es_festivo else 'FEST'),
+                'ESTADO HOY': estado_hoy,
+                'OBSERVACIONES': obs
+            })
+            
+        st.dataframe(pd.DataFrame(detalles_cov_tec), use_container_width=True, hide_index=True)
+        
+        # 2. Resumen lateral/superior de Disponibilidad Global
+        disp_global_pct = round((total_trab_global / total_tecnicos) * 100) if total_tecnicos > 0 else 0
+        ausentes_global = total_tecnicos - total_trab_global
+        
+        col_res1, col_res2 = st.columns([2, 1])
+        with col_res2:
+            st.markdown(f"""
+            <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; font-family: sans-serif;">
+                <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr><td><b>Fecha</b></td><td style="text-align: right;"><b>{fecha_cob.strftime('%d/%m/%Y')}</b></td></tr>
+                    <tr><td>Disponibles hoy</td><td style="text-align: right;"><b>{total_trab_global}/{total_tecnicos}</b></td></tr>
+                    <tr><td>Ausentes hoy</td><td style="text-align: right;"><b>{ausentes_global}</b></td></tr>
+                    <tr><td>Disponibilidad global</td><td style="text-align: right;"><b style="color: #047857;">{disp_global_pct}%</b></td></tr>
+                    <tr><td>Estado servicio</td><td style="text-align: right;"><span style="color: #047857; font-weight: bold;">🟢 OK</span></td></tr>
+                </table>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_res1:
+            st.markdown("#### 🏢 Resumen de Cobertura por Centro (CI)")
+            
+            # Agrupar por Centro de Trabajo
+            centros_dict = {}
+            for row in detalles_cov_tec:
+                ci = row['CI']
+                if ci not in centros_dict:
+                    centros_dict[ci] = {'asignados': 0, 'trabajando': 0, 'ausentes': 0}
+                centros_dict[ci]['asignados'] += 1
+                if row['ESTADO HOY'] == 'TRABAJA':
+                    centros_dict[ci]['trabajando'] += 1
+                else:
+                    centros_dict[ci]['ausentes'] += 1
+                    
+            resumen_centros_data = []
+            for ci, data in centros_dict.items():
+                asig = data['asignados']
+                trab = data['trabajando']
+                aus = data['ausentes']
+                
+                # Calcular estado de cobertura CI similar a la imagen
+                if asig == 0:
+                    cob_ci = "SIN ASIGNACIÓN"
+                elif trab == asig:
+                    cob_ci = "🟢 OK"
+                elif trab >= asig / 2:
+                    cob_ci = "🟡 COBERTURA REDUCIDA - 50%"
+                else:
+                    cob_ci = "🔴 COBERTURA CRÍTICA"
+                    
+                resumen_centros_data.append({
+                    'CI': ci,
+                    'Técnicos asignados': asig,
+                    'Trabajando hoy': trab,
+                    'Ausentes': aus,
+                    'Cobertura CI': cob_ci
+                })
+                
+            st.dataframe(pd.DataFrame(resumen_centros_data), use_container_width=True, hide_index=True)
+
+        # 3. Cálculo de próxima incorporación para técnicos ausentes
+        st.markdown("---")
+        st.markdown("#### ⏳ Próxima Incorporación de Técnicos Ausentes")
+        
+        tecnicos_ausentes_hoy = [row['TÉCNICO'] for row in detalles_cov_tec if row['ESTADO HOY'] == 'NO TRABAJA']
+        
+        if not tecnicos_ausentes_hoy:
+            st.success("✅ Todos los técnicos se encuentran operativos (trabajando) en la fecha seleccionada.")
+        else:
+            proximas_inc_data = []
+            for tec in tecnicos_ausentes_hoy:
+                ci_tec = TECNICOS[tec]['ci']
+                # Buscar a partir del día siguiente al seleccionado cuál es el primer día laborable libre de marcas
+                f_cursor = fecha_cob + timedelta(days=1)
+                dias_busqueda = 0
+                fecha_incorporacion = None
+                
+                while dias_busqueda < 90: # Buscar en un rango máximo de 90 días hacia adelante
+                    a_cur, m_cur, d_cur = f_cursor.year, f_cursor.month, f_cursor.day
+                    w_cur = f_cursor.weekday()
+                    festivos_ci = FESTIVOS_POR_ANIO.get(a_cur, {}).get(ci_tec, [])
+                    es_festivo_cur = (m_cur, d_cur) in festivos_ci or w_cur >= 5
+                    
+                    val_reg_cur = REGISTROS.get((a_cur, tec, str(m_cur), str(d_cur)), REGISTROS.get(f"{a_cur}|{tec}|{m_cur}|{d_cur}", ''))
+                    marca_cur, _ = extraer_info_registro(val_reg_cur, tec, a_cur, m_cur, d_cur)
+                    
+                    if marca_cur == '' and not es_festivo_cur:
+                        fecha_incorporacion = f_cursor
+                        break
+                        
+                    f_cursor += timedelta(days=1)
+                    dias_busqueda += 1
+                    
+                if fecha_incorporacion:
+                    dias_faltantes = (fecha_incorporacion - fecha_cob).days
+                    str_inc = f"{fecha_incorporacion.strftime('%d/%m/%Y')} (en {dias_faltantes} día{'s' if dias_faltantes > 1 else ''})"
+                else:
+                    str_inc = "No estimada en los próximos 90 días"
+                    
+                proximas_inc_data.append({
+                    'Centro': ci_tec,
+                    'Técnico Ausente': tec,
+                    'Próxima Incorporación': str_inc
+                })
+                
+            st.dataframe(pd.DataFrame(proximas_inc_data), use_container_width=True, hide_index=True)
 
 with tab_balance:
     st.markdown(f"### 📈 Balance Consolidado de Saldos y Recursos ({dd_anio})")
