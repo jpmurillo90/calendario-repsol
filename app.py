@@ -935,25 +935,27 @@ with tab_registrar:
               <th>Técnico</th>
               <th>Centro</th>
         """
-        for d in range(1, num_dias + 1):
-            weekday = calendar.weekday(dd_anio, reg_mes_num, d)
-            html_matriz += f"<th>{d}<br><span style='font-size:9px; color:#94A3B8;'>{dias_semana_abrev[weekday]}</span></th>"
+        for d_col in range(1, num_dias + 1):
+            weekday_col = calendar.weekday(dd_anio, reg_mes_num, d_col)
+            html_matriz += f"<th>{d_col}<br><span style='font-size:9px; color:#94A3B8;'>{dias_semana_abrev[weekday_col]}</span></th>"
         html_matriz += "</tr></thead><tbody>"
         
-        for tec, info in TECNICOS.items():
-            html_matriz += f"<tr><td style='text-align: left;'><b>{tec}</b></td><td>{info['ci']}</td>"
-            festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info['ci'], [])
-            for d in range(1, num_dias + 1):
-                val_reg = REGISTROS.get((dd_anio, tec, str(reg_mes_num), str(d)), REGISTROS.get(f"{dd_anio}|{tec}|{reg_mes_num}|{dia}", ''))
-                marca, extra_txt = extraer_info_registro(val_reg, tec, dd_anio, reg_mes_num, d)
+        for nombre_tec, info_tec_item in TECNICOS.items():
+            html_matriz += f"<tr><td style='text-align: left;'><b>{nombre_tec}</b></td><td>{info_tec_item['ci']}</td>"
+            festivos_ci = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(info_tec_item['ci'], [])
+            
+            for d_col in range(1, num_dias + 1):
+                val_reg = REGISTROS.get((dd_anio, nombre_tec, str(reg_mes_num), str(d_col)), REGISTROS.get(f"{dd_anio}|{nombre_tec}|{reg_mes_num}|{d_col}", ''))
+                marca, extra_txt = extraer_info_registro(val_reg, nombre_tec, dd_anio, reg_mes_num, d_col)
                 bg_color = '#ffffff'
-                weekday = calendar.weekday(dd_anio, reg_mes_num, d)
-                if (reg_mes_num, d) in festivos:
+                weekday_col = calendar.weekday(dd_anio, reg_mes_num, d_col)
+                
+                if (reg_mes_num, d_col) in festivos_ci:
                     bg_color = LEYENDA['FEST'][1]
                     if not marca: marca = 'FEST'
-                elif weekday >= 5:
-                    bg_color = LEYENDA['SAB'][1] if weekday == 5 else LEYENDA['DOM'][1]
-                    if not marca: marca = 'SAB' if weekday == 5 else 'DOM'
+                elif weekday_col >= 5:
+                    bg_color = LEYENDA['SAB'][1] if weekday_col == 5 else LEYENDA['DOM'][1]
+                    if not marca: marca = 'SAB' if weekday_col == 5 else 'DOM'
                 elif marca in LEYENDA:
                     bg_color = LEYENDA[marca][1]
 
@@ -1321,4 +1323,3 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
-
