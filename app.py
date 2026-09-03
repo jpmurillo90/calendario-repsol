@@ -153,8 +153,11 @@ if 'autenticado' not in st.session_state:
     st.session_state.rol_actual = None
 
 try:
-    # Integración del logo simplificado corporativo de Indra Group
-    st.sidebar.image("AF_INDRA_SIM_POS.png", use_container_width=True)
+    # Mostramos el logo completo/anterior si ya está logueado, o el simplificado antes de iniciar sesión
+    if st.session_state.autenticado:
+        st.sidebar.image("AF_INDRA_POS.png", use_container_width=True)
+    else:
+        st.sidebar.image("AF_INDRA_SIM_POS.png", use_container_width=True)
 except Exception:
     st.sidebar.markdown("### 🏢 Indra Group")
 
