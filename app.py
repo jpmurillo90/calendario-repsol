@@ -672,7 +672,7 @@ st.markdown("""
 <div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #005B7F; padding: 22px;">
     <div>
         <h1 style="color: #0F172A !important; margin: 0; font-size: 22px; font-weight: 700;">Sistema de Gestión de Calendarios Técnicos</h1>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-weight: 500;">Plataforma Operativa Integrada — SAT CI REPSOL & Indra Group</p>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-weight: 500;">Servicio de soporte a Infraestructuras y Sistemas de CCII - RPECII</p>
     </div>
     <div style="text-align: right; font-size: 11px; color: #64748B;">
         <span>Ambiente: <b>Producción Enterprise</b></span><br>
@@ -1571,4 +1571,5 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
+
 
