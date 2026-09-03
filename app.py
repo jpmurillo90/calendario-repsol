@@ -23,59 +23,112 @@ st.set_page_config(
 )
 
 # ==========================================
-# ESTILOS CSS CORPORATIVOS AVANZADOS
+# ESTILOS CSS CORPORATIVOS AVANZADOS (FORZADO MODO CLARO & UI WEB)
 # ==========================================
 st.markdown("""
 <style>
+    /* Forzado estricto de colores base corporativos e intermitencias bloqueadas */
     .stApp {
-        background-color: #F8FAFC;
-    }
-    .card-corporate {
-        background-color: #ffffff;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-        margin-bottom: 20px;
-    }
-    h1, h2, h3 {
+        background-color: #F4F6F9 !important;
         color: #0F172A !important;
         font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
+    
+    /* Contenedores tipo Tarjeta Corporativa */
+    .card-corporate {
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        margin-bottom: 20px;
+        color: #0F172A !important;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        color: #0F172A !important;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    
+    /* Sidebar Profesional Estilo Panel de Control */
     [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
+        background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0;
     }
     [data-testid="stSidebar"] .stMarkdown h1, 
     [data-testid="stSidebar"] .stMarkdown h2, 
     [data-testid="stSidebar"] .stMarkdown h3, 
     [data-testid="stSidebar"] .stMarkdown label,
-    [data-testid="stSidebar"] span {
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] p {
         color: #1E293B !important;
     }
+
+    /* Pestañas de Navegación Superiores Estilo Web App */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #F1F5F9;
-        padding: 8px;
+        gap: 6px;
+        background-color: #E2E8F0;
+        padding: 6px;
         border-radius: 8px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 40px;
+        height: 38px;
         background-color: #FFFFFF;
         border-radius: 6px;
-        color: #475569;
+        color: #334155;
         font-weight: 600;
-        border: 1px solid #E2E8F0;
-        padding: 0 16px;
+        border: 1px solid #CBD5E1;
+        padding: 0 14px;
+        font-size: 13px;
     }
     .stTabs [aria-selected="true"] {
         background-color: #0F172A !important;
         color: #FFFFFF !important;
+        border-color: #0F172A !important;
     }
+
+    /* Botones corporativos */
     .stButton>button {
         border-radius: 6px;
         font-weight: 600;
+        border: 1px solid #CBD5E1;
+        background-color: #FFFFFF;
+        color: #0F172A;
         transition: all 0.2s ease-in-out;
+    }
+    .stButton>button:hover {
+        background-color: #F1F5F9;
+        border-color: #94A3B8;
+    }
+    
+    /* Botones primarios */
+    button[kind="primary"] {
+        background-color: #005B7F !important;
+        color: #FFFFFF !important;
+        border: none !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #004460 !important;
+    }
+
+    /* Tablas de Datos Limpias */
+    table {
+        font-family: 'Segoe UI', sans-serif;
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+    }
+    table th {
+        background-color: #0F172A !important;
+        color: #FFFFFF !important;
+        text-align: center;
+        padding: 8px;
+        border: 1px solid #334155;
+    }
+    table td {
+        padding: 6px;
+        border: 1px solid #CBD5E1;
+        color: #0F172A !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -91,7 +144,7 @@ if 'autenticado' not in st.session_state:
 try:
     st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
 except Exception:
-    st.sidebar.markdown("### Indra Group")
+    st.sidebar.markdown("### 🏢 Indra Group")
 
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Control de Acceso")
@@ -101,7 +154,7 @@ if not st.session_state.autenticado:
     usuario_input = st.sidebar.text_input("Usuario")
     password_input = st.sidebar.text_input("Contraseña", type="password")
 
-    if st.sidebar.button("Acceder al Sistema", use_container_width=True):
+    if st.sidebar.button("Acceder al Sistema", use_container_width=True, type="primary"):
         usuarios_validos = {
             "juanpedro": {"password": "123", "nombre": "Juan Pedro Murillo", "rol": "Editor"},
             "david": {"password": "123", "nombre": "David Muñoz", "rol": "Editor"},
@@ -616,12 +669,12 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
 # HEADER EJECUTIVO PRINCIPAL
 # ==========================================
 st.markdown("""
-<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #005B7F; padding: 24px;">
+<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #005B7F; padding: 22px;">
     <div>
-        <h1 style="color: #0F172A !important; margin: 0; font-size: 24px; font-weight: 700;">Sistema de Gestión de Calendarios Técnicos</h1>
-        <p style="margin: 6px 0 0 0; font-size: 14px; color: #475569; font-weight: 500;">Plataforma Operativa Integrada — SAT CI REPSOL & Indra Group</p>
+        <h1 style="color: #0F172A !important; margin: 0; font-size: 22px; font-weight: 700;">Sistema de Gestión de Calendarios Técnicos</h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-weight: 500;">Plataforma Operativa Integrada — SAT CI REPSOL & Indra Group</p>
     </div>
-    <div style="text-align: right; font-size: 12px; color: #64748B;">
+    <div style="text-align: right; font-size: 11px; color: #64748B;">
         <span>Ambiente: <b>Producción Enterprise</b></span><br>
         <span>Sincronización: <b>Automática (Cloud)</b></span>
     </div>
@@ -795,7 +848,7 @@ with tab_registrar:
     hld_pend = hld_tot_anio - hld_c
     
     st.markdown(f"""
-    <div class="card-corporate" style='background-color:#FFFFFF; border-left:4px solid #005B7F; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px; color:#0F172A;'>
+    <div class="card-corporate" style='border-left:4px solid #005B7F; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px;'>
         <div><b>👤 Técnico:</b> {reg_tec} ({dd_anio})</div>
         <div>🏖️ <b>Vac:</b> {vac_c}/{info_tec['vac_totales']} (<b>{vac_pend}</b>)</div>
         <div>⏱️ <b>VPA:</b> {vpa_c}/{vpa_tot_anio} (<b>{vpa_pend}</b>)</div>
@@ -1054,7 +1107,7 @@ with tab_he:
         txt_motivo = st.text_input('Motivo / Justificación:', placeholder='Ej. Corrección de error o Urgencia técnica')
         
     if st.session_state.rol_actual == "Editor":
-        if st.button('Registrar Horas Extra', use_container_width=True):
+        if st.button('Registrar Horas Extra', use_container_width=True, type='primary'):
             if he_tec not in REGISTROS_HE:
                 REGISTROS_HE[he_tec] = []
             
@@ -1170,7 +1223,7 @@ with tab_cobertura:
         col_res1, col_res2 = st.columns([2, 1])
         with col_res2:
             st.markdown(f"""
-            <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 12px; font-family: sans-serif;">
+            <div class="card-corporate" style="padding: 12px; font-family: sans-serif;">
                 <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
                     <tr><td><b>Fecha</b></td><td style="text-align: right;"><b>{fecha_cob.strftime('%d/%m/%Y')}</b></td></tr>
                     <tr><td>Disponibles hoy</td><td style="text-align: right;"><b>{total_trab_global}/{total_tecnicos}</b></td></tr>
@@ -1366,7 +1419,7 @@ with tab_config:
         cfg_dia = st.selectbox('Día:', list(range(1, calendar.monthrange(cfg_anio, cfg_mes)[1] + 1)), key='cfg_d')
     
     if st.session_state.rol_actual == "Editor":
-        if st.button('Añadir Día Festivo', use_container_width=True):
+        if st.button('Añadir Día Festivo', use_container_width=True, type='primary'):
             if cfg_anio not in FESTIVOS_POR_ANIO: 
                 FESTIVOS_POR_ANIO[cfg_anio] = {}
             if cfg_centro not in FESTIVOS_POR_ANIO[cfg_anio]: 
@@ -1518,3 +1571,4 @@ with tab_hld:
             st.rerun()
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
+
