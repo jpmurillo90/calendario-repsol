@@ -23,7 +23,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# ESTILOS CSS CORPORATIVOS AVANZADOS (FORZADO MODO CLARO & UI WEB)
+# ESTILOS CSS CORPORATIVOS AVANZADOS (INDRA BRANDING)
 # ==========================================
 st.markdown("""
 <style>
@@ -82,9 +82,9 @@ st.markdown("""
         font-size: 13px;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #0F172A !important;
+        background-color: #002B36 !important;
         color: #FFFFFF !important;
-        border-color: #0F172A !important;
+        border-color: #002B36 !important;
     }
 
     /* Botones corporativos */
@@ -101,14 +101,14 @@ st.markdown("""
         border-color: #94A3B8;
     }
     
-    /* Botones primarios */
+    /* Botones primarios (Color Corporativo Indra Deep Teal) */
     button[kind="primary"] {
-        background-color: #005B7F !important;
+        background-color: #002B36 !important;
         color: #FFFFFF !important;
         border: none !important;
     }
     button[kind="primary"]:hover {
-        background-color: #004460 !important;
+        background-color: #001F26 !important;
     }
 
     /* Tablas de Datos Limpias */
@@ -119,7 +119,7 @@ st.markdown("""
         font-size: 12px;
     }
     table th {
-        background-color: #0F172A !important;
+        background-color: #002B36 !important;
         color: #FFFFFF !important;
         text-align: center;
         padding: 8px;
@@ -129,6 +129,17 @@ st.markdown("""
         padding: 6px;
         border: 1px solid #CBD5E1;
         color: #0F172A !important;
+    }
+    
+    /* Footer de Copyright Profesional */
+    .footer-copyright {
+        text-align: center;
+        font-size: 11px;
+        color: #64748B;
+        border-top: 1px solid #E2E8F0;
+        padding-top: 15px;
+        margin-top: 35px;
+        font-family: 'Segoe UI', system-ui, sans-serif;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -142,7 +153,8 @@ if 'autenticado' not in st.session_state:
     st.session_state.rol_actual = None
 
 try:
-    st.sidebar.image("AF_INDRAGROUP_LOG_POS.png", use_container_width=True)
+    # Integración del logo simplificado corporativo de Indra Group
+    st.sidebar.image("AF_INDRA_SIM_POS.png", use_container_width=True)
 except Exception:
     st.sidebar.markdown("### 🏢 Indra Group")
 
@@ -669,7 +681,7 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
 # HEADER EJECUTIVO PRINCIPAL
 # ==========================================
 st.markdown("""
-<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #005B7F; padding: 22px;">
+<div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #002B36; padding: 22px;">
     <div>
         <h1 style="color: #0F172A !important; margin: 0; font-size: 22px; font-weight: 700;">Sistema de Gestión de Calendarios Técnicos</h1>
         <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-weight: 500;">Servicio de soporte a Infraestructuras y Sistemas de CCII - RPECII</p>
@@ -761,7 +773,7 @@ with col_v3:
             t_html += "</tbody></table>"
             secciones_meses_html += f"<div class='mes-container'><h3>📅 Mes: {mes_nom} {dd_anio}</h3><div class='table-responsive'>{t_html}</div></div>"
         
-        html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F8FAFC;color:#0F172A;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#0F172A;border-bottom:3px solid #005B7F;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#0F172A;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #E2E8F0;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}</div></body></html>"
+        html_template = f"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><title>Calendario SAT CI Repsol - {dd_anio}</title><style>body{{font-family:'Segoe UI',sans-serif;background-color:#F8FAFC;color:#0F172A;margin:0;padding:20px;}}.container{{max-width:1400px;margin:auto;background:white;padding:30px;border-radius:8px;}}h1{{color:#0F172A;border-bottom:3px solid #002B36;padding-bottom:10px;font-size:22px;}}table.tabla-corporativa{{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;text-align:left;white-space:nowrap;}}table.tabla-corporativa th{{background-color:#002B36;color:white;padding:8px;text-align:center;}}table.tabla-corporativa td{{padding:6px;border:1px solid #E2E8F0;}}</style></head><body><div class='container'><h1>Calendario SAT CI Repsol - {dd_anio}</h1><div class='fecha-generacion'>Fecha de generación: <b>{fecha_actual_str}</b></div>{html_leyenda}<h2>📈 Balance Consolidado de Saldos</h2>{tabla_res_html}<h2>🗓️ Detalle de Cuadrantes por Meses</h2>{secciones_meses_html}<div class='footer-copyright'>© {dd_anio} Juan Pedro Murillo Huete. Todos los derechos reservados. Indra Group & Repsol RPECII.</div></div></body></html>"
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
 # ==========================================
@@ -848,7 +860,7 @@ with tab_registrar:
     hld_pend = hld_tot_anio - hld_c
     
     st.markdown(f"""
-    <div class="card-corporate" style='border-left:4px solid #005B7F; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px;'>
+    <div class="card-corporate" style='border-left:4px solid #002B36; padding:12px; margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; font-size:13px;'>
         <div><b>👤 Técnico:</b> {reg_tec} ({dd_anio})</div>
         <div>🏖️ <b>Vac:</b> {vac_c}/{info_tec['vac_totales']} (<b>{vac_pend}</b>)</div>
         <div>⏱️ <b>VPA:</b> {vpa_c}/{vpa_tot_anio} (<b>{vpa_pend}</b>)</div>
@@ -943,7 +955,7 @@ with tab_registrar:
             for dia, lista_c in st.session_state.coincidencias_pendientes:
                 for tec_col, marca_col, desc_marca in lista_c:
                     mensaje_alerta += f"- El día **{dia} de {MESES[reg_mes_num]}**, el otro técnico del mismo centro (**{tec_col}**) está de **{desc_marca} ({marca_col})**.\n"
-            mensaje_alerta += "\n¿Aun así deseas registrar esta ausencia?"
+            mensaje_alerta += "\n¿Anhelar registrar esta ausencia a pesar del solapamiento?"
             st.warning(mensaje_alerta)
             
             confirmado_solapamiento = st.checkbox("Confirmo que deseo registrar esto a pesar de la coincidencia", value=False)
@@ -1015,7 +1027,7 @@ with tab_registrar:
         festivos = FESTIVOS_POR_ANIO.get(dd_anio, {}).get(ci_tec, [])
         
         html_cal = f"<h4 style='color:#0F172A;'>Calendario de {reg_tec} ({ci_tec})</h4><table border='1' style='border-collapse:collapse; text-align:center; font-family:sans-serif; width:100%; font-size:12px; border-color: #CBD5E1;'>"
-        html_cal += "<tr style='background-color:#0F172A; color:white;'><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th style='background-color:#64748B;'>Sáb</th><th style='background-color:#64748B;'>Dom</th></tr>"
+        html_cal += "<tr style='background-color:#002B36; color:white;'><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th style='background-color:#64748B;'>Sáb</th><th style='background-color:#64748B;'>Dom</th></tr>"
         for semana in cal:
             html_cal += "<tr>"
             for idx, dia in enumerate(semana):
@@ -1049,7 +1061,7 @@ with tab_registrar:
         html_matriz = """
         <style>
           .tabla-matriz-global { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; white-space: nowrap; }
-          .tabla-matriz-global th { background-color: #0F172A; color: white; padding: 6px; text-align: center; border: 1px solid #CBD5E1; }
+          .tabla-matriz-global th { background-color: #002B36; color: white; padding: 6px; text-align: center; border: 1px solid #CBD5E1; }
           .tabla-matriz-global td { padding: 6px; text-align: center; border: 1px solid #CBD5E1; font-weight: bold; color: #0F172A; }
         </style>
         <div style="overflow-x: auto;">
@@ -1572,4 +1584,12 @@ with tab_hld:
     else:
         st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
 
-
+# ==========================================
+# FOOTER CORPORATIVO GLOBAL
+# ==========================================
+st.markdown(f"""
+<div class="footer-copyright">
+    © {dd_anio} <b>Juan Pedro Murillo Huete</b>. Todos los derechos reservados.<br>
+    Desarrollado para el Servicio de Soporte a Infraestructuras y Sistemas (RPECII) en colaboración con <b>Indra Group</b>.
+</div>
+""", unsafe_allow_html=True)
