@@ -1590,6 +1590,6 @@ with tab_hld:
 st.markdown(f"""
 <div class="footer-copyright">
     © {dd_anio} <b>Juan Pedro Murillo Huete</b>. Todos los derechos reservados.<br>
-    Desarrollado para el Servicio de Soporte a Infraestructuras y Sistemas (RPECII)de <b>Indra Group</b>.
+    Desarrollado para el Servicio de Soporte a Infraestructuras y Sistemas (RPECII) de <b>Indra Group</b>.
 </div>
 """, unsafe_allow_html=True)
