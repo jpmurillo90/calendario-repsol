@@ -131,7 +131,7 @@ else:
         st.rerun()
 
 # ==========================================
-# FUNCIONES DE PERSISTENCIA
+# FUNCIONES DE PERSISTENCIA Y GIST
 # ==========================================
 def obtener_cabeceras_gist():
     try:
@@ -211,14 +211,43 @@ def cargar_de_drive():
         return {}
 
 def guardar_festivos_drive():
+    datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
     try:
-        datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
         with open(RUTA_FESTIVOS, 'w', encoding='utf-8') as f:
             json.dump(datos_json, f, ensure_ascii=False, indent=4)
     except Exception:
         pass
+        
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    if url and headers:
+        payload = {
+            "files": {
+                "festivos_repsol.json": {
+                    "content": json.dumps(datos_json, ensure_ascii=False, indent=4)
+                }
+            }
+        }
+        try:
+            requests.patch(url, headers=headers, json=payload, timeout=5)
+        except Exception:
+            pass
 
 def cargar_festivos_drive():
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    
+    if url and headers:
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                files = response.json().get("files", {})
+                if "festivos_repsol.json" in files:
+                    datos_json = json.loads(files["festivos_repsol.json"]["content"])
+                    return {int(anio): {ci: [tuple(x) for x in lista] for ci, lista in centros.items()} for anio, centros in datos_json.items()}
+        except Exception:
+            pass
+            
     try:
         with open(RUTA_FESTIVOS, 'r', encoding='utf-8') as f:
             datos_json = json.load(f)
@@ -232,8 +261,36 @@ def guardar_he_drive():
             json.dump(REGISTROS_HE, f, ensure_ascii=False, indent=4)
     except Exception:
         pass
+        
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    if url and headers:
+        payload = {
+            "files": {
+                "he_repsol.json": {
+                    "content": json.dumps(REGISTROS_HE, ensure_ascii=False, indent=4)
+                }
+            }
+        }
+        try:
+            requests.patch(url, headers=headers, json=payload, timeout=5)
+        except Exception:
+            pass
 
 def cargar_he_drive():
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    
+    if url and headers:
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                files = response.json().get("files", {})
+                if "he_repsol.json" in files:
+                    return json.loads(files["he_repsol.json"]["content"])
+        except Exception:
+            pass
+            
     try:
         with open(RUTA_HE, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -1065,7 +1122,6 @@ with tab_cobertura:
     if fecha_cob:
         anio_c, mes_c, dia_c = fecha_cob.year, fecha_cob.month, fecha_cob.day
         
-        # 1. Tabla superior: COBERTURA TÉCNICOS
         st.markdown("#### 📋 Estado de Técnicos en la Fecha Seleccionada")
         detalles_cov_tec = []
         total_trab_global = 0
@@ -1108,7 +1164,6 @@ with tab_cobertura:
             
         st.dataframe(pd.DataFrame(detalles_cov_tec), use_container_width=True, hide_index=True)
         
-        # 2. Resumen lateral/superior de Disponibilidad Global
         disp_global_pct = round((total_trab_global / total_tecnicos) * 100) if total_tecnicos > 0 else 0
         ausentes_global = total_tecnicos - total_trab_global
         
@@ -1129,7 +1184,6 @@ with tab_cobertura:
         with col_res1:
             st.markdown("#### 🏢 Resumen de Cobertura por Centro (CI)")
             
-            # Agrupar por Centro de Trabajo
             centros_dict = {}
             for row in detalles_cov_tec:
                 ci = row['CI']
@@ -1147,7 +1201,6 @@ with tab_cobertura:
                 trab = data['trabajando']
                 aus = data['ausentes']
                 
-                # Calcular estado de cobertura CI similar a la imagen
                 if asig == 0:
                     cob_ci = "SIN ASIGNACIÓN"
                 elif trab == asig:
@@ -1167,7 +1220,6 @@ with tab_cobertura:
                 
             st.dataframe(pd.DataFrame(resumen_centros_data), use_container_width=True, hide_index=True)
 
-        # 3. Cálculo de próxima incorporación para técnicos ausentes
         st.markdown("---")
         st.markdown("#### ⏳ Próxima Incorporación de Técnicos Ausentes")
         
@@ -1179,12 +1231,11 @@ with tab_cobertura:
             proximas_inc_data = []
             for tec in tecnicos_ausentes_hoy:
                 ci_tec = TECNICOS[tec]['ci']
-                # Buscar a partir del día siguiente al seleccionado cuál es el primer día laborable libre de marcas
                 f_cursor = fecha_cob + timedelta(days=1)
                 dias_busqueda = 0
                 fecha_incorporacion = None
                 
-                while dias_busqueda < 90: # Buscar en un rango máximo de 90 días hacia adelante
+                while dias_busqueda < 90:
                     a_cur, m_cur, d_cur = f_cursor.year, f_cursor.month, f_cursor.day
                     w_cur = f_cursor.weekday()
                     festivos_ci = FESTIVOS_POR_ANIO.get(a_cur, {}).get(ci_tec, [])
