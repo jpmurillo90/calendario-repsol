@@ -15,6 +15,7 @@ RUTA_HE = "he_repsol.json"
 RUTA_CONFIG_ANUAL = "config_anual_repsol.json"
 RUTA_HORARIOS_CI = "horarios_ci_repsol.json"
 RUTA_HLD_ANUAL = "hld_anual_repsol.json"
+RUTA_PRL = "prl_repsol.json"
 
 st.set_page_config(
     page_title="Enterprise Resource & Calendar Management | Indra & Repsol",
@@ -153,7 +154,6 @@ if 'autenticado' not in st.session_state:
     st.session_state.rol_actual = None
 
 try:
-    # Integración del logo simplificado corporativo de Indra Group
     st.sidebar.image("AF_INDRA_SIM_POS.png", use_container_width=True)
 except Exception:
     st.sidebar.markdown("### 🏢 Indra Group")
@@ -452,17 +452,76 @@ def cargar_hld_anual_drive():
     except FileNotFoundError:
         return None
 
+# ==========================================
+# GESTIÓN Y PERSISTENCIA DE PRL (RECONOCIMIENTOS MÉDICOS)
+# ==========================================
+PRL_DEFAULT = {
+    'Juan Pedro Murillo Huete': {'nip': '709355', 'dni': '05933159X', 'fecha': '2027-03-27', 'obs': 'BIENAL'},
+    'David Muñoz Burguillo': {'nip': '709743', 'dni': '70052109C', 'fecha': '2027-03-28', 'obs': 'BIENAL'},
+    'Fernando Bocija Sanchez': {'nip': '565127', 'dni': '53162879N', 'fecha': '2028-04-21', 'obs': 'BIENAL'},
+    'Oscar Luna Murillo': {'nip': '722573', 'dni': '47950833L', 'fecha': '2027-08-28', 'obs': 'BIENAL'},
+    'Joan Vila Cascan': {'nip': '710090', 'dni': '39922718P', 'fecha': '2027-04-02', 'obs': 'BIENAL'},
+    'Endika Ramirez Rodriguez': {'nip': '723603', 'dni': '79136742K', 'fecha': '2026-10-22', 'obs': ''},
+    'David Rodriguez Novua': {'nip': '709717', 'dni': '45818446P', 'fecha': '2027-03-27', 'obs': ''},
+    'Simon Alberto Conesa Lloris': {'nip': '716271', 'dni': '23034801W', 'fecha': '2028-06-19', 'obs': 'BIENAL'},
+    'Alejandro Gutierrez Bastida': {'nip': '717260', 'dni': '23310758M', 'fecha': '2026-10-10', 'obs': 'CITA 11 PETICION 4591420 CITACION RM - SE PREGUNTA POR TEAMS'}
+}
+
+def guardar_prl_drive():
+    try:
+        with open(RUTA_PRL, 'w', encoding='utf-8') as f:
+            json.dump(REGISTROS_PRL, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
+        
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    if url and headers:
+        payload = {
+            "files": {
+                "prl_repsol.json": {
+                    "content": json.dumps(REGISTROS_PRL, ensure_ascii=False, indent=4)
+                }
+            }
+        }
+        try:
+            requests.patch(url, headers=headers, json=payload, timeout=5)
+        except Exception:
+            pass
+
+def cargar_prl_drive():
+    url = obtener_url_gist()
+    headers = obtener_cabeceras_gist()
+    
+    if url and headers:
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                files = response.json().get("files", {})
+                if "prl_repsol.json" in files:
+                    return json.loads(files["prl_repsol.json"]["content"])
+        except Exception:
+            pass
+            
+    try:
+        with open(RUTA_PRL, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+REGISTROS_PRL = cargar_prl_drive() or PRL_DEFAULT
+
 # 1. CONFIGURACIÓN Y BASE DE DATOS
 TECNICOS = {
-    'David Rodriguez': {'ci': 'Petronor', 'vac_totales': 22, 'vpa_base': 8, 'he_totales': 0.0},
-    'Endika Ramirez': {'ci': 'Petronor', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0},
-    'Fernando Bocija': {'ci': 'Coruña', 'vac_totales': 23, 'vpa_base': 11, 'he_totales': 0.0},
-    'Joan Vila': {'ci': 'Tarragona', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0},
-    'Óscar Luna': {'ci': 'Tarragona', 'vac_totales': 22, 'vpa_base': 1, 'he_totales': 0.0},
-    'David Muñoz': {'ci': 'Puertollano', 'vac_totales': 22, 'vpa_base': 4, 'he_totales': 0.0},
-    'Juan Pedro Murillo': {'ci': 'Puertollano', 'vac_totales': 22, 'vpa_base': 2, 'he_totales': 0.0},
-    'Simón Conesa': {'ci': 'Cartagena', 'vac_totales': 22, 'vpa_base': 6, 'he_totales': 0.0},
-    'Alejandro Gutiérrez': {'ci': 'Cartagena', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0}
+    'David Rodriguez Novua': {'ci': 'Petronor', 'vac_totales': 22, 'vpa_base': 8, 'he_totales': 0.0},
+    'Endika Ramirez Rodriguez': {'ci': 'Petronor', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0},
+    'Fernando Bocija Sanchez': {'ci': 'Coruña', 'vac_totales': 23, 'vpa_base': 11, 'he_totales': 0.0},
+    'Joan Vila Cascan': {'ci': 'Tarragona', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0},
+    'Oscar Luna Murillo': {'ci': 'Tarragona', 'vac_totales': 22, 'vpa_base': 1, 'he_totales': 0.0},
+    'David Muñoz Burguillo': {'ci': 'Puertollano', 'vac_totales': 22, 'vpa_base': 4, 'he_totales': 0.0},
+    'Juan Pedro Murillo Huete': {'ci': 'Puertollano', 'vac_totales': 22, 'vpa_base': 2, 'he_totales': 0.0},
+    'Simon Alberto Conesa Lloris': {'ci': 'Cartagena', 'vac_totales': 22, 'vpa_base': 6, 'he_totales': 0.0},
+    'Alejandro Gutierrez Bastida': {'ci': 'Cartagena', 'vac_totales': 22, 'vpa_base': 0, 'he_totales': 0.0}
 }
 
 LEYENDA = {
@@ -779,8 +838,8 @@ with col_v3:
 # ==========================================
 # PESTAÑAS PRINCIPALES DEL SISTEMA
 # ==========================================
-tab_registrar, tab_he, tab_cobertura, tab_balance, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
-    '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
+tab_registrar, tab_he, tab_cobertura, tab_balance, tab_prl, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
+    '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '🏥 Reconocimientos (PRL)', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
 ])
 
 with tab_registrar:
@@ -1367,6 +1426,84 @@ with tab_balance:
             'HE Comp.': he_comp, 'HE Disp.': round(he_comp - he_gast, 2)
         })
     st.dataframe(pd.DataFrame(datos_bal), use_container_width=True, hide_index=True)
+
+with tab_prl:
+    st.markdown("### 🏥 Control de Reconocimientos Médicos (PRL)")
+    st.markdown("Control de caducidad de reconocimientos médicos del equipo técnico. Sistema de semáforo: 🔴 Menos de 1 mes (Pedir cita reconocimiento) | 🟠 Menos de 2 meses | 🟢 Al corriente.")
+
+    hoy_prl = date.today()
+    tabla_prl_visual = []
+
+    for tec, info in TECNICOS.items():
+        datos_tec_prl = REGISTROS_PRL.get(tec, {'nip': 'N/D', 'dni': 'N/D', 'fecha': '2030-01-01', 'obs': ''})
+        f_str = datos_tec_prl.get('fecha', '2030-01-01')
+        
+        try:
+            f_cad = datetime.strptime(f_str, '%Y-%m-%d').date()
+            dias_restantes = (f_cad - hoy_prl).days
+        except Exception:
+            dias_restantes = 9999
+            f_cad = hoy_prl
+
+        # Lógica de semáforo
+        if dias_restantes < 30:
+            semaforo = "🔴 ROJO (< 1 mes)"
+            accion = "🚨 Pedir cita reconocimiento"
+        elif dias_restantes < 60:
+            semaforo = "🟠 NARANJA (< 2 meses)"
+            accion = "⚠️ Revisar y planificar cita"
+        else:
+            semaforo = "🟢 VERDE"
+            accion = "✅ Al corriente"
+
+        tabla_prl_visual.append({
+            'Centro': info['ci'],
+            'Técnico': tec,
+            'NIP': datos_tec_prl.get('nip', ''),
+            'DNI': datos_tec_prl.get('dni', ''),
+            'Caducidad Reconocimiento': f_cad.strftime('%d/%m/%Y'),
+            'Estado': semaforo,
+            'Acción Recomendada': accion,
+            'Observaciones': datos_tec_prl.get('obs', '')
+        })
+
+    st.dataframe(pd.DataFrame(tabla_prl_visual), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.markdown("#### ✏️ Añadir o Modificar Fecha de Reconocimiento Médico")
+    
+    if st.session_state.rol_actual == "Editor":
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            prl_tec_sel = st.selectbox("Seleccionar Técnico:", list(TECNICOS.keys()), key='prl_tec_sel')
+            info_actual_tec = REGISTROS_PRL.get(prl_tec_sel, {'nip': '', 'dni': '', 'fecha': str(date.today()), 'obs': ''})
+            
+            prl_nip = st.text_input("NIP:", value=info_actual_tec.get('nip', ''), key='prl_nip_input')
+            prl_dni = st.text_input("DNI:", value=info_actual_tec.get('dni', ''), key='prl_dni_input')
+        with col_p2:
+            try:
+                f_init_val = datetime.strptime(info_actual_tec.get('fecha', str(date.today())), '%Y-%m-%d').date()
+            except Exception:
+                f_init_val = date.today()
+                
+            prl_fecha_cad = st.date_input("Fecha Caducidad Reconocimiento:", value=f_init_val, key='prl_fecha_input')
+            prl_obs = st.text_input("Observaciones / Notas de Cita:", value=info_actual_tec.get('obs', ''), key='prl_obs_input')
+
+        if st.button("💾 Guardar / Actualizar Datos PRL", type="primary", use_container_width=True):
+            if prl_tec_sel not in REGISTROS_PRL:
+                REGISTROS_PRL[prl_tec_sel] = {}
+                
+            REGISTROS_PRL[prl_tec_sel] = {
+                'nip': prl_nip,
+                'dni': prl_dni,
+                'fecha': prl_fecha_cad.strftime('%Y-%m-%d'),
+                'obs': prl_obs
+            }
+            guardar_prl_drive()
+            st.success(f"✅ Datos de reconocimiento médico actualizados correctamente para **{prl_tec_sel}**.")
+            st.rerun()
+    else:
+        st.info("👁️ Estás en modo Lector. La modificación de fechas PRL está reservada para editores.")
 
 with tab_incidencias:
     st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas de Solapamiento ({dd_anio})")
