@@ -753,53 +753,51 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------
-# BARRA DE AVISOS SUPERIOR (PRL HOY Y VACACIONES/AUSENCIAS HOY)
+# BARRA DE AVISOS SUPERIOR (REDUCIDA Y DESTACADA)
 # ------------------------------------------
 hoy_actual = date.today()
 avisos_rojo_naranja = []
 ausentes_hoy_lista = []
 
-# 1. Comprobar técnicos en naranja o rojo por PRL
 for tec_n, info_n in TECNICOS.items():
     datos_prl = REGISTROS_PRL.get(tec_n, {'fecha': '2030-01-01'})
     try:
         f_cad_p = datetime.strptime(datos_prl.get('fecha', '2030-01-01'), '%Y-%m-%d').date()
         d_rest = (f_cad_p - hoy_actual).days
         if d_rest < 30:
-            avisos_rojo_naranja.append(f"🔴 **PRL Crítico (<1 mes):** {tec_n} (Caduca: {f_cad_p.strftime('%d/%m/%Y')})")
+            avisos_rojo_naranja.append(f"🔴 **PRL Crítico (<1 mes):** {tec_n} ({f_cad_p.strftime('%d/%m/%Y')})")
         elif d_rest < 60:
-            avisos_rojo_naranja.append(f"🟠 **PRL Próximo (<2 meses):** {tec_n} (Caduca: {f_cad_p.strftime('%d/%m/%Y')})")
+            avisos_rojo_naranja.append(f"🟠 **PRL Próximo (<2 meses):** {tec_n} ({f_cad_p.strftime('%d/%m/%Y')})")
     except Exception:
         pass
 
-# 2. Comprobar ausencias de HOY (Vacaciones, HLD, HE, ausente por algo...)
 for tec_n, info_n in TECNICOS.items():
     val_h = REGISTROS.get((hoy_actual.year, tec_n, str(hoy_actual.month), str(hoy_actual.day)), REGISTROS.get(f"{hoy_actual.year}|{tec_n}|{hoy_actual.month}|{hoy_actual.day}", ''))
     marca_h, _ = extraer_info_registro(val_h, tec_n, hoy_actual.year, hoy_actual.month, hoy_actual.day)
     if marca_h != '':
         desc_m = LEYENDA.get(marca_h, (marca_h, ''))[0]
-        ausentes_hoy_lista.append(f"📌 **{tec_n}** ({info_n['ci']}): **{desc_m} ({marca_h})**")
+        ausentes_hoy_lista.append(f"📌 **{tec_n}**: **{desc_m}**")
 
 if avisos_rojo_naranja or ausentes_hoy_lista:
-    st.markdown("""<div class="card-corporate" style="border-left: 6px solid #D97706; background-color:#FFFBEB; padding: 15px; margin-bottom: 20px;">""", unsafe_allow_html=True)
-    st.markdown("### 🔔 Panel de Alertas y Estado Global del Día (Hoy)")
+    st.markdown("""<div class="card-corporate" style="border-left: 5px solid #0284C7; background-color:#EFF6FF; padding: 12px; margin-bottom: 15px;">""", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin:0 0 6px 0; font-size:15px; color:#0369A1;'>🔔 Panel de Alertas y Estado Global del Día (Hoy)</h4>", unsafe_allow_html=True)
     
     col_av1, col_av2 = st.columns(2)
     with col_av1:
-        st.markdown("#### ⚠️ Alertas Técnicas (PRL en Naranja o Rojo)")
+        st.markdown("<small><b>⚠️ Alertas Técnicas (PRL):</b></small>", unsafe_allow_html=True)
         if avisos_rojo_naranja:
             for av in avisos_rojo_naranja:
-                st.markdown(f"- {av}")
+                st.markdown(f"<small>- {av}</small>", unsafe_allow_html=True)
         else:
-            st.markdown("✅ No hay técnicos en niveles de alerta Naranja o Rojo por Reconocimiento Médico.")
+            st.markdown("<small>✅ Sin alertas críticas de Reconocimiento Médico.</small>", unsafe_allow_html=True)
             
     with col_av2:
-        st.markdown("#### 🏖️ Ausencias / Permisos de HOY")
+        st.markdown("<small><b>🏖️ Ausencias / Permisos de HOY:</b></small>", unsafe_allow_html=True)
         if ausentes_hoy_lista:
             for aus in ausentes_hoy_lista:
-                st.markdown(f"- {aus}")
+                st.markdown(f"<small>- {aus}</small>", unsafe_allow_html=True)
         else:
-            st.markdown("🟢 Todos los técnicos se encuentran operativos (sin ausencias registradas hoy).")
+            st.markdown("<small>🟢 Todos operativos hoy.</small>", unsafe_allow_html=True)
             
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -887,10 +885,10 @@ with col_v3:
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
 # ==========================================
-# PESTAÑAS PRINCIPALES DEL SISTEMA
+# PESTAÑAS PRINCIPALES DEL SISTEMA (ACTUALIZADO: ACCESOS CI)
 # ==========================================
 tab_registrar, tab_he, tab_cobertura, tab_balance, tab_prl, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
-    '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '🏥 Reconocimientos (PRL)', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
+    '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '🏢 Accesos CI', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
 ])
 
 with tab_registrar:
@@ -1479,7 +1477,7 @@ with tab_balance:
     st.dataframe(pd.DataFrame(datos_bal), use_container_width=True, hide_index=True)
 
 with tab_prl:
-    st.markdown("### 🏥 Control de Reconocimientos Médicos (PRL)")
+    st.markdown("### 🏢 Control de Accesos CI (Reconocimientos Médicos)")
     st.markdown("Control de caducidad de reconocimientos médicos del equipo técnico. Sistema de semáforo: 🔴 Menos de 1 mes (Pedir cita reconocimiento) | 🟠 Menos de 2 meses | 🟢 Al corriente.")
 
     hoy_prl = date.today()
@@ -1496,7 +1494,6 @@ with tab_prl:
             dias_restantes = 9999
             f_cad = hoy_prl
 
-        # Lógica de semáforo
         if dias_restantes < 30:
             semaforo = "🔴 ROJO (< 1 mes)"
             accion = "🚨 Pedir cita reconocimiento"
