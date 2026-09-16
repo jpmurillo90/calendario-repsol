@@ -28,7 +28,7 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* Forzado estricto de colores base corporativos e intermitencias bloqueadas */
+    /* Forzado estricto de colores base corporativos */
     .stApp {
         background-color: #F4F6F9 !important;
         color: #0F172A !important;
@@ -753,7 +753,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------
-# BARRA DE AVISOS SUPERIOR (REDUCIDA Y DESTACADA)
+# BARRA DE AVISOS SUPERIOR (NUEVO DISEÑO DASHBOARD VISUAL)
 # ------------------------------------------
 hoy_actual = date.today()
 avisos_rojo_naranja = []
@@ -778,28 +778,60 @@ for tec_n, info_n in TECNICOS.items():
         desc_m = LEYENDA.get(marca_h, (marca_h, ''))[0]
         ausentes_hoy_lista.append(f"📌 **{tec_n}**: **{desc_m}**")
 
-if avisos_rojo_naranja or ausentes_hoy_lista:
-    st.markdown("""<div class="card-corporate" style="border-left: 5px solid #0284C7; background-color:#EFF6FF; padding: 12px; margin-bottom: 15px;">""", unsafe_allow_html=True)
-    st.markdown("<h4 style='margin:0 0 6px 0; font-size:15px; color:#0369A1;'>🔔 Panel de Alertas y Estado Global del Día (Hoy)</h4>", unsafe_allow_html=True)
+st.markdown("""
+<div style="background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%); padding: 16px 20px; border-radius: 8px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; margin-bottom: 12px;">
+        <span style="font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            🔔 Panel de Alertas y Estado Global del Día
+        </span>
+        <span style="font-size: 12px; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: 12px; font-weight: 600;">
+            📅 Hoy: {}
+        </span>
+    </div>
+</div>
+""".format(hoy_actual.strftime('%d/%m/%Y')), unsafe_allow_html=True)
+
+col_av1, col_av2 = st.columns(2)
+
+with col_av1:
+    bg_card_prl = "#FEF2F2" if avisos_rojo_naranja else "#F0FDF4"
+    border_color_prl = "#EF4444" if avisos_rojo_naranja else "#22C55E"
+    text_color_prl = "#991B1B" if avisos_rojo_naranja else "#166534"
     
-    col_av1, col_av2 = st.columns(2)
-    with col_av1:
-        st.markdown("<small><b>⚠️ Alertas Técnicas (PRL):</b></small>", unsafe_allow_html=True)
-        if avisos_rojo_naranja:
-            for av in avisos_rojo_naranja:
-                st.markdown(f"<small>- {av}</small>", unsafe_allow_html=True)
-        else:
-            st.markdown("<small>✅ Sin alertas críticas de Reconocimiento Médico.</small>", unsafe_allow_html=True)
-            
-    with col_av2:
-        st.markdown("<small><b>🏖️ Ausencias / Permisos de HOY:</b></small>", unsafe_allow_html=True)
-        if ausentes_hoy_lista:
-            for aus in ausentes_hoy_lista:
-                st.markdown(f"<small>- {aus}</small>", unsafe_allow_html=True)
-        else:
-            st.markdown("<small>🟢 Todos operativos hoy.</small>", unsafe_allow_html=True)
-            
-    st.markdown("</div>", unsafe_allow_html=True)
+    html_prl_card = f"""
+    <div style="background-color: {bg_card_prl}; border: 1px solid {border_color_prl}; border-left: 5px solid {border_color_prl}; border-radius: 8px; padding: 16px; height: 100%;">
+        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: {text_color_prl}; display: flex; align-items: center; gap: 6px;">
+            ⚠️ Alertas Técnicas y Reconocimientos (PRL)
+        </h4>
+    """
+    if avisos_rojo_naranja:
+        for av in avisos_rojo_naranja:
+            html_prl_card += f"<div style='font-size: 12px; color: #1E293B; margin-bottom: 6px; background: white; padding: 6px 10px; border-radius: 4px; border: 1px solid #E2E8F0;'>- {av}</div>"
+    else:
+        html_prl_card += "<div style='font-size: 12px; color: #166534; background: white; padding: 8px 10px; border-radius: 4px; border: 1px solid #DCFCE7;'>✅ Sin alertas críticas de Reconocimiento Médico en vigor.</div>"
+    html_prl_card += "</div>"
+    st.markdown(html_prl_card, unsafe_allow_html=True)
+
+with col_av2:
+    bg_card_aus = "#FFFBEB" if ausentes_hoy_lista else "#F0FDF4"
+    border_color_aus = "#F59E0B" if ausentes_hoy_lista else "#22C55E"
+    text_color_aus = "#92400E" if ausentes_hoy_lista else "#166534"
+    
+    html_aus_card = f"""
+    <div style="background-color: {bg_card_aus}; border: 1px solid {border_color_aus}; border-left: 5px solid {border_color_aus}; border-radius: 8px; padding: 16px; height: 100%;">
+        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: {text_color_aus}; display: flex; align-items: center; gap: 6px;">
+            🏖️ Ausencias / Permisos de HOY
+        </h4>
+    """
+    if ausentes_hoy_lista:
+        for aus in ausentes_hoy_lista:
+            html_aus_card += f"<div style='font-size: 12px; color: #1E293B; margin-bottom: 6px; background: white; padding: 6px 10px; border-radius: 4px; border: 1px solid #E2E8F0;'>- {aus}</div>"
+    else:
+        html_aus_card += "<div style='font-size: 12px; color: #166534; background: white; padding: 8px 10px; border-radius: 4px; border: 1px solid #DCFCE7;'>🟢 Plantilla 100% operativa y disponible hoy.</div>"
+    html_aus_card += "</div>"
+    st.markdown(html_aus_card, unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
 col_v1, col_v2, col_v3 = st.columns([1.5, 1, 1])
 with col_v1:
@@ -885,7 +917,7 @@ with col_v3:
         st.download_button(label="📥 Descargar archivo HTML generado", data=html_template, file_name=f"Calendario_SAT_CI_Repsol_{dd_anio}.html", mime="text/html")
 
 # ==========================================
-# PESTAÑAS PRINCIPALES DEL SISTEMA (ACTUALIZADO: ACCESOS CI)
+# PESTAÑAS PRINCIPALES DEL SISTEMA (ACCESOS CI)
 # ==========================================
 tab_registrar, tab_he, tab_cobertura, tab_balance, tab_prl, tab_incidencias, tab_auditoria, tab_config, tab_horarios, tab_hld = st.tabs([
     '🛠️ Registrar', '⚡ Horas Extra', '👥 Cobertura', '📈 Balance', '🏢 Accesos CI', '⚠️ Incidencias', '📋 Auditoría', '⚙️ Configuración', '⏰ Horarios / CI', '⏳ Config. HLD'
