@@ -18,7 +18,7 @@ RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 RUTA_PRL = "prl_repsol.json"
 
 st.set_page_config(
-    page_title="Enterprise Resource & Calendar Management | Indra & Repsol",
+    page_title="Accesos CI",
     page_icon="🏢",
     layout="wide"
 )
@@ -737,7 +737,7 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
     return coincidencias
 
 # ==========================================
-# HEADER EJECUTIVO PRINCIPAL
+# HEADER EJECUTIVO PRINCIPAL Y AVISOS SUPERIORES
 # ==========================================
 st.markdown("""
 <div class="card-corporate" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-left: 6px solid #002B36; padding: 22px;">
@@ -751,6 +751,57 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# ------------------------------------------
+# BARRA DE AVISOS SUPERIOR (PRL HOY Y VACACIONES/AUSENCIAS HOY)
+# ------------------------------------------
+hoy_actual = date.today()
+avisos_rojo_naranja = []
+ausentes_hoy_lista = []
+
+# 1. Comprobar técnicos en naranja o rojo por PRL
+for tec_n, info_n in TECNICOS.items():
+    datos_prl = REGISTROS_PRL.get(tec_n, {'fecha': '2030-01-01'})
+    try:
+        f_cad_p = datetime.strptime(datos_prl.get('fecha', '2030-01-01'), '%Y-%m-%d').date()
+        d_rest = (f_cad_p - hoy_actual).days
+        if d_rest < 30:
+            avisos_rojo_naranja.append(f"🔴 **PRL Crítico (<1 mes):** {tec_n} (Caduca: {f_cad_p.strftime('%d/%m/%Y')})")
+        elif d_rest < 60:
+            avisos_rojo_naranja.append(f"🟠 **PRL Próximo (<2 meses):** {tec_n} (Caduca: {f_cad_p.strftime('%d/%m/%Y')})")
+    except Exception:
+        pass
+
+# 2. Comprobar ausencias de HOY (Vacaciones, HLD, HE, ausente por algo...)
+for tec_n, info_n in TECNICOS.items():
+    val_h = REGISTROS.get((hoy_actual.year, tec_n, str(hoy_actual.month), str(hoy_actual.day)), REGISTROS.get(f"{hoy_actual.year}|{tec_n}|{hoy_actual.month}|{hoy_actual.day}", ''))
+    marca_h, _ = extraer_info_registro(val_h, tec_n, hoy_actual.year, hoy_actual.month, hoy_actual.day)
+    if marca_h != '':
+        desc_m = LEYENDA.get(marca_h, (marca_h, ''))[0]
+        ausentes_hoy_lista.append(f"📌 **{tec_n}** ({info_n['ci']}): **{desc_m} ({marca_h})**")
+
+if avisos_rojo_naranja or ausentes_hoy_lista:
+    st.markdown("""<div class="card-corporate" style="border-left: 6px solid #D97706; background-color:#FFFBEB; padding: 15px; margin-bottom: 20px;">""", unsafe_allow_html=True)
+    st.markdown("### 🔔 Panel de Alertas y Estado Global del Día (Hoy)")
+    
+    col_av1, col_av2 = st.columns(2)
+    with col_av1:
+        st.markdown("#### ⚠️ Alertas Técnicas (PRL en Naranja o Rojo)")
+        if avisos_rojo_naranja:
+            for av in avisos_rojo_naranja:
+                st.markdown(f"- {av}")
+        else:
+            st.markdown("✅ No hay técnicos en niveles de alerta Naranja o Rojo por Reconocimiento Médico.")
+            
+    with col_av2:
+        st.markdown("#### 🏖️ Ausencias / Permisos de HOY")
+        if ausentes_hoy_lista:
+            for aus in ausentes_hoy_lista:
+                st.markdown(f"- {aus}")
+        else:
+            st.markdown("🟢 Todos los técnicos se encuentran operativos (sin ausencias registradas hoy).")
+            
+    st.markdown("</div>", unsafe_allow_html=True)
 
 col_v1, col_v2, col_v3 = st.columns([1.5, 1, 1])
 with col_v1:
