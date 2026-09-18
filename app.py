@@ -502,7 +502,38 @@ def tabla(datos):
     else:
         st.info('No hay registros para esta selección.')
 
+def aviso_prl_visual(tecnico):
+    estado, fecha, dias = estado_prl(tecnico)
+    if dias is None:
+        return 3, 'neutral', 'SIN INFORMACIÓN', 'Completar la fecha del reconocimiento.'
+    if dias < 0:
+        return 0, 'danger', f'CADUCADO HACE {abs(dias)} DÍAS', 'Revisar la situación y gestionar la renovación.'
+    if dias < 30:
+        return 1, 'danger', 'CADUCA HOY' if dias == 0 else f'CADUCA EN {dias} DÍAS', 'Gestionar la cita del reconocimiento.'
+    if dias < 60:
+        return 2, 'warning', f'CADUCA EN {dias} DÍAS', 'Planificar la renovación.'
+    return 4, 'success', 'VIGENTE', 'Sin actuaciones próximas.'
+
 def render_inicio():
+    st.markdown('''<style>
+    .home-box {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;
+      background:var(--surface);color:var(--ink);border:1px solid #dbe3ea;
+      border-top:5px solid var(--accent);border-radius:12px;padding:18px;margin:8px 0 16px;}
+    .home-box.success,.home-badge.success {--accent:#15803d;--surface:#f0fdf4;--ink:#166534;}
+    .home-box.warning,.home-badge.warning {--accent:#b45309;--surface:#fffbeb;--ink:#92400e;}
+    .home-box.danger,.home-badge.danger {--accent:#b91c1c;--surface:#fef2f2;--ink:#991b1b;}
+    .home-box.info,.home-badge.info {--accent:#0369a1;--surface:#eff6ff;--ink:#075985;}
+    .home-box.neutral,.home-badge.neutral {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;}
+    .home-value {font-size:34px;font-weight:800;line-height:1.2;margin:8px 0;}
+    .home-label {font-weight:700;font-size:14px;}
+    .home-note {font-size:13px;margin-top:8px;}
+    .home-badge {display:inline-block;border-radius:6px;padding:5px 9px;
+      background:var(--surface);color:var(--ink);border:1px solid var(--accent);
+      font-size:12px;font-weight:700;margin:4px 4px 4px 0;}
+    .home-person {padding:12px 0;border-top:1px solid #dbe3ea;margin-top:12px;}
+    .home-person strong {display:block;color:#172b3a;margin-bottom:4px;}
+    .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
+    </style>''', unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -510,20 +541,49 @@ def render_inicio():
     centros = sorted({TECNICOS[t]['ci'] for t in visibles})
     sin_cobertura = [c for c in centros if any(obtener_horas_jornada_real(t,fecha.year,fecha.month,fecha.day)>0 for t in visibles if TECNICOS[t]['ci']==c) and not any(estados[t][1]>0 for t in visibles if TECNICOS[t]['ci']==c)]
     avisos = [t for t in visibles if estado_prl(t)[0] != 'Vigente']
-    cols = st.columns(4)
-    for col,label,value in zip(cols,['Disponibles / parciales','Ausentes / formación','Centros sin cobertura','PRL por revisar'],[sum(h>0 for _,h in estados.values()),sum(e in ('Ausente','Formación') for e,_ in estados.values()),len(sin_cobertura),len(avisos)]):
-        col.metric(label,value)
+    caducados = sum(estado_prl(t)[0]=='Caducado' for t in visibles)
+    proximos = sum(estado_prl(t)[2] is not None and 0 <= estado_prl(t)[2] < 60 for t in visibles)
+    faltan = sum(estado_prl(t)[2] is None for t in visibles)
+    ausentes = [t for t,(e,h) in estados.items() if e in ('Ausente','Formación','Parcial')]
+    indicadores = [
+        ('Disponibles / parciales',sum(h>0 for _,h in estados.values()),'success' if any(h>0 for _,h in estados.values()) else 'neutral','Personas con horas previstas disponibles'),
+        ('Ausencias / parciales',len(ausentes),'warning' if ausentes else 'success','Incluye permisos parciales y formación'),
+        ('Centros sin cobertura',len(sin_cobertura),'danger' if sin_cobertura else 'success','Requieren revisión de la planificación' if sin_cobertura else 'Sin centros laborables totalmente descubiertos'),
+        ('PRL por revisar',len(avisos),'danger' if caducados else 'warning' if proximos else 'neutral' if faltan else 'success',f'{caducados} caducados · {proximos} próximos · {faltan} sin datos')]
+    for col,(label,value,color,nota) in zip(st.columns(4),indicadores):
+        col.markdown(f'<div class="home-box {color}"><div class="home-label">{label}</div><div class="home-value">{value}</div><div class="home-note">{nota}</div></div>',unsafe_allow_html=True)
     st.caption('Disponibilidad prevista, no fichajes. PRL se evalúa a fecha de hoy. Cobertura alerta cuando un centro laborable queda sin personal disponible; no hay mínimos de dotación configurados.')
+    if sin_cobertura:
+        st.error('SIN COBERTURA PREVISTA: '+', '.join(sin_cobertura)+'. Revisa la asignación de personal.')
     st.subheader('Situación por centro')
     for i in range(0,len(centros),3):
         for col,c in zip(st.columns(3),centros[i:i+3]):
             miembros = [t for t in visibles if TECNICOS[t]['ci']==c]
-            detalle = ''.join(f'<p>{escape(t)}<br><span class="subtle">{escape(estados[t][0])} · {estados[t][1]:g} h previstas</span></p>' for t in miembros)
-            col.markdown(f'<div class="ci-card"><h3>{escape(c)}</h3>{detalle}</div>',unsafe_allow_html=True)
-    st.subheader('Pendientes')
-    for c in sin_cobertura:
-        st.warning(f'{c}: sin cobertura prevista en la fecha seleccionada.')
-    tabla([{'Técnico':t,'Centro':TECNICOS[t]['ci'],'PRL':estado_prl(t)[0],'Caducidad':str(estado_prl(t)[1] or 'Sin información')} for t in avisos])
+            no_laborable = all(estados[t][0]=='No laborable' for t in miembros)
+            hay_ausencias = any(t in ausentes for t in miembros)
+            color,etiqueta = ('neutral','NO LABORABLE') if no_laborable else ('danger','SIN COBERTURA') if c in sin_cobertura else ('warning','COBERTURA CON AUSENCIAS') if hay_ausencias else ('success','EQUIPO DISPONIBLE')
+            detalle = ''
+            for t in miembros:
+                estado,horas = estados[t]
+                tipo = tipo_registro(valor_registro(t,fecha))
+                motivo = LEYENDA.get(tipo,(tipo,''))[0] if tipo else estado
+                tono = 'neutral' if estado=='No laborable' else 'warning' if estado in ('Ausente','Parcial') else 'info' if estado=='Formación' else 'success'
+                if estado=='No laborable': motivo = 'No laborable' + (f' · {motivo}' if tipo else '')
+                detalle += f'<div class="home-person"><strong>{escape(t)}</strong><span class="home-badge {tono}">{escape(motivo)}</span><div class="home-note">{horas:g} h disponibles previstas' + (' · Ausencia parcial' if estado=='Parcial' else '') + '</div></div>'
+            col.markdown(f'<div class="home-box {color}"><h3>{escape(c)}</h3><span class="home-badge {color}">{etiqueta}</span>{detalle}</div>',unsafe_allow_html=True)
+    st.subheader('Reconocimientos PRL · acciones pendientes')
+    st.caption(f'Estado a fecha de hoy ({date.today():%d/%m/%Y}), independiente de la fecha de planificación seleccionada.')
+    ordenados = sorted(avisos,key=lambda t:(aviso_prl_visual(t)[0],estado_prl(t)[2] if estado_prl(t)[2] is not None else 99999,t))
+    if not ordenados:
+        st.success('Todos los reconocimientos del equipo seleccionado están vigentes y no vencen en los próximos 60 días.')
+    for i in range(0,len(ordenados),2):
+        for col,t in zip(st.columns(2),ordenados[i:i+2]):
+            _,color,titular,accion = aviso_prl_visual(t)
+            cad = estado_prl(t)[1]
+            fecha_txt = cad.strftime('%d/%m/%Y') if cad else 'Sin fecha registrada'
+            col.markdown(f'<div class="home-box {color}"><span class="home-badge {color}">{escape(titular)}</span><h3>{escape(t)}</h3><div>{escape(TECNICOS[t]["ci"])} · {fecha_txt}</div><div class="home-note">{escape(accion)}</div></div>',unsafe_allow_html=True)
+    if ordenados:
+        st.caption('Actualiza fechas y observaciones desde Técnicos → Editar datos de acceso.')
 
 def cuadrante_html(tecnicos, mes, anio):
     dias = range(1,calendar.monthrange(anio,mes)[1]+1)
@@ -772,3 +832,4 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+
