@@ -1,3 +1,15 @@
+"""Gestión de Técnicos CI — versión reorganizada.
+Ejecutar: streamlit run app.py
+Dependencias: streamlit>=1.40,<2, pandas, requests.
+Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
+Configurar [usuarios] en .streamlit/secrets.toml (sin usuarios por defecto).
+Admite password para compatibilidad o password_hash PBKDF2 (ver verificar_password).
+GITHUB_TOKEN y GIST_ID son opcionales. Con Gist configurado, es la fuente principal.
+El registro exige datos remotos legibles; no se sobrescribe Gist tras un error de lectura.
+Las escrituras comprueban cambios concurrentes, pero Gist no ofrece transacciones:
+evitar ediciones simultáneas. Para múltiples editores concurrentes, migrar a una BD.
+Los cálculos horarios originales se conservan: validar reglas con el responsable.
+"""
 import calendar
 import json
 import os
@@ -662,6 +674,108 @@ def registrar_ausencia():
 def visibles_del_centro(t):
     return [n for n,v in TECNICOS.items() if v['ci']==TECNICOS[t]['ci']]
 
+def informe_mensual_html(equipo, mes, anio):
+    """Informe autónomo y filtrado. No exporta DNI, NIP ni observaciones PRL."""
+    inicio = date(anio, mes, 1)
+    fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    hoy = date.today()
+    centros = sorted({TECNICOS[t]['ci'] for t in equipo})
+    filas_aus, filas_cob, filas_prl, filas_saldos = [], [], [], []
+    dias_vac = 0
+    horas_parciales = 0.
+    for t in equipo:
+        for d in range(1, fin.day+1):
+            f = date(anio, mes, d)
+            val = valor_registro(t, f)
+            tipo = tipo_registro(val)
+            if not tipo:
+                continue
+            gasto = consumo(t, f, val)
+            dias_vac += gasto['V'] + gasto['VPA']
+            horas_parciales += gasto['HE'] + gasto['HLD']
+            detalle = f"HE: {gasto['HE']:g} h · HLD: {gasto['HLD']:g} h" if tipo in ('HE', 'HLD', 'HE+HLD') else 'Marca de día'
+            filas_aus.append({'Fecha':f.strftime('%d/%m/%Y'),'Técnico':t,'Centro':TECNICOS[t]['ci'],
+                             'Planificación':LEYENDA.get(tipo,(tipo,''))[0],'Detalle':detalle})
+        estado, cad, dias = estado_prl(t)
+        # Incluye vencimientos próximos a hoy y los que afectan al mes elegido.
+        if cad is None or cad <= max(fin, hoy+timedelta(days=60)):
+            if cad is None:
+                etiqueta, accion = 'Sin información', 'Completar fecha de reconocimiento'
+            elif cad < hoy:
+                etiqueta, accion = f'Caducado hace {abs(dias)} días', 'Revisar renovación'
+            elif cad == hoy:
+                etiqueta, accion = 'Caduca hoy', 'Gestionar renovación'
+            else:
+                etiqueta = f'Caduca en {dias} días'
+                accion = 'Gestionar cita' if dias < 30 else 'Planificar renovación'
+            relacion = 'Sin fecha' if cad is None else 'Vence antes del mes' if cad < inicio else 'Vence en el mes' if cad <= fin else 'Vence después del mes'
+            filas_prl.append({'Técnico':t,'Centro':TECNICOS[t]['ci'],'Caducidad':cad.strftime('%d/%m/%Y') if cad else 'Sin datos',
+                              'Estado a fecha de emisión':etiqueta,'Relación con el mes':relacion,'Acción':accion,
+                              '_orden':(0 if cad and cad < hoy else 1 if cad else 2, cad or date.max)})
+        _, pendientes = saldos(t, anio)
+        filas_saldos.append({'Técnico':t,'Vacaciones (días)':pendientes['V'],'VPA (días)':pendientes['VPA'],
+                             'HLD (h)':pendientes['HLD'],'HE (h)':pendientes['HE']})
+    # Nunca deducir cobertura de un centro solo a partir de una selección parcial.
+    centros_completos = [c for c in centros if all(t in equipo for t,v in TECNICOS.items() if v['ci']==c)]
+    centros_parciales = [c for c in centros if c not in centros_completos]
+    for c in centros_completos:
+        miembros = [t for t in equipo if TECNICOS[t]['ci']==c]
+        for d in range(1, fin.day+1):
+            f = date(anio, mes, d)
+            laborable = any(obtener_horas_jornada_real(t,anio,mes,d)>0 for t in miembros)
+            disponibles = [t for t in miembros if disponibilidad(t,f)[1]>0]
+            if laborable and not disponibles:
+                filas_cob.append({'Fecha':f.strftime('%d/%m/%Y'),'Centro':c,'Situación':'Sin personal disponible previsto',
+                                  'Técnicos':', '.join(miembros)})
+    filas_prl.sort(key=lambda x:x['_orden'])
+    for fila in filas_prl: fila.pop('_orden')
+    def tabla_html(filas, vacio):
+        if not filas:
+            return f'<p class="empty">{escape(vacio)}</p>'
+        return '<div class="scroll">'+pd.DataFrame(filas).to_html(index=False,escape=True,border=0)+'</div>'
+    css = '''body{font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#18313e;margin:0;padding:28px}
+    main{max-width:1500px;margin:auto;background:white;padding:30px;border-radius:14px}
+    h1{margin:8px 0;font-size:28px}h2{font-size:20px;margin-top:32px;border-bottom:2px solid #e2e8f0;padding-bottom:10px}
+    .muted{color:#536977;font-size:13px}.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:24px 0}
+    .metric{flex:1;min-width:150px;border-radius:10px;padding:16px;background:#edf6f8;border-top:4px solid #07566a}
+    .metric strong{display:block;font-size:28px;margin-top:6px}.warn{background:#fff7e6;border-color:#b45309}.danger{background:#fef2f2;border-color:#b91c1c}
+    table{border-collapse:collapse;width:100%;font-size:12px}th{background:#123b49;color:white;text-align:left;padding:10px}
+    td{border-bottom:1px solid #e2e8f0;padding:9px}tbody tr:nth-child(even){background:#f8fafc}
+    .scroll,.grid-wrap{overflow-x:auto}.grid{white-space:nowrap;font-size:10px}.grid td,.grid th{padding:7px 5px;text-align:center}
+    .grid .name{text-align:left;min-width:165px}.subtle{font-size:10px;color:#536977}
+    .legend span{display:inline-block;padding:5px 9px;margin:4px;border-radius:5px;font-size:11px}
+    .empty{background:#f0f7f4;padding:13px;border-radius:8px}.notice{padding:12px;border-left:4px solid #b45309;background:#fffbeb}
+    footer{margin-top:32px;border-top:1px solid #ddd;padding-top:12px;font-size:12px;color:#536977}
+    @page{size:A4 landscape;margin:10mm}@media print{body{padding:0;background:white}main{padding:0;max-width:none}
+    th,td,.metric,.legend span{-webkit-print-color-adjust:exact;print-color-adjust:exact}thead{display:table-header-group}
+    tr,.metric{break-inside:avoid}h2{break-after:avoid}.scroll,.grid-wrap{overflow:visible}.grid{font-size:8px}.grid td,.grid th{padding:4px 2px}.grid .name{min-width:110px}}
+    '''
+    prl_caducados = sum(estado_prl(t)[0]=='Caducado' for t in equipo)
+    resumen = [('Técnicos incluidos',len(equipo),''),('Vacaciones / VPA · días-persona',dias_vac,''),
+               ('Días-centro sin cobertura',len(filas_cob),'danger' if filas_cob else ''),
+               ('PRL por revisar',len(filas_prl),'danger' if prl_caducados else 'warn' if filas_prl else '')]
+    tarjetas = ''.join(f'<div class="metric {clase}">{escape(label)}<strong>{valor}</strong></div>' for label,valor,clase in resumen)
+    leyenda = ''.join(f'<span style="background:{color}">{escape(k)} · {escape(desc)}</span>' for k,(desc,color) in LEYENDA.items())
+    nota_cob = '<p class="notice">Cobertura no evaluada en '+escape(', '.join(centros_parciales))+': el filtro no incluye a todo el centro.</p>' if centros_parciales else ''
+    festivos = [{'Centro':c,'Fecha':date(anio,mes,d).strftime('%d/%m/%Y')} for c in centros for m,d in FESTIVOS_POR_ANIO.get(anio,{}).get(c,[]) if m==mes]
+    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>Planificación CI · {MESES[mes]} {anio}</title><style>{css}</style></head><body><main>'
+            f'<div class="muted">INDRA · INFRAESTRUCTURAS Y SISTEMAS · CI</div><h1>Planificación de {MESES[mes].lower()} {anio}</h1>'
+            f'<p>Centros: {escape(", ".join(centros))} · {len(equipo)} técnicos incluidos</p>'
+            f'<p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M}. Fotografía de los registros en el momento de la descarga.</p>'
+            f'<div class="metrics">{tarjetas}</div><p class="muted">Vacaciones: suma de días registrados por persona. HE/HLD planificadas en el mes: {horas_parciales:g} h. Disponibilidad prevista, no presencia confirmada.</p>'
+            '<h2>1. Cuadrante mensual</h2>'+cuadrante_html(equipo,mes,anio)+f'<div class="legend">{leyenda}</div>'
+            '<h2>2. Cobertura que requiere revisión</h2>'+nota_cob+tabla_html(filas_cob,'No se detectan días laborables sin cobertura en los centros evaluados.')+
+            '<p class="muted">Se alerta si no queda ninguna persona con horas disponibles. No se validan mínimos de dotación ni solapamientos horarios de permisos parciales.</p>'
+            '<h2>3. Reconocimientos PRL por revisar</h2>'+
+            f'<p class="muted">Estado calculado a {hoy:%d/%m/%Y}. Incluye fechas desconocidas y caducidades hasta {max(fin,hoy+timedelta(days=60)):%d/%m/%Y}: fin del mes o próximos 60 días desde la emisión, lo que sea posterior.</p>'+
+            tabla_html(filas_prl,'No hay reconocimientos pendientes de revisión en el horizonte indicado.')+
+            '<h2>4. Detalle de ausencias, permisos y formación</h2>'+tabla_html(filas_aus,'No hay marcas registradas para este mes.')+
+            '<h2>5. Saldos anuales disponibles</h2><p class="muted">Descuentan todos los registros del año, incluidos los de meses posteriores. No son saldos al cierre del mes.</p>'+
+            tabla_html(filas_saldos,'Sin técnicos seleccionados.')+
+            '<h2>6. Festivos del mes</h2>'+tabla_html(festivos,'No hay festivos configurados para el mes y los centros seleccionados.')+
+            '<footer>Uso interno · Gestión de Técnicos CI · Juan Pedro Murillo Huete. No incluye DNI, NIP ni observaciones de reconocimientos.</footer></main></body></html>')
+
 def render_cuadrante():
     cols = st.columns([1,1,2])
     mes = cols[0].selectbox('Mes',list(MESES),index=date.today().month-1,format_func=MESES.get)
@@ -672,8 +786,9 @@ def render_cuadrante():
     st.markdown(contenido,unsafe_allow_html=True)
     with st.expander('Leyenda de estados'):
         st.markdown(''.join(f'<span class="tag" style="background:{color}">{escape(k)} · {escape(desc)}</span>' for k,(desc,color) in LEYENDA.items()),unsafe_allow_html=True)
-    export = '<!doctype html><meta charset="utf-8"><title>Cuadrante CI</title><style>body{font-family:Arial}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #ccc}.subtle{font-size:11px}</style>'+f'<h1>{MESES[mes]} {dd_anio}</h1>'+contenido
-    st.download_button('Descargar cuadrante filtrado · HTML',export,file_name=f'cuadrante_{dd_anio}_{mes}.html',mime='text/html')
+    export = informe_mensual_html(equipo,mes,dd_anio)
+    st.download_button('Descargar informe mensual · HTML',export,file_name=f'informe_ci_{dd_anio}_{mes:02d}.html',mime='text/html')
+    st.caption('Incluye cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los filtros de centro y técnico seleccionados.')
     if EDITOR:
         with st.expander('＋ Registrar ausencia / permiso',expanded=False): registrar_ausencia()
     else: st.caption('Modo consulta: no puedes modificar registros.')
