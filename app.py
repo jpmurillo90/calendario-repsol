@@ -786,9 +786,24 @@ def render_cuadrante():
     st.markdown(contenido,unsafe_allow_html=True)
     with st.expander('Leyenda de estados'):
         st.markdown(''.join(f'<span class="tag" style="background:{color}">{escape(k)} · {escape(desc)}</span>' for k,(desc,color) in LEYENDA.items()),unsafe_allow_html=True)
-    export = informe_mensual_html(equipo,mes,dd_anio)
-    st.download_button('Descargar informe mensual · HTML',export,file_name=f'informe_ci_{dd_anio}_{mes:02d}.html',mime='text/html')
-    st.caption('Incluye cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los filtros de centro y técnico seleccionados.')
+    export_simple = ('<!doctype html><html lang="es"><head><meta charset="utf-8">'
+                     '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                     '<title>Cuadrante CI</title><style>body{font-family:Arial;padding:20px}'
+                     'table{border-collapse:collapse}td,th{padding:8px;border:1px solid #ccc}'
+                     '.grid-wrap{overflow-x:auto}.subtle{font-size:11px}</style></head><body>'
+                     f'<h1>{MESES[mes]} {dd_anio}</h1>'+contenido+'</body></html>')
+    descarga_simple, descarga_completa = st.columns(2)
+    with descarga_simple:
+        st.download_button('Descargar cuadrante filtrado · HTML',export_simple,
+                           file_name=f'cuadrante_{dd_anio}_{mes}.html',mime='text/html',
+                           key='descarga_cuadrante_simple')
+        st.caption('Solo el cuadrante, según el mes, centro y técnico seleccionados.')
+    with descarga_completa:
+        export = informe_mensual_html(equipo,mes,dd_anio)
+        st.download_button('Descargar informe mensual ampliado · HTML',export,
+                           file_name=f'informe_ci_{dd_anio}_{mes:02d}.html',mime='text/html',
+                           key='descarga_informe_ampliado')
+        st.caption('Cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los mismos filtros.')
     if EDITOR:
         with st.expander('＋ Registrar ausencia / permiso',expanded=False): registrar_ausencia()
     else: st.caption('Modo consulta: no puedes modificar registros.')
@@ -947,4 +962,3 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
-
