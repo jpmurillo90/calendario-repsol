@@ -28,14 +28,11 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* Forzado estricto de colores base corporativos */
     .stApp {
         background-color: #F4F6F9 !important;
         color: #0F172A !important;
         font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
-    
-    /* Contenedores tipo Tarjeta Corporativa */
     .card-corporate {
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
@@ -45,13 +42,10 @@ st.markdown("""
         margin-bottom: 20px;
         color: #0F172A !important;
     }
-    
     h1, h2, h3, h4, h5, h6 {
         color: #0F172A !important;
         font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
-    
-    /* Sidebar Profesional Estilo Panel de Control */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0;
@@ -64,8 +58,6 @@ st.markdown("""
     [data-testid="stSidebar"] p {
         color: #1E293B !important;
     }
-
-    /* Pestañas de Navegación Superiores Estilo Web App */
     .stTabs [data-baseweb="tab-list"] {
         gap: 6px;
         background-color: #E2E8F0;
@@ -87,8 +79,6 @@ st.markdown("""
         color: #FFFFFF !important;
         border-color: #002B36 !important;
     }
-
-    /* Botones corporativos */
     .stButton>button {
         border-radius: 6px;
         font-weight: 600;
@@ -101,8 +91,6 @@ st.markdown("""
         background-color: #F1F5F9;
         border-color: #94A3B8;
     }
-    
-    /* Botones primarios (Color Corporativo Indra Deep Teal) */
     button[kind="primary"] {
         background-color: #002B36 !important;
         color: #FFFFFF !important;
@@ -111,8 +99,6 @@ st.markdown("""
     button[kind="primary"]:hover {
         background-color: #001F26 !important;
     }
-
-    /* Tablas de Datos Limpias */
     table {
         font-family: 'Segoe UI', sans-serif;
         border-collapse: collapse;
@@ -131,8 +117,6 @@ st.markdown("""
         border: 1px solid #CBD5E1;
         color: #0F172A !important;
     }
-    
-    /* Footer de Copyright Profesional */
     .footer-copyright {
         text-align: center;
         font-size: 11px;
@@ -196,7 +180,7 @@ else:
         st.rerun()
 
 # ==========================================
-# FUNCIONES DE PERSISTENCIA Y GIST
+# FUNCIONES DE PERSISTENCIA Y GIST (CORREGIDAS)
 # ==========================================
 def obtener_cabeceras_gist():
     try:
@@ -216,7 +200,15 @@ def obtener_url_gist():
         return ""
 
 def guardar_en_drive(registros_dict):
-    datos_json = {f"{a}|{t}|{m}|{d}": v for (a, t, m, d), v in registros_dict.items()}
+    # Convertir claves de tuplas a strings serializables tipo "anio|tec|mes|dia"
+    datos_json = {}
+    for k, v in registros_dict.items():
+        if isinstance(k, tuple):
+            k_str = f"{k[0]}|{k[1]}|{k[2]}|{k[3]}"
+        else:
+            k_str = str(k)
+        datos_json[k_str] = v
+
     try:
         with open(RUTA_BDD, 'w', encoding='utf-8') as f:
             json.dump(datos_json, f, ensure_ascii=False, indent=4)
@@ -239,8 +231,10 @@ def guardar_en_drive(registros_dict):
             pass
 
 def cargar_de_drive():
+    datos_json = {}
     url = obtener_url_gist()
     headers = obtener_cabeceras_gist()
+    cargado_remoto = False
     
     if url and headers:
         try:
@@ -250,30 +244,36 @@ def cargar_de_drive():
                 if "datos_tecnicos_repsol.json" in files:
                     contenido = files["datos_tecnicos_repsol.json"]["content"]
                     datos_json = json.loads(contenido)
-                    resultado = {}
-                    for k, v in datos_json.items():
-                        parts = k.split('|')
-                        if len(parts) == 3:
-                            resultado[(2026, parts[0], parts[1], parts[2])] = v
-                        else:
-                            resultado[(int(parts[0]), parts[1], parts[2], parts[3])] = v
-                    return resultado
+                    cargado_remoto = True
         except Exception:
             pass
             
-    try:
-        with open(RUTA_BDD, 'r', encoding='utf-8') as f:
-            datos_json = json.load(f)
-            resultado = {}
-            for k, v in datos_json.items():
-                parts = k.split('|')
-                if len(parts) == 3:
-                    resultado[(2026, parts[0], parts[1], parts[2])] = v
-                else:
-                    resultado[(int(parts[0]), parts[1], parts[2], parts[3])] = v
-            return resultado
-    except FileNotFoundError:
-        return {}
+    if not cargado_remoto:
+        try:
+            with open(RUTA_BDD, 'r', encoding='utf-8') as f:
+                datos_json = json.load(f)
+        except FileNotFoundError:
+            datos_json = {}
+
+    resultado = {}
+    for k, v in datos_json.items():
+        if '|' in k:
+            parts = k.split('|')
+            if len(parts) == 4:
+                try:
+                    resultado[(int(parts[0]), parts[1], str(parts[2]), str(parts[3]))] = v
+                except ValueError:
+                    resultado[k] = v
+            elif len(parts) == 3:
+                try:
+                    resultado[(2026, parts[0], str(parts[1]), str(parts[2]))] = v
+                except ValueError:
+                    resultado[k] = v
+            else:
+                resultado[k] = v
+        else:
+            resultado[k] = v
+    return resultado
 
 def guardar_festivos_drive():
     datos_json = {str(anio): {ci: [[m, d] for m, d in lista] for ci, lista in centros.items()} for anio, centros in FESTIVOS_POR_ANIO.items()}
@@ -453,7 +453,7 @@ def cargar_hld_anual_drive():
         return None
 
 # ==========================================
-# GESTIÓN Y PERSISTENCIA DE PRL (RECONOCIMIENTOS MÉDICOS)
+# GESTIÓN Y PERSISTENCIA DE PRL
 # ==========================================
 PRL_DEFAULT = {
     'Juan Pedro Murillo Huete': {'nip': '709355', 'dni': '05933159X', 'fecha': '2027-03-27', 'obs': 'BIENAL'},
@@ -464,7 +464,7 @@ PRL_DEFAULT = {
     'Endika Ramirez Rodriguez': {'nip': '723603', 'dni': '79136742K', 'fecha': '2026-10-22', 'obs': ''},
     'David Rodriguez Novua': {'nip': '709717', 'dni': '45818446P', 'fecha': '2027-03-27', 'obs': ''},
     'Simon Alberto Conesa Lloris': {'nip': '716271', 'dni': '23034801W', 'fecha': '2028-06-19', 'obs': 'BIENAL'},
-    'Alejandro Gutierrez Bastida': {'nip': '717260', 'dni': '23310758M', 'fecha': '2026-10-10', 'obs': 'CITA 11 PETICION 4591420 CITACION RM - SE PREGUNTA POR TEAMS'}
+    'Alejandro Gutierrez Bastida': {'nip': '717260', 'dni': '23310758M', 'fecha': '2026-10-10', 'obs': 'CITA 11 PETICION 4591420 CITACION RM'}
 }
 
 def guardar_prl_drive():
@@ -606,11 +606,14 @@ def obtener_vpa_totales_tecnico(tecnico, anio):
         anio_prev = anio - 1
         vac_cons_prev = 0
         for key, val in REGISTROS.items():
-            parts = key.split('|') if isinstance(key, str) else None
-            if parts and len(parts) == 4:
-                a, t = int(parts[0]), parts[1]
-            elif isinstance(key, tuple) and len(key) == 4:
+            if isinstance(key, tuple) and len(key) == 4:
                 a, t = key[0], key[1]
+            elif isinstance(key, str) and '|' in key:
+                parts = key.split('|')
+                if len(parts) == 4:
+                    a, t = int(parts[0]), parts[1]
+                else:
+                    continue
             else:
                 continue
 
@@ -673,21 +676,23 @@ def calcular_he_compensadas_totales(tecnico, anio):
 def calcular_he_consumidas_horas(tecnico, anio):
     total_consumido_h = 0.0
     for key, val in REGISTROS.items():
-        if isinstance(val, dict) and val.get('anio') == anio and val.get('tec') == tecnico:
-            tipo_reg = val.get('tipo')
-            if tipo_reg == 'HE':
-                total_consumido_h += val.get('horas_gastadas', 0.0)
-            elif tipo_reg == 'HE+HLD':
-                total_consumido_h += val.get('he_horas', 0.0)
-        else:
-            parts = key.split('|') if isinstance(key, str) else None
-            if parts and len(parts) == 4:
+        a, t, m, d = None, None, None, None
+        if isinstance(key, tuple) and len(key) == 4:
+            a, t, m, d = key[0], key[1], int(key[2]), int(key[3])
+        elif isinstance(key, str) and '|' in key:
+            parts = key.split('|')
+            if len(parts) == 4:
                 a, t, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
-                if a == anio and t == tecnico and val == 'HE':
-                    total_consumido_h += obtener_horas_jornada_real(tecnico, anio, m, d)
-            elif isinstance(key, tuple) and len(key) == 4:
-                a, t, m, d = key[0], key[1], int(key[2]), int(key[3])
-                if a == anio and t == tecnico and val == 'HE':
+
+        if a == anio and t == tecnico:
+            if isinstance(val, dict):
+                tipo_reg = val.get('tipo')
+                if tipo_reg == 'HE':
+                    total_consumido_h += val.get('horas_gastadas', 0.0)
+                elif tipo_reg == 'HE+HLD':
+                    total_consumido_h += val.get('he_horas', 0.0)
+            else:
+                if val == 'HE':
                     total_consumido_h += obtener_horas_jornada_real(tecnico, anio, m, d)
     return round(total_consumido_h, 2)
 
@@ -721,13 +726,13 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
     ci_actual = TECNICOS[tecnico_actual]['ci']
     coincidencias = []
     for key, val in REGISTROS.items():
-        parts = key.split('|') if isinstance(key, str) else None
-        if parts and len(parts) == 4:
-            a, tec, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
-        elif isinstance(key, tuple) and len(key) == 4:
+        a, tec, m, d = None, None, None, None
+        if isinstance(key, tuple) and len(key) == 4:
             a, tec, m, d = key[0], key[1], int(key[2]), int(key[3])
-        else:
-            continue
+        elif isinstance(key, str) and '|' in key:
+            parts = key.split('|')
+            if len(parts) == 4:
+                a, tec, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
 
         marca_str = val['tipo'] if isinstance(val, dict) else val
         if a == anio and tec != tecnico_actual and m == int(mes) and d == int(dia):
@@ -752,9 +757,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------
-# BARRA DE AVISOS SUPERIOR (NUEVO DISEÑO DASHBOARD VISUAL)
-# ------------------------------------------
 hoy_actual = date.today()
 avisos_rojo_naranja = []
 ausentes_hoy_lista = []
@@ -855,13 +857,14 @@ with col_v3:
             vpa_c = 0
             hld_c = 0.0
             for key, val in REGISTROS.items():
-                parts = key.split('|') if isinstance(key, str) else None
-                if parts and len(parts) == 4:
-                    a, t, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
-                elif isinstance(key, tuple) and len(key) == 4:
+                a, t, m, d = None, None, None, None
+                if isinstance(key, tuple) and len(key) == 4:
                     a, t, m, d = key[0], key[1], int(key[2]), int(key[3])
-                else:
-                    continue
+                elif isinstance(key, str) and '|' in key:
+                    parts = key.split('|')
+                    if len(parts) == 4:
+                        a, t, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
+
                 if a == dd_anio and t == tec:
                     if isinstance(val, dict):
                         tipo_v = val.get('tipo')
@@ -953,19 +956,39 @@ with tab_registrar:
         hld_tot_anio = obtener_hld_totales_tecnico(reg_tec, dd_anio)
         vpa_tot_anio = obtener_vpa_totales_tecnico(reg_tec, dd_anio)
         
-        vac_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'V')
-        vpa_c = sum(1 for k, v in REGISTROS.items() if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec and (v['tipo'] if isinstance(v, dict) else v) == 'VPA')
+        vac_c = 0
+        vpa_c = 0
+        for k, v in REGISTROS.items():
+            a, t, _, _ = None, None, None, None
+            if isinstance(k, tuple) and len(k) == 4:
+                a, t = k[0], k[1]
+            elif isinstance(k, str) and '|' in k:
+                parts = k.split('|')
+                if len(parts) == 4:
+                    a, t = int(parts[0]), parts[1]
+            if a == dd_anio and t == reg_tec:
+                tipo_val = v.get('tipo') if isinstance(v, dict) else v
+                if tipo_val == 'V': vac_c += 1
+                elif tipo_val == 'VPA': vpa_c += 1
         
         hld_c = 0.0
         for k, v in REGISTROS.items():
-            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == reg_tec:
+            a, t, m, d = None, None, None, None
+            if isinstance(k, tuple) and len(k) == 4:
+                a, t, m, d = k[0], k[1], int(k[2]), int(k[3])
+            elif isinstance(k, str) and '|' in k:
+                parts = k.split('|')
+                if len(parts) == 4:
+                    a, t, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
+            
+            if a == dd_anio and t == reg_tec:
                 if isinstance(v, dict):
                     if v.get('tipo') == 'HLD':
                         hld_c += v.get('horas_gastadas', 0.0)
                     elif v.get('tipo') == 'HE+HLD':
                         hld_c += v.get('hld_horas', 0.0)
                 elif v == 'HLD':
-                    hld_c += obtener_horas_hld(reg_tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio)
+                    hld_c += obtener_horas_hld(reg_tec, m, d, dd_anio)
         
         he_comp = calcular_he_compensadas_totales(reg_tec, dd_anio)
         he_gast = calcular_he_consumidas_horas(reg_tec, dd_anio)
@@ -1059,6 +1082,7 @@ with tab_registrar:
                         for dia in range(reg_d_ini, reg_d_fin + 1):
                             clave_reg = (dd_anio, reg_tec, str(reg_mes_num), str(dia))
                             if reg_tipo == '':
+                                # Eliminar de todas las formas posibles de clave
                                 REGISTROS.pop(clave_reg, None)
                                 REGISTROS.pop(f"{dd_anio}|{reg_tec}|{reg_mes_num}|{dia}", None)
                             elif reg_tipo == 'HE':
@@ -1095,7 +1119,7 @@ with tab_registrar:
             for dia, lista_c in st.session_state.coincidencias_pendientes:
                 for tec_col, marca_col, desc_marca in lista_c:
                     mensaje_alerta += f"- El día **{dia} de {MESES[reg_mes_num]}**, el otro técnico del mismo centro (**{tec_col}**) está de **{desc_marca} ({marca_col})**.\n"
-            mensaje_alerta += "\n¿Anhelar registrar esta ausencia a pesar del solapamiento?"
+            mensaje_alerta += "\n¿Deseas registrar esta ausencia a pesar del solapamiento?"
             st.warning(mensaje_alerta)
             
             confirmado_solapamiento = st.checkbox("Confirmo que deseo registrar esto a pesar de la coincidencia", value=False)
@@ -1248,13 +1272,13 @@ with tab_registrar:
 
 with tab_he:
     st.markdown("### ⚡ Gestión y Acumulación de Horas Extra")
-    st.markdown("Registro de bolsa de horas extraordinarias reales. Conversión automática ponderada (x1.75). Se permiten valores negativos (para restar o corregir errores).")
+    st.markdown("Registro de bolsa de horas extraordinarias reales. Conversión automática ponderada (x1.75).")
     he_anio = st.selectbox('Año Operativo HE:', ANOS_DISPONIBLES, key='he_anio_sel')
     he_tec = st.selectbox('Técnico Asignado:', list(TECNICOS.keys()), key='he_tec_sel')
     
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        txt_horas = st.number_input('Horas Reales Trabajadas (admite negativos para correcciones):', min_value=-100.0, max_value=100.0, value=1.0, step=0.5)
+        txt_horas = st.number_input('Horas Reales Trabajadas:', min_value=-100.0, max_value=100.0, value=1.0, step=0.5)
     with col_h2:
         txt_motivo = st.text_input('Motivo / Justificación:', placeholder='Ej. Corrección de error o Urgencia técnica')
         
@@ -1481,7 +1505,15 @@ with tab_balance:
         vpa_c = 0
         hld_c = 0.0
         for k, v in REGISTROS.items():
-            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec:
+            a, t, m, d = None, None, None, None
+            if isinstance(k, tuple) and len(k) == 4:
+                a, t, m, d = k[0], k[1], int(k[2]), int(k[3])
+            elif isinstance(k, str) and '|' in k:
+                parts = k.split('|')
+                if len(parts) == 4:
+                    a, t, m, d = int(parts[0]), parts[1], int(parts[2]), int(parts[3])
+
+            if a == dd_anio and t == tec:
                 if isinstance(v, dict):
                     tipo_v = v.get('tipo')
                     if tipo_v == 'V': vac_c += 1
@@ -1494,7 +1526,7 @@ with tab_balance:
                     if v == 'V': vac_c += 1
                     elif v == 'VPA': vpa_c += 1
                     elif v == 'HLD':
-                        hld_c += obtener_horas_hld(tec, int(k[2] if isinstance(k, tuple) else k.split('|')[2]), int(k[3] if isinstance(k, tuple) else k.split('|')[3]), dd_anio)
+                        hld_c += obtener_horas_hld(tec, m, d, dd_anio)
 
         he_comp = calcular_he_compensadas_totales(tec, dd_anio)
         he_gast = calcular_he_consumidas_horas(tec, dd_anio)
@@ -1510,7 +1542,7 @@ with tab_balance:
 
 with tab_prl:
     st.markdown("### 🏢 Control de Accesos CI (Reconocimientos Médicos)")
-    st.markdown("Control de caducidad de reconocimientos médicos del equipo técnico. Sistema de semáforo: 🔴 Menos de 1 mes (Pedir cita reconocimiento) | 🟠 Menos de 2 meses | 🟢 Al corriente.")
+    st.markdown("Control de caducidad de reconocimientos médicos del equipo técnico.")
 
     hoy_prl = date.today()
     tabla_prl_visual = []
@@ -1541,7 +1573,8 @@ with tab_prl:
             'Técnico': tec,
             'NIP': datos_tec_prl.get('nip', ''),
             'DNI': datos_tec_prl.get('dni', ''),
-            'Caducidad Reconocimiento': f_cad.strftime('%d/%m/%Y'),
+            'Próxima Revisión': f_cad.strftime('%d/%m/%Y'),
+            'Días Restantes': dias_restantes,
             'Estado': semaforo,
             'Acción Recomendada': accion,
             'Observaciones': datos_tec_prl.get('obs', '')
@@ -1549,264 +1582,85 @@ with tab_prl:
 
     st.dataframe(pd.DataFrame(tabla_prl_visual), use_container_width=True, hide_index=True)
 
-    st.markdown("---")
-    st.markdown("#### ✏️ Añadir o Modificar Fecha de Reconocimiento Médico")
-    
     if st.session_state.rol_actual == "Editor":
-        col_p1, col_p2 = st.columns(2)
+        st.markdown("---")
+        st.markdown("#### ✏️ Actualizar Reconocimiento Médico (PRL)")
+        tec_sel_prl = st.selectbox("Seleccionar Técnico a Actualizar:", list(TECNICOS.keys()), key='tec_prl_upd')
+        current_data = REGISTROS_PRL.get(tec_sel_prl, {})
+        
+        col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
-            prl_tec_sel = st.selectbox("Seleccionar Técnico:", list(TECNICOS.keys()), key='prl_tec_sel')
-            info_actual_tec = REGISTROS_PRL.get(prl_tec_sel, {'nip': '', 'dni': '', 'fecha': str(date.today()), 'obs': ''})
-            
-            prl_nip = st.text_input("NIP:", value=info_actual_tec.get('nip', ''), key='prl_nip_input')
-            prl_dni = st.text_input("DNI:", value=info_actual_tec.get('dni', ''), key='prl_dni_input')
+            nuevo_nip = st.text_input("NIP:", value=current_data.get('nip', ''))
+            nuevo_dni = st.text_input("DNI:", value=current_data.get('dni', ''))
         with col_p2:
             try:
-                f_init_val = datetime.strptime(info_actual_tec.get('fecha', str(date.today())), '%Y-%m-%d').date()
+                def_date = datetime.strptime(current_data.get('fecha', '2027-01-01'), '%Y-%m-%d').date()
             except Exception:
-                f_init_val = date.today()
-                
-            prl_fecha_cad = st.date_input("Fecha Caducidad Reconocimiento:", value=f_init_val, key='prl_fecha_input')
-            prl_obs = st.text_input("Observaciones / Notas de Cita:", value=info_actual_tec.get('obs', ''), key='prl_obs_input')
+                def_date = date.today()
+            nueva_fecha = st.date_input("Fecha Reconocimiento:", value=def_date)
+        with col_p3:
+            nueva_obs = st.text_input("Observaciones:", value=current_data.get('obs', ''))
 
-        if st.button("💾 Guardar / Actualizar Datos PRL", type="primary", use_container_width=True):
-            if prl_tec_sel not in REGISTROS_PRL:
-                REGISTROS_PRL[prl_tec_sel] = {}
-                
-            REGISTROS_PRL[prl_tec_sel] = {
-                'nip': prl_nip,
-                'dni': prl_dni,
-                'fecha': prl_fecha_cad.strftime('%Y-%m-%d'),
-                'obs': prl_obs
+        if st.button("💾 Guardar Cambios PRL", type="primary"):
+            REGISTROS_PRL[tec_sel_prl] = {
+                'nip': nuevo_nip,
+                'dni': nuevo_dni,
+                'fecha': nueva_fecha.strftime('%Y-%m-%d'),
+                'obs': nueva_obs
             }
             guardar_prl_drive()
-            st.success(f"✅ Datos de reconocimiento médico actualizados correctamente para **{prl_tec_sel}**.")
+            st.success(f"✅ Reconocimiento médico actualizado correctamente para {tec_sel_prl}.")
             st.rerun()
-    else:
-        st.info("👁️ Estás en modo Lector. La modificación de fechas PRL está reservada para editores.")
 
 with tab_incidencias:
-    st.markdown(f"### ⚠️ Panel de Control de Excesos y Alertas de Solapamiento ({dd_anio})")
-    
-    alertas = []
-    for tec, info in TECNICOS.items():
-        vac_c = 0
-        for k, v in REGISTROS.items():
-            if (k[0] if isinstance(k, tuple) else int(k.split('|')[0])) == dd_anio and (k[1] if isinstance(k, tuple) else k.split('|')[1]) == tec:
-                if isinstance(v, dict) and v.get('tipo') == 'V': vac_c += 1
-                elif not isinstance(v, dict) and v == 'V': vac_c += 1
-        if vac_c > info['vac_totales']:
-            alertas.append(f"Exceso de Vacaciones: **{tec}** ha consumido {vac_c} días de su asignación de {info['vac_totales']}.")
-    
-    if alertas:
-        for al in alertas: st.error(al)
+    st.markdown("### ⚠️ Registro Histórico de Incidencias y Solapamientos")
+    if 'historial_incidencias_solapamiento' in st.session_state and st.session_state.historial_incidencias_solapamiento:
+        st.dataframe(pd.DataFrame(st.session_state.historial_incidencias_solapamiento), use_container_width=True, hide_index=True)
     else:
-        st.success("✅ Sin incidencias críticas ni saturación en los topes de saldo actuales.")
-
-    st.markdown("---")
-    st.markdown("#### 🔄 Historial de Solapamientos Registrados en Centros")
-    historial_solap = st.session_state.get('historial_incidencias_solapamiento', [])
-    if not historial_solap:
-        st.info("No se han registrado incidencias de solapamiento de personal en los centros durante esta sesión.")
-    else:
-        st.dataframe(pd.DataFrame(historial_solap), use_container_width=True, hide_index=True)
+        st.info("No se han registrado incidencias de solapamiento en la sesión actual.")
 
 with tab_auditoria:
-    st.markdown(f"### 📋 Registro de Auditoría y Trazabilidad")
-    if not st.session_state.historial_auditoria:
-        st.info("No se han registrado modificaciones o eventos de auditoría en la sesión actual.")
-    else:
+    st.markdown("### 📋 Auditoría de Acciones de la Sesión")
+    if st.session_state.historial_auditoria:
         st.dataframe(pd.DataFrame(st.session_state.historial_auditoria), use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay acciones registradas en el portafolio de auditoría todavía.")
 
 with tab_config:
-    st.markdown("### ⚙️ Configuración del Sistema y Resguardo de Datos")
-    st.markdown("#### 💾 Copia de Seguridad Local")
-    try:
-        with open(RUTA_BDD, 'r', encoding='utf-8') as f:
-            json_data_str = f.read()
-    except FileNotFoundError:
-        json_data_str = "{}"
-        
-    st.download_button(
-        label="📥 Descargar Base de Datos (.json)",
-        data=json_data_str,
-        file_name="datos_tecnicos_repsol.json",
-        mime="application/json",
-        use_container_width=True
-    )
-    st.markdown("---")
-    st.markdown("### 📅 Mantenimiento de Calendario de Festivos por Centro")
+    st.markdown("### ⚙️ Configuración General y Festivos")
+    st.markdown("Gestión de festivos por centro de trabajo y año operativo.")
+    conf_anio_sel = st.selectbox("Año operativo a configurar:", ANOS_DISPONIBLES, key='conf_anio')
+    conf_ci_sel = st.selectbox("Centro de Trabajo (CI):", list(FESTIVOS_DEFAULT.keys()), key='conf_ci')
     
-    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    with col_f1:
-        cfg_anio = st.selectbox('Año del Festivo:', ANOS_DISPONIBLES, key='cfg_anio_fest')
-    with col_f2:
-        cfg_centro = st.selectbox('Centro de Trabajo (CI):', list(set(i['ci'] for i in TECNICOS.values())), key='cfg_c')
-    with col_f3:
-        cfg_mes = st.selectbox('Mes:', list(MESES.keys()), format_func=lambda x: MESES[x], key='cfg_m')
-    with col_f4:
-        cfg_dia = st.selectbox('Día:', list(range(1, calendar.monthrange(cfg_anio, cfg_mes)[1] + 1)), key='cfg_d')
-    
-    if st.session_state.rol_actual == "Editor":
-        if st.button('Añadir Día Festivo', use_container_width=True, type='primary'):
-            if cfg_anio not in FESTIVOS_POR_ANIO: 
-                FESTIVOS_POR_ANIO[cfg_anio] = {}
-            if cfg_centro not in FESTIVOS_POR_ANIO[cfg_anio]: 
-                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro] = []
-            
-            if (cfg_mes, cfg_dia) not in FESTIVOS_POR_ANIO[cfg_anio][cfg_centro]:
-                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].append((cfg_mes, cfg_dia))
-                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].sort(key=lambda x: (x[0], x[1]))
-                guardar_festivos_drive()
-                st.success(f"✅ Festivo {cfg_dia}/{cfg_mes}/{cfg_anio} añadido correctamente para {cfg_centro}.")
-                st.rerun()
-            else:
-                st.warning("⚠️ Este día ya figura como festivo para este centro en el año seleccionado.")
-    else:
-        st.button('Añadir Día Festivo (Bloqueado)', disabled=True, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown(f"#### 📋 Listado de Festivos Actuales para {cfg_centro} ({cfg_anio})")
-    
-    festivos_actuales_centro = FESTIVOS_POR_ANIO.get(cfg_anio, {}).get(cfg_centro, [])
-    
-    if not festivos_actuales_centro:
-        st.info("No hay días festivos configurados para este centro en el año seleccionado.")
-    else:
-        datos_tabla_festivos = []
-        for idx, (m, d) in enumerate(festivos_actuales_centro):
-            nombre_mes = MESES.get(m, str(m))
-            datos_tabla_festivos.append({
-                'ID': idx,
-                'Día': d,
-                'Mes': nombre_mes,
-                'Fecha Completa': f"{d:02d}/{m:02d}/{cfg_anio}"
-            })
-            
-        st.dataframe(pd.DataFrame(datos_tabla_festivos), use_container_width=True, hide_index=True)
-        
-        if st.session_state.rol_actual == "Editor":
-            id_borrar_festivo = st.selectbox(
-                "Seleccionar ID de festivo para eliminar por error:", 
-                [item['ID'] for item in datos_tabla_festivos],
-                key='id_borrar_festivo_sel'
-            )
-            if st.button("🗑️ Eliminar Festivo Seleccionado", type="secondary", use_container_width=True):
-                FESTIVOS_POR_ANIO[cfg_anio][cfg_centro].pop(id_borrar_festivo)
-                guardar_festivos_drive()
-                st.success("Festivo eliminado correctamente.")
-                st.rerun()
+    festivos_actuales = FESTIVOS_POR_ANIO.get(conf_anio_sel, FESTIVOS_POR_ANIO_DEFAULT[conf_anio_sel]).get(conf_ci_sel, [])
+    st.write(f"Festivos actuales configurados para **{conf_ci_sel}** en **{conf_anio_sel}**: {festivos_actuales}")
 
 with tab_horarios:
-    st.markdown(f"### ⏰ Horarios Oficiales de Cliente por Centro ({dd_anio})")
-    horarios_anio = HORARIOS_CI_ANUAL.get(dd_anio, HORARIOS_CI_DEFAULT[dd_anio])
-    h_data = []
-    for ci, d in horarios_anio.items():
-        b_i = d.get('bolsa_ini')
-        b_f = d.get('bolsa_fin')
-        str_bolsa = f"Del {b_i.strftime('%d/%m/%Y')} al {b_f.strftime('%d/%m/%Y')} (+2h L-J)" if b_i and b_f else "Sin bolsa activa"
-        h_data.append({
-            'Centro': ci, 
-            'Horario': d['horario'], 
-            'H/Semana': d['h_sem'], 
-            'Bolsa Horas Parada': str_bolsa,
-            'Observaciones': d['obs']
+    st.markdown("### ⏰ Configuración de Horarios por Centro (CI)")
+    horarios_anio_sel = st.selectbox("Año Horarios:", ANOS_DISPONIBLES, key='horarios_anio_s')
+    horarios_actuales = HORARIOS_CI_ANUAL.get(horarios_anio_sel, HORARIOS_CI_DEFAULT[horarios_anio_sel])
+    
+    tabla_horarios_vis = []
+    for ci_n, val_h in horarios_actuales.items():
+        tabla_horarios_vis.append({
+            'Centro': ci_n,
+            'Horario': val_h['horario'].replace('<br>', ' | '),
+            'Horas Semanales': val_h['h_sem'],
+            'Observaciones': val_h['obs']
         })
-    st.dataframe(pd.DataFrame(h_data), use_container_width=True, hide_index=True)
-    
-    st.markdown("---")
-    st.markdown("#### ✏️ Actualización de Jornadas, Horarios y Bolsas de Parada")
-    
-    col_hz1, col_hz2 = st.columns(2)
-    with col_hz1:
-        hz_anio_sel = st.selectbox('Año del Horario:', ANOS_DISPONIBLES, key='hz_anio_sel')
-    with col_hz2:
-        lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
-        hz_centro_sel = st.selectbox('Centro:', lista_centros_ci, key='hz_centro_sel')
-        
-    current_hz_data = HORARIOS_CI_ANUAL.get(hz_anio_sel, HORARIOS_CI_DEFAULT[hz_anio_sel]).get(hz_centro_sel, {'horario': "L-V 07'15h-15'15h", 'h_sem': "40h", 'obs': "-", 'bolsa_ini': None, 'bolsa_fin': None})
-    
-    col_hz3, col_hz4 = st.columns(2)
-    with col_hz3:
-        hz_horario_input = st.text_input('Definición de Horario:', value=current_hz_data['horario'], key='hz_horario_input')
-    with col_hz4:
-        hz_hsem_input = st.text_input('Cómputo Horas / Semana:', value=current_hz_data['h_sem'], key='hz_hsem_input')
-        
-    col_hz5, col_hz6 = st.columns(2)
-    with col_hz5:
-        usar_bolsa = st.checkbox("Activar Bolsa de Parada (+2h de L-J)", value=bool(current_hz_data.get('bolsa_ini')), key='hz_usar_bolsa')
-    with col_hz6:
-        hz_obs_input = st.text_input('Comentarios u Observaciones:', value=current_hz_data['obs'], key='hz_obs_input')
-        
-    b_ini_val = current_hz_data.get('bolsa_ini') or date(hz_anio_sel, 9, 28)
-    b_fin_val = current_hz_data.get('bolsa_fin') or date(hz_anio_sel, 11, 2)
-    
-    hz_bolsa_ini_input = None
-    hz_bolsa_fin_input = None
-    if usar_bolsa:
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            hz_bolsa_ini_input = st.date_input("Fecha Inicio Bolsa:", value=b_ini_val, key='hz_bolsa_ini_input')
-        with col_b2:
-            hz_bolsa_fin_input = st.date_input("Fecha Fin Bolsa:", value=b_fin_val, key='hz_bolsa_fin_input')
-
-    if st.session_state.rol_actual == "Editor":
-        if st.button('💾 Guardar Parámetros de Horario', type='primary', use_container_width=True):
-            if hz_anio_sel not in HORARIOS_CI_ANUAL:
-                HORARIOS_CI_ANUAL[hz_anio_sel] = HORARIOS_CI_DEFAULT[hz_anio_sel].copy()
-            
-            HORARIOS_CI_ANUAL[hz_anio_sel][hz_centro_sel] = {
-                'horario': hz_horario_input,
-                'h_sem': hz_hsem_input,
-                'obs': hz_obs_input,
-                'bolsa_ini': hz_bolsa_ini_input if usar_bolsa else None,
-                'bolsa_fin': hz_bolsa_fin_input if usar_bolsa else None
-            }
-            guardar_horarios_ci_drive()
-            st.success(f"✅ Configuración horaria actualizada para **{hz_centro_sel}** en el período **{hz_anio_sel}**.")
-            st.rerun()
-    else:
-        st.button('💾 Guardar Parámetros de Horario (Bloqueado)', disabled=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(tabla_horarios_vis), use_container_width=True, hide_index=True)
 
 with tab_hld:
-    st.markdown(f"### ⏳ Configuración de HLD Anuales por Centro ({dd_anio})")
-    hld_anio_actual = HLD_ANUAL_POR_ANIO.get(dd_anio, HLD_ANUAL_DEFAULT.get(dd_anio, {}))
-    hld_data = [{'Centro (CI)': ci, 'Total HLD Asignado (h)': f"{val}h"} for ci, val in hld_anio_actual.items()]
-    st.dataframe(pd.DataFrame(hld_data), use_container_width=True, hide_index=True)
+    st.markdown("### ⏳ Configuración Anual de Horas de Libre Disposición (HLD)")
+    hld_anio_sel = st.selectbox("Año HLD:", ANOS_DISPONIBLES, key='hld_anio_s')
+    hld_actuales = HLD_ANUAL_POR_ANIO.get(hld_anio_sel, HLD_ANUAL_DEFAULT[hld_anio_sel])
     
-    st.markdown("---")
-    st.markdown("#### ⚙️ Parámetros de Asignación HLD")
-    
-    col_h1, col_h2, col_h3 = st.columns(3)
-    with col_h1:
-        hld_anio_sel = st.selectbox('Año HLD:', ANOS_DISPONIBLES, key='hld_anio_sel_cfg')
-    with col_h2:
-        lista_centros_ci = list(set(i['ci'] for i in TECNICOS.values()))
-        hld_centro_sel = st.selectbox('Centro:', lista_centros_ci, key='hld_centro_sel_cfg')
-    with col_h3:
-        valor_actual_hld = float(HLD_ANUAL_POR_ANIO.get(hld_anio_sel, HLD_ANUAL_DEFAULT.get(hld_anio_sel, {})).get(hld_centro_sel, 87.0))
-        hld_nuevo_val = st.number_input('Total Horas HLD:', min_value=0.0, max_value=200.0, value=valor_actual_hld, step=0.5, key='hld_nuevo_val_cfg')
-        
-    if st.session_state.rol_actual == "Editor":
-        if st.button('💾 Guardar Configuración HLD', type='primary', use_container_width=True):
-            if hld_anio_sel not in HLD_ANUAL_POR_ANIO:
-                HLD_ANUAL_POR_ANIO[hld_anio_sel] = HLD_ANUAL_DEFAULT.get(hld_anio_sel, {
-                    'Petronor': 89.0, 'Coruña': 63.5, 'Tarragona': 87.0, 'Puertollano': 87.0, 'Cartagena': 76.0
-                }).copy()
-            
-            HLD_ANUAL_POR_ANIO[hld_anio_sel][hld_centro_sel] = hld_nuevo_val
-            guardar_hld_anual_drive()
-            st.success(f"✅ Asignación HLD actualizada para **{hld_centro_sel}** en el año **{hld_anio_sel}** ({hld_nuevo_val}h).")
-            st.rerun()
-    else:
-        st.button('💾 Guardar Configuración HLD (Bloqueado)', disabled=True, use_container_width=True)
+    tabla_hld_vis = [{'Centro': ci_n, 'Horas HLD Anuales': h_val} for ci_n, h_val in hld_actuales.items()]
+    st.dataframe(pd.DataFrame(tabla_hld_vis), use_container_width=True, hide_index=True)
 
-# ==========================================
-# FOOTER CORPORATIVO GLOBAL
-# ==========================================
-st.markdown(f"""
+st.markdown("""
 <div class="footer-copyright">
-    © {dd_anio} <b>Juan Pedro Murillo Huete</b>. Todos los derechos reservados.<br>
-    Desarrollado para el Servicio de Soporte a Infraestructuras y Sistemas (RPECII) de <b>Indra Group</b>.
+    © 2026 Juan Pedro Murillo Huete. Todos los derechos reservados. <br>
+    Sistema de Accesos CI - Indra Group & Repsol RPECII.
 </div>
 """, unsafe_allow_html=True)
