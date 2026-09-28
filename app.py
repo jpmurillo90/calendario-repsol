@@ -248,23 +248,53 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
 
 # -------------------- Presentación y autenticación --------------------
 st.markdown('''<style>
-.stApp {background:#f5f7fa;color:#172b3a;}
-.block-container {padding-top:2rem;max-width:1600px;}
-[data-testid="stSidebar"] {background:#fff;border-right:1px solid #e2e8f0;}
+:root {--ci-primary:#07566a;--ci-primary-dark:#123b49;--ci-bg:#f4f7f9;--ci-card:#ffffff;--ci-border:#e2e8f0;--ci-text:#172b3a;--ci-muted:#647785;--ci-radius:14px;}
+.stApp {background:linear-gradient(180deg,#f7f9fb 0,#f4f7f9 240px);color:var(--ci-text);}
+.block-container {padding-top:1.55rem;padding-bottom:2.5rem;max-width:1600px;}
+[data-testid="stSidebar"] {background:#fff;border-right:1px solid var(--ci-border);box-shadow:4px 0 18px rgba(15,43,56,.035);}
+[data-testid="stSidebar"] [data-testid="stImage"] {padding:8px 4px 4px;}
+[data-testid="stSidebar"] h1 {font-size:1.18rem!important;margin-bottom:.7rem;}
+[data-testid="stSidebar"] [role="radiogroup"] {gap:.2rem;}
+[data-testid="stSidebar"] [role="radiogroup"] label {padding:.45rem .55rem;border-radius:9px;transition:.15s ease;}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {background:#f1f6f8;}
 h1,h2,h3 {letter-spacing:-.025em;color:#12313d;}
-[data-testid="stMetric"] {background:white;padding:18px;border:1px solid #e5ebf0;border-radius:12px;}
-button[kind="primary"] {background:#07566a;border-color:#07566a;color:white;}
-.ci-card {background:white;border:1px solid #e5ebf0;border-radius:14px;padding:20px;margin:8px 0 18px;min-height:150px;}
+h1 {font-weight:750!important;font-size:2rem!important;margin-bottom:.1rem!important;}
+h2 {font-size:1.35rem!important;margin-top:1.4rem!important;}
+h3 {font-size:1.05rem!important;}
+p, .stCaption {line-height:1.5;}
+[data-testid="stCaptionContainer"] {color:var(--ci-muted);}
+hr {border-color:#e7edf1!important;margin:1.3rem 0!important;}
+[data-testid="stMetric"] {background:#fff;padding:17px 18px;border:1px solid var(--ci-border);border-radius:var(--ci-radius);box-shadow:0 5px 16px rgba(15,43,56,.045);}
+[data-testid="stMetricLabel"] {color:#607584;font-weight:650;}
+[data-testid="stMetricValue"] {color:#12313d;font-weight:750;letter-spacing:-.03em;}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button {border-radius:9px!important;min-height:2.55rem;font-weight:650;border-color:#d7e1e7;transition:.15s ease;}
+.stButton>button:hover,.stDownloadButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover {border-color:#7ba5b0;box-shadow:0 3px 10px rgba(7,86,106,.09);}
+button[kind="primary"] {background:var(--ci-primary)!important;border-color:var(--ci-primary)!important;color:white!important;box-shadow:0 4px 12px rgba(7,86,106,.16);}
+button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!important;}
+[data-baseweb="select"]>div,[data-baseweb="input"]>div,[data-testid="stDateInput"]>div>div {border-radius:9px!important;border-color:#dbe4e9!important;background:#fff;}
+[data-testid="stExpander"] {background:#fff;border:1px solid var(--ci-border)!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,43,56,.025);overflow:hidden;}
+[data-testid="stExpander"] summary {font-weight:650;color:#274654;}
+[data-testid="stDataFrame"] {border:1px solid var(--ci-border);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 3px 12px rgba(15,43,56,.025);}
+[data-testid="stAlert"] {border-radius:11px!important;border-width:1px!important;}
+[role="radiogroup"] {gap:.25rem;}
+[role="radiogroup"] label {font-weight:550;}
+.ci-statusbar {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:.7rem 0 1.15rem;padding:9px 12px;background:rgba(255,255,255,.82);border:1px solid #e3eaee;border-radius:11px;box-shadow:0 3px 12px rgba(15,43,56,.025);}
+.ci-statusitem {display:inline-flex;align-items:center;gap:6px;color:#536b78;font-size:12px;font-weight:650;padding:3px 7px;}
+.ci-dot {width:7px;height:7px;border-radius:50%;background:#15803d;box-shadow:0 0 0 3px #dcfce7;}
+.ci-sep {width:1px;height:16px;background:#e1e8ec;}
+.ci-card {background:white;border:1px solid var(--ci-border);border-radius:var(--ci-radius);padding:20px;margin:8px 0 18px;box-shadow:0 5px 16px rgba(15,43,56,.04);min-height:150px;}
 .ci-card h3 {margin:0 0 12px;font-size:19px;}
 .subtle {color:#607584;font-size:14px;}
-.grid-wrap {overflow:auto;border:1px solid #dee6ec;border-radius:12px;background:white;}
+.grid-wrap {overflow:auto;border:1px solid #dee6ec;border-radius:13px;background:white;box-shadow:0 4px 14px rgba(15,43,56,.035);}
 .grid {border-collapse:separate;border-spacing:0;width:100%;font-size:13px;white-space:nowrap;}
-.grid th {background:#123b49;color:white;padding:12px 9px;position:sticky;top:0;}
+.grid th {background:#123b49;color:white;padding:12px 9px;position:sticky;top:0;font-weight:650;}
 .grid td {border-bottom:1px solid #edf1f4;padding:12px 9px;text-align:center;min-width:42px;}
-.grid .name {position:sticky;left:0;text-align:left;background:white;min-width:200px;z-index:1;}
+.grid tbody tr:hover td {filter:brightness(.985);}
+.grid .name {position:sticky;left:0;text-align:left;background:white;min-width:200px;z-index:1;font-weight:600;}
 .grid th.name {background:#123b49;z-index:2;}
 .today {box-shadow:inset 0 0 0 2px #087c94;}
-.tag {display:inline-block;padding:4px 9px;border-radius:6px;margin:4px;font-size:12px;color:#172b3a;}
+.tag {display:inline-block;padding:5px 9px;border-radius:999px;margin:4px;font-size:11px;font-weight:650;color:#172b3a;border:1px solid rgba(23,43,58,.07);}
+@media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}}
 </style>''', unsafe_allow_html=True)
 
 BASE = Path(__file__).resolve().parent
@@ -613,6 +643,14 @@ if 'aviso_local' in st.session_state:
     st.warning(st.session_state.pop('aviso_local'))
 st.title(pagina)
 st.caption(f'Gestión de Técnicos CI · {centro} · {dd_anio}')
+st.markdown(
+    f'<div class="ci-statusbar">'
+    f'<span class="ci-statusitem"><span class="ci-dot"></span>{"Datos remotos conectados" if REMOTE else "Almacenamiento local"}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">👥 {len(visibles)} técnico{"s" if len(visibles) != 1 else ""}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">📍 {escape(centro)}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">📅 {dd_anio}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">{escape(st.session_state.usuario_actual)} · {escape(st.session_state.rol_actual)}</span>'
+    f'</div>', unsafe_allow_html=True)
 
 def tabla(datos):
     if datos:
@@ -636,16 +674,16 @@ def render_inicio():
     st.markdown('''<style>
     .home-box {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;
       background:var(--surface);color:var(--ink);border:1px solid #dbe3ea;
-      border-top:5px solid var(--accent);border-radius:12px;padding:18px;margin:8px 0 16px;}
+      border-top:4px solid var(--accent);border-radius:14px;padding:18px 19px;margin:8px 0 16px;box-shadow:0 5px 16px rgba(15,43,56,.04);}
     .home-box.success,.home-badge.success {--accent:#15803d;--surface:#f0fdf4;--ink:#166534;}
     .home-box.warning,.home-badge.warning {--accent:#b45309;--surface:#fffbeb;--ink:#92400e;}
     .home-box.danger,.home-badge.danger {--accent:#b91c1c;--surface:#fef2f2;--ink:#991b1b;}
     .home-box.info,.home-badge.info {--accent:#0369a1;--surface:#eff6ff;--ink:#075985;}
     .home-box.neutral,.home-badge.neutral {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;}
-    .home-value {font-size:34px;font-weight:800;line-height:1.2;margin:8px 0;}
-    .home-label {font-weight:700;font-size:14px;}
+    .home-value {font-size:36px;font-weight:780;letter-spacing:-.04em;line-height:1.15;margin:9px 0 7px;}
+    .home-label {font-weight:700;font-size:13px;letter-spacing:.01em;}
     .home-note {font-size:13px;margin-top:8px;}
-    .home-badge {display:inline-block;border-radius:6px;padding:5px 9px;
+    .home-badge {display:inline-block;border-radius:999px;padding:5px 10px;
       background:var(--surface);color:var(--ink);border:1px solid var(--accent);
       font-size:12px;font-weight:700;margin:4px 4px 4px 0;}
     .home-person {padding:12px 0;border-top:1px solid #dbe3ea;margin-top:12px;}
@@ -1122,3 +1160,4 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+
