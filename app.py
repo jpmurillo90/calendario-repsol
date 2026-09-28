@@ -46,6 +46,8 @@ RUTA_HORARIOS_CI = "horarios_ci_repsol.json"
 RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 
 RUTA_PRL = "prl_repsol.json"
+RUTA_GUARDIAS = "guardias_repsol.json"
+RUTA_ACTIVACIONES = "activaciones_guardia_repsol.json"
 
 RUTA_TECNICOS = "tecnicos_repsol.json"
 
@@ -198,10 +200,14 @@ def obtener_horas_hld(tecnico, mes, dia, anio):
 def obtener_horas_jornada_real(tecnico, anio, mes, dia):
     return obtener_horas_hld(tecnico, mes, dia, anio)
 
+def he_compensadas_registro(item):
+    if 'horas_compensadas' in item:
+        return float(item.get('horas_compensadas', 0) or 0)
+    return float(item.get('horas_reales', 0) or 0) * 1.75
+
 def calcular_he_compensadas_totales(tecnico, anio):
     lista_he = REGISTROS_HE.get(tecnico, [])
-    total_reales = sum(item['horas_reales'] for item in lista_he if item['anio'] == anio)
-    return round(total_reales * 1.75, 2)
+    return round(sum(he_compensadas_registro(item) for item in lista_he if item.get('anio') == anio), 2)
 
 def extraer_info_registro(val_reg, tec, anio, mes, dia):
     if not val_reg:
@@ -458,7 +464,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -569,6 +575,8 @@ for _nombre, _datos in TECNICOS.items():
 REGISTROS = normalizar_registros(cargar_json(RUTA_BDD, {}))
 REGISTROS_HE = cargar_json(RUTA_HE, {})
 REGISTROS_PRL = cargar_json(RUTA_PRL, PRL_DEFAULT)
+REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
+ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
 FESTIVOS_POR_ANIO = {int(a): {c: [tuple(x) for x in v] for c,v in cs.items()} for a,cs in cargar_json(RUTA_FESTIVOS, FESTIVOS_POR_ANIO_DEFAULT).items()}
 CONFIG_ANUAL_POR_ANIO = {int(a): v for a,v in cargar_json(RUTA_CONFIG_ANUAL, CONFIG_ANUAL_DEFAULT).items()}
@@ -640,7 +648,7 @@ logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
 st.sidebar.title('Técnicos CI')
-pagina = st.sidebar.radio('Navegación', ['Inicio', 'Cuadrante', 'Técnicos', 'Horas extra', 'Informes', 'Configuración'])
+pagina = st.sidebar.radio('Navegación', ['Inicio', 'Cuadrante', 'Guardias', 'Técnicos', 'Horas extra', 'Informes', 'Configuración'])
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
 visibles = [t for t,v in TECNICOS.items() if v.get('activo', True) and (centro == 'Todos' or v['ci'] == centro)]
@@ -1000,6 +1008,171 @@ def render_tecnicos():
     tabla(sorted([x for x in eventos if x['Fecha']>=date.today()],key=lambda x:x['Fecha']))
     with st.expander('Histórico del año'): tabla(sorted(eventos,key=lambda x:x['Fecha'],reverse=True))
 
+def _parse_fecha_iso(valor):
+    try:
+        return date.fromisoformat(str(valor))
+    except (ValueError, TypeError):
+        return None
+
+def calcular_activacion_guardia(fecha, hora_inicio, hora_fin, centro_ci):
+    """Condiciones 12x7: franja 08:00-20:00, HE x2 y abono tras superar 4 h."""
+    ini = datetime.combine(fecha, hora_inicio)
+    fin = datetime.combine(fecha, hora_fin)
+    if fin <= ini:
+        fin += timedelta(days=1)
+    total = (fin-ini).total_seconds()/3600
+    if total > 24:
+        raise ValueError('La activación no puede superar 24 horas.')
+    fuera = 0.0
+    cursor = ini
+    while cursor < fin:
+        d = cursor.date()
+        tramo_ini = max(ini, datetime.combine(d, datetime.min.time()))
+        tramo_fin = min(fin, datetime.combine(d+timedelta(days=1), datetime.min.time()))
+        g_ini = datetime.combine(d, datetime.strptime('08:00','%H:%M').time())
+        g_fin = datetime.combine(d, datetime.strptime('20:00','%H:%M').time())
+        dentro_ini, dentro_fin = max(tramo_ini,g_ini), min(tramo_fin,g_fin)
+        dentro_dia = max(0.0,(dentro_fin-dentro_ini).total_seconds()/3600)
+        fuera += max(0.0,(tramo_fin-tramo_ini).total_seconds()/3600-dentro_dia)
+        cursor = tramo_fin
+    dentro = max(0.0,total-fuera)
+    exceso_dentro = max(0.0,dentro-4.0)
+    he_generadas = 2.0*(fuera+exceso_dentro)
+    horas_abono = max(0.0,total-4.0)
+    es_festivo = (fecha.month,fecha.day) in FESTIVOS_POR_ANIO.get(fecha.year,{}).get(centro_ci,[])
+    laborable = fecha.weekday() < 5 and not es_festivo
+    tarifa = 20.0 if laborable else 25.0
+    importe = horas_abono*tarifa
+    return {'horas_totales':round(total,2),'horas_dentro':round(dentro,2),'horas_fuera':round(fuera,2),
+            'horas_exceso_4':round(exceso_dentro,2),'he_generadas':round(he_generadas,2),
+            'horas_abono':round(horas_abono,2),'tarifa':tarifa,'importe':round(importe,2),
+            'tipo_dia':'Laborable' if laborable else 'Sábado/domingo/festivo'}
+
+def render_guardias():
+    st.markdown("""<style>
+    .guard-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:102px}
+    .guard-kpi small{color:#718493;font-weight:700}.guard-kpi strong{display:block;font-size:27px;color:#12313d;margin-top:5px}
+    </style>""",unsafe_allow_html=True)
+    st.caption('Guardias 12x7 · horario de referencia 08:00–20:00. Un mismo CI no puede tener dos técnicos de guardia en fechas solapadas.')
+    guardias_anio=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==dd_anio]
+    acts_anio=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==dd_anio]
+    total_importe=sum(float(a.get('importe',0) or 0) for a in acts_anio)
+    total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts_anio)
+    c1,c2,c3,c4=st.columns(4)
+    for col,label,val in [(c1,'Guardias registradas',len(guardias_anio)),(c2,'Activaciones',len(acts_anio)),(c3,'HE por activaciones',f'{total_he:g} h'),(c4,'Importe activaciones',f'{total_importe:,.2f} €')]:
+        col.markdown(f'<div class="guard-kpi"><small>{label}</small><strong>{val}</strong></div>',unsafe_allow_html=True)
+    tab_plan,tab_act,tab_calc,tab_res=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen'])
+    perfil_usuario = usuarios.get(st.session_state.get('usuario_id',''), {}) if hasattr(usuarios, 'get') else {}
+    tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
+    tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
+    with tab_plan:
+        st.markdown('#### Marcar semana de guardia')
+        if EDITOR:
+            candidatos=visibles
+        elif tecnico_sesion and TECNICOS.get(tecnico_sesion,{}).get('activo',True):
+            candidatos=[tecnico_sesion]
+        else:
+            candidatos=[]
+            st.info('Tu usuario no está vinculado a un técnico con el mismo nombre. Un Editor puede registrar la guardia o ajustar el nombre del usuario en Secrets.')
+        if candidatos:
+            with st.form('form_guardia'):
+                tg=st.selectbox('Técnico',candidatos,disabled=not EDITOR)
+                fsel=st.date_input('Cualquier día de la semana',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
+                nota=st.text_input('Observaciones (opcional)')
+                guardar=st.form_submit_button('Registrar semana',type='primary')
+            lunes=fsel-timedelta(days=fsel.weekday()); domingo=lunes+timedelta(days=6)
+            st.caption(f'Semana propuesta: {lunes:%d/%m/%Y} → {domingo:%d/%m/%Y}')
+            if guardar:
+                ci=TECNICOS[tg]['ci']; conflicto=[]
+                for g in REGISTROS_GUARDIAS:
+                    if g.get('centro')!=ci or g.get('tecnico')==tg: continue
+                    gi,gf=_parse_fecha_iso(g.get('inicio')),_parse_fecha_iso(g.get('fin'))
+                    if gi and gf and lunes<=gf and domingo>=gi: conflicto.append(g)
+                duplicada=any(g.get('tecnico')==tg and g.get('inicio')==lunes.isoformat() for g in REGISTROS_GUARDIAS)
+                if lunes.year!=dd_anio or domingo.year!=dd_anio: st.error('La semana debe quedar completa dentro del año seleccionado.')
+                elif duplicada: st.info('Esa semana ya está registrada para el técnico.')
+                elif conflicto: st.error('No se puede guardar: ya existe otra guardia solapada en el mismo CI: '+', '.join(x.get('tecnico','') for x in conflicto))
+                else:
+                    nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
+                    nuevo.append({'id':hashlib.sha256(f'{tg}|{lunes.isoformat()}'.encode()).hexdigest()[:16],'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':lunes.isoformat(),'fin':domingo.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
+                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Guardia 12x7: {tg}, {lunes} a {domingo}'): st.rerun()
+        filas=[]
+        for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
+            if centro!='Todos' and g.get('centro')!=centro: continue
+            filas.append({'Semana':f"{date.fromisoformat(g['inicio']):%d/%m} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')})
+        st.markdown('#### Guardias registradas'); tabla(filas)
+        propias=[g for g in guardias_anio if EDITOR or g.get('tecnico')==tecnico_sesion]
+        if propias:
+            with st.expander('Eliminar una guardia registrada'):
+                gid=st.selectbox('Guardia',[g['id'] for g in propias],format_func=lambda i:next(f"{g['tecnico']} · {date.fromisoformat(g['inicio']):%d/%m/%Y}" for g in propias if g['id']==i))
+                conf=st.checkbox('Confirmar eliminación',key='conf_del_guardia')
+                if st.button('Eliminar guardia',disabled=not conf):
+                    nuevo=[g for g in REGISTROS_GUARDIAS if g.get('id')!=gid]
+                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Eliminar guardia {gid}'): st.rerun()
+    with tab_act:
+        st.markdown('#### Registrar activación')
+        if not EDITOR:
+            st.info('Las activaciones y su repercusión económica/HE solo pueden registrarlas los Editores.')
+        else:
+            with st.form('form_activacion'):
+                ta=st.selectbox('Técnico activado',visibles,key='act_tec')
+                fa=st.date_input('Fecha de activación',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
+                ca,cb=st.columns(2); hi=ca.time_input('Hora inicio',value=datetime.strptime('18:00','%H:%M').time()); hf=cb.time_input('Hora fin',value=datetime.strptime('20:00','%H:%M').time())
+                motivo=st.text_area('Motivo / detalle de la activación')
+                calcular=st.form_submit_button('Calcular activación',type='primary')
+            if calcular:
+                calc=calcular_activacion_guardia(fa,hi,hf,TECNICOS[ta]['ci'])
+                st.session_state['act_preview']={'tecnico':ta,'fecha':fa.isoformat(),'inicio':hi.strftime('%H:%M'),'fin':hf.strftime('%H:%M'),'motivo':motivo.strip(),**calc}
+            prev=st.session_state.get('act_preview')
+            if prev:
+                st.markdown('##### Resultado')
+                a1,a2,a3,a4=st.columns(4); a1.metric('Intervención',f"{prev['horas_totales']:g} h"); a2.metric('Fuera 08–20',f"{prev['horas_fuera']:g} h"); a3.metric('HE generadas',f"{prev['he_generadas']:g} h"); a4.metric('Importe bruto',f"{prev['importe']:,.2f} €")
+                st.caption(f"{prev['tipo_dia']} · {prev['horas_abono']:g} h a abonar × {prev['tarifa']:g} €/h. Las HE se incorporarán automáticamente a la bolsa del técnico.")
+                confirmar=st.checkbox('Confirmo los datos y quiero registrar la activación.',key='confirm_act')
+                if st.button('Guardar activación',type='primary',disabled=not confirmar):
+                    aid=hashlib.sha256(f"{prev['tecnico']}|{prev['fecha']}|{prev['inicio']}|{prev['fin']}|{time.time()}".encode()).hexdigest()[:16]
+                    act={**prev,'id':aid,'anio':dd_anio,'centro':TECNICOS[prev['tecnico']]['ci'],'usuario':st.session_state.usuario_actual,'registrado':datetime.now().isoformat(timespec='seconds')}
+                    nuevas_act=copy.deepcopy(ACTIVACIONES_GUARDIA); nuevas_act.append(act)
+                    nuevas_he=copy.deepcopy(REGISTROS_HE)
+                    if prev['he_generadas']:
+                        nuevas_he.setdefault(prev['tecnico'],[]).append({'anio':dd_anio,'horas_reales':prev['horas_totales'],'horas_compensadas':prev['he_generadas'],'motivo':f"Activación guardia {prev['fecha']} · {prev['motivo'] or 'Sin detalle'}",'usuario':st.session_state.usuario_actual,'fecha':datetime.now().strftime('%d/%m/%Y %H:%M'),'origen':'guardia','activacion_id':aid})
+                    if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f"Activación guardia: {prev['tecnico']} · {prev['fecha']} · {prev['he_generadas']:g} HE · {prev['importe']:.2f} €"):
+                        st.session_state.pop('act_preview',None); st.rerun()
+        filas_act=[]
+        for a in sorted(acts_anio,key=lambda x:(x.get('fecha',''),x.get('inicio','')),reverse=True):
+            if centro!='Todos' and a.get('centro')!=centro: continue
+            filas_act.append({'Fecha':date.fromisoformat(a['fecha']).strftime('%d/%m/%Y'),'CI':a.get('centro'),'Técnico':a.get('tecnico'),'Inicio':a.get('inicio'),'Fin':a.get('fin'),'Fuera horario (h)':a.get('horas_fuera',0),'HE':a.get('he_generadas',0),'Importe bruto (€)':a.get('importe',0),'Motivo':a.get('motivo','')})
+        st.markdown('#### Histórico de activaciones'); tabla(filas_act)
+        if EDITOR and acts_anio:
+            with st.expander('Eliminar activación errónea'):
+                aid=st.selectbox('Activación',[a['id'] for a in acts_anio],format_func=lambda i:next(f"{a['fecha']} · {a['tecnico']} · {a.get('he_generadas',0)} HE" for a in acts_anio if a['id']==i),key='del_act')
+                conf=st.checkbox('Confirmar eliminación de la activación y de las HE asociadas',key='conf_del_act')
+                if st.button('Eliminar activación',disabled=not conf):
+                    nuevas_act=[a for a in ACTIVACIONES_GUARDIA if a.get('id')!=aid]
+                    nuevas_he=copy.deepcopy(REGISTROS_HE)
+                    for tec in nuevas_he: nuevas_he[tec]=[h for h in nuevas_he[tec] if h.get('activacion_id')!=aid]
+                    if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f'Eliminar activación guardia {aid}'): st.rerun()
+    with tab_calc:
+        st.markdown('#### Calculadora 12x7')
+        st.caption('Simulación sin guardar datos. Condiciones trasladadas de la hoja “Condiciones Guardias”.')
+        cc=st.selectbox('CI para festivos/tarifa',CENTROS,key='calc_ci')
+        fc=st.date_input('Fecha',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),key='calc_fecha')
+        x1,x2=st.columns(2); hic=x1.time_input('Inicio',value=datetime.strptime('18:00','%H:%M').time(),key='calc_ini'); hfc=x2.time_input('Fin',value=datetime.strptime('23:00','%H:%M').time(),key='calc_fin')
+        r=calcular_activacion_guardia(fc,hic,hfc,cc)
+        tabla([{'Tipo día':r['tipo_dia'],'Horas totales':r['horas_totales'],'Dentro 08–20':r['horas_dentro'],'Fuera 08–20':r['horas_fuera'],'Exceso dentro tras 4 h':r['horas_exceso_4'],'HE generadas':r['he_generadas'],'Horas a abonar':r['horas_abono'],'€/h':r['tarifa'],'Importe bruto (€)':r['importe']}])
+        st.info('Regla aplicada: las horas fuera de 08:00–20:00 y las horas dentro de guardia que excedan las primeras 4 h generan 2 HE por hora. El abono económico se aplica a las horas totales que exceden de 4: 20 €/h laborable y 25 €/h sábado, domingo o festivo.')
+    with tab_res:
+        st.markdown('#### Resumen mensual por CI')
+        filas=[]
+        for ci in CENTROS:
+            if centro!='Todos' and ci!=centro: continue
+            for mes in range(1,13):
+                ga=sum(1 for g in guardias_anio if g.get('centro')==ci and _parse_fecha_iso(g.get('inicio')) and _parse_fecha_iso(g.get('inicio')).month==mes)
+                aa=[a for a in acts_anio if a.get('centro')==ci and _parse_fecha_iso(a.get('fecha')) and _parse_fecha_iso(a.get('fecha')).month==mes]
+                if ga or aa: filas.append({'CI':ci,'Mes':MESES[mes],'Guardias':ga,'Activaciones':len(aa),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in aa),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in aa),2)})
+        tabla(filas)
+        st.caption('La hoja original indica una estimación de 5 activaciones de guardia máximo al año por cada CCII; se muestra como referencia, no como bloqueo.')
+
 def render_he():
     t = st.selectbox('Técnico',visibles)
     _,pendientes = saldos(t,dd_anio)
@@ -1027,7 +1200,7 @@ def render_he():
             if st.button('Eliminar',disabled=not confirmar):
                 nuevo = copy.deepcopy(REGISTROS_HE)
                 retirado = nuevo[t].pop(idx)
-                if pendientes['HE']-retirado['horas_reales']*1.75<0: st.error('La eliminación dejaría horas ya consumidas sin saldo.')
+                if pendientes['HE']-he_compensadas_registro(retirado)<0: st.error('La eliminación dejaría horas ya consumidas sin saldo.')
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
 def render_informes():
@@ -1220,7 +1393,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -1269,6 +1442,6 @@ def render_config():
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
 {'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
- 'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
+ 'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
