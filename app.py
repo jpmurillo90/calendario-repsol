@@ -1011,68 +1011,138 @@ def render_mi_espacio():
 
 def _crear_registros_solicitud(sol):
     tipo=sol.get('tipo'); t=sol.get('tecnico'); ini=_parse_fecha_iso(sol.get('desde')); fin=_parse_fecha_iso(sol.get('hasta'))
-    if tipo not in ('Vacaciones','VPA','HLD') or not ini or not fin: return None,'La solicitud no genera automáticamente cuadrante.'
-    codigo={'Vacaciones':'V','VPA':'VPA','HLD':'HLD'}[tipo]; fechas=[ini+timedelta(days=i) for i in range((fin-ini).days+1)]
+    if tipo not in ('Vacaciones','Vacaciones año anterior','VPA','HLD','Consumir HE') or not ini or not fin:
+        return None,'La solicitud no genera automáticamente cuadrante.'
+    codigo={'Vacaciones':'V','Vacaciones año anterior':'VPA','VPA':'VPA','HLD':'HLD','Consumir HE':'HE'}[tipo]
+    fechas=[ini+timedelta(days=i) for i in range((fin-ini).days+1)]
     fechas=[f for f in fechas if obtener_horas_jornada_real(t,f.year,f.month,f.day)>0]
     propuesta=copy.deepcopy(REGISTROS)
     for f in fechas:
         k=(f.year,t,str(f.month),str(f.day)); jornada=float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
-        if codigo=='HLD':
+        existente=tipo_registro(propuesta.get(k,''))
+        if existente:
+            return None,f'El {f:%d/%m/%Y} ya tiene planificación ({LEYENDA.get(existente,(existente,""))[0]}).'
+        if codigo in ('HLD','HE'):
             horas=float(sol.get('horas_dia') or jornada)
-            if horas<=0 or horas>jornada: return None,f'HLD inválidas el {f:%d/%m}: {horas:g} h sobre jornada {jornada:g} h.'
-            propuesta[k]={'tipo':'HLD','horas_gastadas':horas,'anio':f.year,'tec':t}
-        else: propuesta[k]=codigo
+            if horas<=0 or horas>jornada:
+                return None,f'{codigo} inválidas el {f:%d/%m}: {horas:g} h sobre jornada {jornada:g} h.'
+            propuesta[k]={'tipo':codigo,'horas_gastadas':horas,'anio':f.year,'tec':t}
+        else:
+            propuesta[k]=codigo
     _,saldo=saldos(t,ini.year,propuesta)
-    if any(saldo[x]<0 for x in ('V','VPA','HLD')): return None,'La aprobación superaría el saldo disponible del técnico.'
-    return propuesta,f'{len(fechas)} día(s) laborable(s) incorporados al cuadrante.'
+    claves=('V','VPA','HLD','HE')
+    if any(saldo[x]<-1e-9 for x in claves):
+        return None,'La aprobación superaría el saldo disponible del técnico.'
+    unidad='hora(s)' if codigo in ('HLD','HE') else 'día(s) laborable(s)'
+    cantidad=sum(float(sol.get('horas_dia') or obtener_horas_jornada_real(t,f.year,f.month,f.day)) for f in fechas) if codigo in ('HLD','HE') else len(fechas)
+    return propuesta,f'{cantidad:g} {unidad} incorporados al cuadrante.'
+
+def _cancelar_registros_solicitud(sol_cancelacion):
+    origen_id=sol_cancelacion.get('solicitud_origen')
+    origen=next((x for x in SOLICITUDES if x.get('id')==origen_id),None)
+    if not origen: return None,None,'No se encuentra la solicitud original.'
+    if origen.get('estado')!='Aprobada': return None,None,'La solicitud original ya no está en estado Aprobada.'
+    t=origen.get('tecnico'); ini=_parse_fecha_iso(origen.get('desde')); fin=_parse_fecha_iso(origen.get('hasta'))
+    mapa={'Vacaciones':'V','Vacaciones año anterior':'VPA','VPA':'VPA','HLD':'HLD','Consumir HE':'HE'}
+    esperado=mapa.get(origen.get('tipo'))
+    if not esperado or not ini or not fin: return None,None,'Este tipo de solicitud no admite cancelación automática.'
+    propuesta=copy.deepcopy(REGISTROS); retirados=0
+    for i in range((fin-ini).days+1):
+        f=ini+timedelta(days=i); k=(f.year,t,str(f.month),str(f.day))
+        if tipo_registro(propuesta.get(k,''))==esperado:
+            propuesta.pop(k,None); retirados+=1
+    if retirados==0: return None,None,'No se encontraron registros coincidentes en el cuadrante; no se ha modificado nada.'
+    return propuesta,origen,f'{retirados} registro(s) retirados del cuadrante y saldo restituido.'
+
+def _estado_solicitud_visual(estado):
+    return {'Aprobada':'🟢 Aprobada','Pendiente':'🟡 Pendiente','Rechazada':'🔴 Rechazada','Cancelación pendiente':'🟠 Cancelación pendiente','Cancelada':'⚫ Cancelada'}.get(estado,estado or '—')
 
 def render_solicitudes():
-    st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, VPA, HLD y cambios operativos con trazabilidad y resolución por Coordinación.</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, vacaciones del año anterior, HLD y consumo de HE con aprobación, trazabilidad y actualización automática del cuadrante.</div></div>',unsafe_allow_html=True)
     if ES_TECNICO:
         t=tecnico_sesion(); st.subheader('Nueva solicitud')
         with st.form('nueva_solicitud'):
-            tipo=st.selectbox('Tipo',['Vacaciones','VPA','HLD','Cambio de guardia','Otra'])
+            tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'])
             c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today()); hasta=c2.date_input('Hasta',date.today())
-            horas=st.number_input('Horas HLD por día (solo si aplica)',min_value=0.0,max_value=24.0,value=0.0,step=.5)
+            aplica_horas=tipo in ('HLD','Consumir HE')
+            horas=st.number_input('Horas por día (solo HLD / HE; 0 = jornada completa)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=not aplica_horas)
             comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.')
             enviar=st.form_submit_button('Enviar solicitud',type='primary')
         if enviar:
             if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
             else:
-                sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if tipo=='HLD' else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
+                sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
                 nuevo=SOLICITUDES+[sol]
                 if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
                     destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
                     if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nComentario: {comentario or "—"}',destino)
                     st.rerun()
         st.subheader('Mis solicitudes')
-        filas=[{'Creada':x.get('creada','')[:16].replace('T',' '),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':x.get('estado'),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES) if x.get('tecnico')==t]
-        tabla(filas); return
+        propias=[x for x in reversed(SOLICITUDES) if x.get('tecnico')==t and not x.get('solicitud_origen')]
+        filas=[{'Creada':x.get('creada','')[:16].replace('T',' '),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':_estado_solicitud_visual(x.get('estado')),'Resolución':x.get('resolucion','')} for x in propias]
+        tabla(filas)
+        cancelables=[x for x in propias if x.get('estado')=='Aprobada']
+        if cancelables:
+            st.markdown('<div class="ci-section-label">CANCELAR UNA SOLICITUD APROBADA</div>',unsafe_allow_html=True)
+            st.caption('La cancelación no borra nada directamente: se envía a Coordinación y solo al aprobarse se retira del cuadrante y se restituye el saldo correspondiente.')
+            opciones={f"{x.get('tipo')} · {x.get('desde')} → {x.get('hasta')}":x for x in cancelables}
+            etiqueta=st.selectbox('Solicitud a cancelar',list(opciones),key='sol_cancelar_sel')
+            motivo=st.text_input('Motivo de cancelación',key='sol_cancelar_motivo')
+            if st.button('Solicitar cancelación',type='secondary',key='sol_cancelar_btn'):
+                origen=opciones[etiqueta]
+                ya=any(x.get('solicitud_origen')==origen.get('id') and x.get('estado')=='Pendiente' for x in SOLICITUDES)
+                if ya: st.warning('Ya existe una solicitud de cancelación pendiente para este registro.')
+                else:
+                    can={'id':_id_estable('cancelar',origen.get('id'),datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':f"Cancelar · {origen.get('tipo')}",'desde':origen.get('desde'),'hasta':origen.get('hasta'),'comentario':motivo.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solicitud_origen':origen.get('id')}
+                    if guardar_portal({RUTA_SOLICITUDES:SOLICITUDES+[can]},f"Cancelación solicitada: {t} · {origen.get('tipo')}",'Solicitudes'):
+                        destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                        if destino: enviar_email(f"Cancelación solicitada · {t} · {origen.get('tipo')}",f"{t} ({TECNICOS[t]['ci']}) solicita cancelar una solicitud aprobada.\n\nTipo: {origen.get('tipo')}\nPeriodo: {origen.get('desde')} a {origen.get('hasta')}\nMotivo: {motivo or '—'}",destino)
+                        st.rerun()
+        return
     pendientes=[x for x in SOLICITUDES if x.get('estado')=='Pendiente']
     st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Pendientes de revisión <span class="ci-badge {"warn" if pendientes else "ok"}">{len(pendientes)}</span></div></div>',unsafe_allow_html=True)
     for sol in reversed(pendientes):
-        st.markdown(f'<div class="ops-card"><div class="title">{escape(sol.get("tecnico",""))} · {escape(sol.get("ci",""))}</div><div style="font-size:15px;font-weight:800;color:#173542">{escape(sol.get("tipo",""))} · {escape(sol.get("desde",""))} → {escape(sol.get("hasta",""))}</div><div class="note">{escape(sol.get("comentario") or "Sin comentario")}</div></div>',unsafe_allow_html=True)
+        es_cancel=bool(sol.get('solicitud_origen'))
+        distintivo='<span class="ci-badge warn">CANCELACIÓN</span>' if es_cancel else '<span class="ci-badge info">NUEVA SOLICITUD</span>'
+        st.markdown(f'<div class="ops-card"><div class="title">{escape(sol.get("tecnico",""))} · {escape(sol.get("ci",""))} {distintivo}</div><div style="font-size:15px;font-weight:800;color:#173542">{escape(sol.get("tipo",""))} · {escape(sol.get("desde",""))} → {escape(sol.get("hasta",""))}</div><div class="note">{escape(sol.get("comentario") or "Sin comentario")}</div></div>',unsafe_allow_html=True)
         c1,c2=st.columns(2)
         if c1.button('✅ Aprobar',key='ap_'+sol['id'],use_container_width=True):
-            propuesta,msg=_crear_registros_solicitud(sol); nuevo=copy.deepcopy(SOLICITUDES)
-            for x in nuevo:
-                if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg})
-            cambios={RUTA_SOLICITUDES:nuevo}
-            if propuesta is not None: cambios[RUTA_BDD]=serializar_registros(propuesta)
-            if guardar_portal(cambios,f"Solicitud aprobada: {sol.get('tecnico')} · {sol.get('tipo')} · {msg}",'Solicitudes'):
+            nuevo=copy.deepcopy(SOLICITUDES)
+            if es_cancel:
+                propuesta,origen,msg=_cancelar_registros_solicitud(sol)
+                if propuesta is None: st.error(msg); continue
+                for x in nuevo:
+                    if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg})
+                    if x.get('id')==sol.get('solicitud_origen'): x.update({'estado':'Cancelada','cancelada':datetime.now().isoformat(timespec='seconds'),'cancelada_por':st.session_state.usuario_actual,'resolucion':'Cancelada a petición del técnico · '+msg})
+                cambios={RUTA_SOLICITUDES:nuevo,RUTA_BDD:serializar_registros(propuesta)}
+                accion=f"Cancelación aprobada: {sol.get('tecnico')} · {origen.get('tipo')} · {msg}"
+                asunto=f"Cancelación aprobada · {origen.get('tipo')}"
+                cuerpo=f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud de CANCELACIÓN ha sido APROBADA.\nPeriodo: {origen.get('desde')} a {origen.get('hasta')}\n{msg}\n\nGestión Técnicos CI · REPSOL"
+            else:
+                propuesta,msg=_crear_registros_solicitud(sol)
+                if propuesta is None: st.error(msg); continue
+                for x in nuevo:
+                    if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg})
+                cambios={RUTA_SOLICITUDES:nuevo,RUTA_BDD:serializar_registros(propuesta)}
+                accion=f"Solicitud aprobada: {sol.get('tecnico')} · {sol.get('tipo')} · {msg}"
+                asunto=f"Solicitud aprobada · {sol.get('tipo')}"
+                cuerpo=f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido APROBADA.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}\n{msg}\n\nGestión Técnicos CI · REPSOL"
+            if guardar_portal(cambios,accion,'Solicitudes'):
                 dest=correo_tecnico(sol.get('tecnico'))
-                if dest: enviar_email(f"Solicitud aprobada · {sol.get('tipo')}",f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido APROBADA.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}\n{msg}\n\nGestión Técnicos CI · REPSOL",dest)
+                if dest: enviar_email(asunto,cuerpo,dest)
                 st.rerun()
         if c2.button('❌ Rechazar',key='re_'+sol['id'],use_container_width=True):
             nuevo=copy.deepcopy(SOLICITUDES)
             for x in nuevo:
-                if x.get('id')==sol['id']: x.update({'estado':'Rechazada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':'Rechazada por Coordinación'})
+                if x.get('id')==sol['id']: x.update({'estado':'Rechazada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':'Cancelación rechazada por Coordinación' if es_cancel else 'Rechazada por Coordinación'})
             if guardar_portal({RUTA_SOLICITUDES:nuevo},f"Solicitud rechazada: {sol.get('tecnico')} · {sol.get('tipo')}",'Solicitudes'):
                 dest=correo_tecnico(sol.get('tecnico'))
-                if dest: enviar_email(f"Solicitud rechazada · {sol.get('tipo')}",f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido RECHAZADA por Coordinación.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}.\n\nGestión Técnicos CI · REPSOL",dest)
+                if dest:
+                    texto='Tu solicitud de CANCELACIÓN ha sido RECHAZADA. La planificación original se mantiene.' if es_cancel else 'Tu solicitud ha sido RECHAZADA por Coordinación.'
+                    enviar_email(f"Solicitud rechazada · {sol.get('tipo')}",f"Hola {sol.get('tecnico','').split()[0]},\n\n{texto}\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}.\n\nGestión Técnicos CI · REPSOL",dest)
                 st.rerun()
     st.subheader('Histórico')
-    tabla([{'Técnico':x.get('tecnico'),'CI':x.get('ci'),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':x.get('estado'),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES)])
+    tabla([{'Técnico':x.get('tecnico'),'CI':x.get('ci'),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':_estado_solicitud_visual(x.get('estado')),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES)])
 
 def render_avisos():
     if not EDITOR: st.error('Área reservada a Coordinación.'); return
@@ -2260,8 +2330,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16</div><div class="sub">Portal del Técnico · solicitudes · notificaciones · avisos de coordinación</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.1</div><div class="sub">Solicitudes ampliadas · consumo HE · cancelación con aprobación · estados visuales</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.1','28/09/2026','Solicitudes y cancelaciones','Solicitudes limitadas a Vacaciones, Vacaciones año anterior, HLD y consumo de HE. Estados visuales por color y nuevo flujo de cancelación: el técnico solicita cancelar una petición aprobada y Coordinación debe aprobarla antes de retirar la planificación y restituir el saldo.'),
       ('v16','28/09/2026','Portal del Técnico','Mi espacio personalizado, centro de notificaciones con leído/no leído, buzón de solicitudes con aprobación y alta automática en cuadrante, y avisos segmentados de Coordinación.'),
       ('v15.1','28/09/2026','Recuperación de acceso','Nueva opción ¿Has olvidado tu contraseña? en el login. Los usuarios registrados pueden solicitar el envío de sus credenciales a su propio correo corporativo, con respuesta neutra y limitación de solicitudes.'),
       ('v15','28/09/2026','Multiusuario y coordinación','Permisos restringidos por rol Técnico, guardias propias, Seguimiento CI por centro, auditoría valor anterior → nuevo y resumen de coordinación manual/automático.'),
