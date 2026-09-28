@@ -50,6 +50,7 @@ RUTA_PRL = "prl_repsol.json"
 RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
 RUTA_CONFIG_NOTIFICACIONES = "config_notificaciones_repsol.json"
+RUTA_SEGUIMIENTO_CI = "seguimiento_ci_repsol.json"
 CONFIG_NOTIFICACIONES_DEFAULT = {"notificar_tecnicos": True}
 PERFILES_DEFAULT = {}
 VEHICULOS_DEFAULT = {}
@@ -541,7 +542,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -656,6 +657,7 @@ PERFILES_TECNICOS = cargar_json(RUTA_PERFILES, PERFILES_DEFAULT)
 VEHICULOS = cargar_json(RUTA_VEHICULOS, VEHICULOS_DEFAULT)
 CONFIG_NOTIFICACIONES = cargar_json(RUTA_CONFIG_NOTIFICACIONES, CONFIG_NOTIFICACIONES_DEFAULT)
 CONFIG_NOTIFICACIONES.setdefault("notificar_tecnicos", True)
+SEGUIMIENTO_CI = cargar_json(RUTA_SEGUIMIENTO_CI, {})
 REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
@@ -729,7 +731,7 @@ logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
 st.sidebar.title('Técnicos CI')
-NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
+NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
 st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
 pagina = NAV_LABELS[pagina_label]
@@ -1558,6 +1560,138 @@ def render_he():
                 if pendientes['HE']-he_compensadas_registro(retirado)<0: st.error('La eliminación dejaría horas ya consumidas sin saldo.')
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
+
+def tecnico_usuario_actual():
+    try:
+        return str(usuarios.get(st.session_state.get("usuario_id", ""), {}).get("tecnico", "")).strip()
+    except Exception:
+        return ""
+
+def centros_seguimiento_permitidos():
+    if EDITOR:
+        return CENTROS
+    tecnico = tecnico_usuario_actual()
+    ci = TECNICOS.get(tecnico, {}).get("ci") if tecnico else None
+    return [ci] if ci in CENTROS else []
+
+def guardar_seguimiento_ci(nuevo, accion, ci):
+    if ci not in centros_seguimiento_permitidos():
+        st.error("Tu usuario no tiene permisos para registrar actividad en este CI.")
+        return False
+    evento = {"fecha": datetime.now().isoformat(timespec="seconds"), "usuario": st.session_state.usuario_actual, "accion": accion}
+    cambios = {RUTA_SEGUIMIENTO_CI: nuevo, "auditoria_repsol.json": AUDITORIA + [evento]}
+    textos = {n: json_text(d) for n, d in cambios.items()}
+    try:
+        actuales = descargar_remoto() if REMOTE else {}
+        for n in cambios:
+            actual = actuales.get(n, {}).get("content") if REMOTE else ((BASE/n).read_text(encoding="utf-8") if (BASE/n).exists() else None)
+            if actual != SNAPSHOTS.get(n):
+                st.error("Los datos han cambiado desde que abriste la pantalla. Recarga y revisa antes de guardar.")
+                return False
+        if REMOTE:
+            response = requests.patch(URL, headers=HEADERS, json={"files": {n: {"content": t} for n, t in textos.items()}}, timeout=15)
+            response.raise_for_status()
+        for n, contenido in textos.items():
+            escribir_local(n, contenido)
+        st.session_state.guardado = "Sincronizado con el almacenamiento remoto." if REMOTE else "Guardado localmente."
+        return True
+    except (requests.RequestException, OSError, ValueError, KeyError):
+        st.error("No se pudo confirmar el guardado. Recarga antes de reintentar.")
+        return False
+
+def seg_clave(ci, fecha):
+    return f"{fecha.isoformat()}|{ci}"
+
+def seg_registro(ci, fecha):
+    base = {g: {r: 0 for r in ("RS", "RC", "RCorp")} for g in ("Parches", "AV", "BCK")}
+    raw = SEGUIMIENTO_CI.get(seg_clave(ci, fecha), {})
+    for g in base:
+        for red in base[g]:
+            try: base[g][red] = int(raw.get(g, {}).get(red, 0) or 0)
+            except (TypeError, ValueError): base[g][red] = 0
+    return base
+
+def seg_totales(ci, anio, mes=None):
+    out = {g: {r: 0 for r in ("RS", "RC", "RCorp")} for g in ("Parches", "AV", "BCK")}
+    for k, v in SEGUIMIENTO_CI.items():
+        try:
+            fs, c = k.split("|", 1); f = date.fromisoformat(fs)
+        except Exception: continue
+        if c != ci or f.year != anio or (mes and f.month != mes): continue
+        for g in out:
+            for r in out[g]:
+                try: out[g][r] += int(v.get(g, {}).get(r, 0) or 0)
+                except (TypeError, ValueError): pass
+    return out
+
+def seg_total_grupo(t, g): return sum(t[g].values())
+def seg_total_red(t, r): return sum(t[g][r] for g in t)
+
+def html_seguimiento(ci, anio, mes=None):
+    meses = [mes] if mes else list(range(1, 13)); periodo = f"{MESES[mes]} {anio}" if mes else f"Año {anio}"
+    t = seg_totales(ci, anio, mes); total = sum(seg_total_grupo(t, g) for g in t)
+    css = "body{font-family:Arial,sans-serif;color:#102a3a;margin:28px;background:#f5f8fa}.hero{background:#0d5869;color:white;padding:24px 28px;border-radius:14px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:white;border:1px solid #dbe4ea;border-radius:12px;padding:16px}.n{font-size:28px;font-weight:700}.muted{color:#6e8190;font-size:12px}table{width:100%;border-collapse:collapse;background:white;margin:14px 0 24px}th,td{border:1px solid #dbe4ea;padding:8px;text-align:center}th{background:#edf4f7}.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.day{min-height:72px;background:white;border:1px solid #dbe4ea;border-radius:8px;padding:6px}.dn{font-weight:700}.v{font-size:11px;margin-top:5px}.month{page-break-inside:avoid}"
+    parts = [f'<!doctype html><html><head><meta charset="utf-8"><title>Seguimiento {escape(ci)} {periodo}</title><style>{css}</style></head><body>', f'<div class="hero"><h1>Seguimiento operativo CI · {escape(ci)}</h1><div>{periodo} · Parches / Antivirus / Backup</div></div>', f'<div class="kpis"><div class="k"><div class="muted">TOTAL</div><div class="n">{total}</div></div><div class="k"><div class="muted">PARCHES</div><div class="n">{seg_total_grupo(t,"Parches")}</div></div><div class="k"><div class="muted">ANTIVIRUS</div><div class="n">{seg_total_grupo(t,"AV")}</div></div><div class="k"><div class="muted">BACKUP</div><div class="n">{seg_total_grupo(t,"BCK")}</div></div></div>', '<h2>Resumen por grupo y red</h2><table><tr><th></th><th>RS</th><th>RC</th><th>RCorp</th><th>Total</th></tr>']
+    for g, label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: parts.append(f'<tr><th>{label}</th><td>{t[g]["RS"]}</td><td>{t[g]["RC"]}</td><td>{t[g]["RCorp"]}</td><td><b>{seg_total_grupo(t,g)}</b></td></tr>')
+    parts.append(f'<tr><th>Total</th><td><b>{seg_total_red(t,"RS")}</b></td><td><b>{seg_total_red(t,"RC")}</b></td><td><b>{seg_total_red(t,"RCorp")}</b></td><td><b>{total}</b></td></tr></table>')
+    for m in meses:
+        parts.append(f'<div class="month"><h2>{MESES[m]} {anio}</h2><div class="cal">')
+        for wd in ["L","M","X","J","V","S","D"]: parts.append(f'<div style="text-align:center;font-weight:700">{wd}</div>')
+        first = date(anio,m,1); parts.extend(["<div></div>"] * first.weekday())
+        for d in range(1, calendar.monthrange(anio,m)[1]+1):
+            f=date(anio,m,d); r=seg_registro(ci,f); p=sum(r["Parches"].values()); av=sum(r["AV"].values()); b=sum(r["BCK"].values()); detail=f"P {p} · AV {av} · B {b}" if p+av+b else "—"
+            parts.append(f'<div class="day"><div class="dn">{d}</div><div class="v">{detail}</div></div>')
+        parts.append('</div></div>')
+    parts.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
+    return "".join(parts)
+
+def render_seguimiento_ci():
+    st.markdown('<div class="ci-hero"><div class="eyebrow">Producción y mantenimiento</div><h2>Seguimiento operativo por CI</h2><p>Registro diario de máquinas gestionadas en Parches, Antivirus y Backup, desglosado por RS, RC y RCorp.</p></div>', unsafe_allow_html=True)
+    permitidos = centros_seguimiento_permitidos(); opciones = CENTROS if EDITOR else permitidos
+    if not opciones:
+        st.warning("Tu usuario no está vinculado a un técnico/CI. Configura el campo tecnico en Secrets para habilitar el registro."); return
+    c1,c2,c3=st.columns([1.3,1,1])
+    with c1: ci=st.selectbox("Complejo Industrial", opciones, index=opciones.index(centro) if centro in opciones else 0)
+    with c2: mes=st.selectbox("Mes", range(1,13), index=date.today().month-1, format_func=lambda x: MESES[x])
+    with c3: anio=st.selectbox("Ejercicio", ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(dd_anio) if dd_anio in ANOS_DISPONIBLES else 0, key="seg_anio")
+    t=seg_totales(ci,anio,mes); total=sum(seg_total_grupo(t,g) for g in t); ks=st.columns(4)
+    for col,label,val in zip(ks,["Total máquinas","Parches","Antivirus","Backup"],[total,seg_total_grupo(t,"Parches"),seg_total_grupo(t,"AV"),seg_total_grupo(t,"BCK")]):
+        with col: st.markdown(f'<div class="ci-kpi"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{MESES[mes]} · {ci}</div></div>', unsafe_allow_html=True)
+    tab_cal,tab_reg,tab_inf=st.tabs(["📅 Calendario","➕ Registrar actividad","📄 Informe HTML"])
+    with tab_cal:
+        heads=st.columns(7)
+        for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div style="text-align:center;font-weight:700;color:#647b88">{w}</div>',unsafe_allow_html=True)
+        first=date(anio,mes,1); cells=[None]*first.weekday()+[date(anio,mes,d) for d in range(1,calendar.monthrange(anio,mes)[1]+1)]
+        while len(cells)%7: cells.append(None)
+        for i in range(0,len(cells),7):
+            cols=st.columns(7)
+            for col,f in zip(cols,cells[i:i+7]):
+                with col:
+                    if not f: st.markdown('<div style="height:92px"></div>',unsafe_allow_html=True); continue
+                    r=seg_registro(ci,f); p=sum(r["Parches"].values()); av=sum(r["AV"].values()); b=sum(r["BCK"].values()); active=p+av+b; bg="#fff" if active else "#f8fafb"; border="#8fc4d0" if active else "#e1e8ec"
+                    st.markdown(f'<div style="min-height:82px;background:{bg};border:1px solid {border};border-radius:10px;padding:8px"><b>{f.day}</b><div style="font-size:11px;margin-top:8px">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div style="font-size:10px;color:#718692;margin-top:5px">Total {active}</div></div>',unsafe_allow_html=True)
+        st.caption("P = Parches · AV = Antivirus · B = Backup. El detalle por red se consulta y edita en Registrar actividad.")
+    with tab_reg:
+        if ci not in permitidos:
+            st.info("Puedes consultar este CI, pero no registrar actividad.")
+        else:
+            fecha=st.date_input("Fecha de trabajo",value=date.today(),min_value=date(anio,1,1),max_value=date(anio,12,31),key="seg_fecha"); actual=seg_registro(ci,fecha)
+            with st.form("form_seg_ci"):
+                vals={}
+                for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+                    st.markdown(f"**{label}**"); cc=st.columns(3); vals[g]={}
+                    for col,r in zip(cc,["RS","RC","RCorp"]):
+                        with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual[g][r]),key=f"seg_{g}_{r}")
+                obs=st.text_input("Observaciones (opcional)",value=str(SEGUIMIENTO_CI.get(seg_clave(ci,fecha),{}).get("obs",""))); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
+            if ok:
+                nuevo=copy.deepcopy(SEGUIMIENTO_CI); nuevo[seg_clave(ci,fecha)]={**vals,"obs":obs.strip(),"actualizado_por":st.session_state.usuario_actual,"actualizado":datetime.now().isoformat(timespec="seconds")}
+                if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci): st.rerun()
+    with tab_inf:
+        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True); imes=mes if modo=="Mes seleccionado" else None; tt=seg_totales(ci,anio,imes)
+        df=pd.DataFrame([{"Grupo":"Parches",**tt["Parches"],"Total":seg_total_grupo(tt,"Parches")},{"Grupo":"Antivirus",**tt["AV"],"Total":seg_total_grupo(tt,"AV")},{"Grupo":"Backup",**tt["BCK"],"Total":seg_total_grupo(tt,"BCK")}]); st.dataframe(df,use_container_width=True,hide_index=True)
+        html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
+        st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
+
 def render_informes():
     st.markdown('<div class="ops-hero"><div class="k">Análisis y trazabilidad</div><div class="t">Centro de informes</div><div class="n">Consulta saldos, guardias, PRL, coincidencias y auditoría desde un único punto.</div></div>',unsafe_allow_html=True)
     INFO_LABELS={'📊 Balance':'Balance','🛡️ Guardias':'Guardias','🩺 PRL':'PRL','⚠️ Solapamientos':'Solapamientos','🧾 Auditoría':'Auditoría'}
@@ -1841,7 +1975,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -1890,6 +2024,6 @@ def render_config():
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
 {'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
- 'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
+ 'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
