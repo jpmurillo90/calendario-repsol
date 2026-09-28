@@ -1048,6 +1048,43 @@ def calcular_activacion_guardia(fecha, hora_inicio, hora_fin, centro_ci):
             'horas_abono':round(horas_abono,2),'tarifa':tarifa,'importe':round(importe,2),
             'tipo_dia':'Laborable' if laborable else 'Sábado/domingo/festivo'}
 
+
+def guardias_calendario_html(equipo, mes, anio):
+    ndias=calendar.monthrange(anio,mes)[1]; dias_sem=['L','M','X','J','V','S','D']; hoy=date.today()
+    css="""<style>.gcal-wrap{overflow-x:auto;border:1px solid #dce5eb;border-radius:12px;background:white;margin:10px 0 18px}table.gcal{border-collapse:collapse;width:100%;min-width:1050px;font-size:11px}.gcal th{background:#123f4d;color:#fff;padding:8px 5px;border-right:1px solid #d7e0e5;text-align:center}.gcal th.name{min-width:190px;text-align:left;padding-left:12px}.gcal td{height:42px;text-align:center;border-right:1px solid #e3e9ed;border-bottom:1px solid #e3e9ed;padding:3px}.gcal td.name{text-align:left;padding:7px 10px;white-space:nowrap}.gcal .ci{display:block;color:#607584;font-size:10px;margin-top:2px}.gcal .weekend{background:#f1f3f5}.gcal .guard{background:#c9e7f0;color:#0b5267;font-weight:800}.gcal .today{box-shadow:inset 0 0 0 2px #008bb0}.gcal .dow{display:block;font-size:9px;margin-top:2px;opacity:.9}</style>"""
+    head='<th class="name">Técnico / centro</th>'+''.join(f'<th>{d}<span class="dow">{dias_sem[date(anio,mes,d).weekday()]}</span></th>' for d in range(1,ndias+1))
+    rows=[]
+    for t in equipo:
+        cells=[]
+        for d in range(1,ndias+1):
+            f=date(anio,mes,d); clases=[]
+            if f.weekday()>=5: clases.append('weekend')
+            if f==hoy: clases.append('today')
+            en_guardia=any(g.get('tecnico')==t and (_parse_fecha_iso(g.get('inicio')) or date.max)<=f<=(_parse_fecha_iso(g.get('fin')) or date.min) for g in REGISTROS_GUARDIAS)
+            if en_guardia: clases.append('guard')
+            cells.append(f'<td class="{" ".join(clases)}">{"G" if en_guardia else "·"}</td>')
+        rows.append(f'<tr><td class="name"><strong>{escape(t)}</strong><span class="ci">{escape(TECNICOS[t]["ci"])}</span></td>'+''.join(cells)+'</tr>')
+    return css+'<div class="gcal-wrap"><table class="gcal"><thead><tr>'+head+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
+
+def informe_guardias_html(equipo, anio, mes=None):
+    gs=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==anio and g.get('tecnico') in equipo]
+    acts=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==anio and a.get('tecnico') in equipo]
+    if mes:
+        gs=[g for g in gs if any((_parse_fecha_iso(g.get('inicio')) or date.max)<=date(anio,mes,d)<=(_parse_fecha_iso(g.get('fin')) or date.min) for d in range(1,calendar.monthrange(anio,mes)[1]+1))]
+        acts=[a for a in acts if _parse_fecha_iso(a.get('fecha')) and _parse_fecha_iso(a.get('fecha')).month==mes]
+    total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts); total_imp=sum(float(a.get('importe',0) or 0) for a in acts)
+    def th(rows): return '<p class="empty">Sin registros.</p>' if not rows else '<div class="scroll">'+pd.DataFrame(rows).to_html(index=False,escape=True,border=0)+'</div>'
+    resumen=[]
+    for t in equipo:
+        gt=[g for g in gs if g.get('tecnico')==t]; at=[a for a in acts if a.get('tecnico')==t]
+        resumen.append({'Técnico':t,'CI':TECNICOS[t]['ci'],'Guardias':len(gt),'Activaciones':len(at),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in at),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in at),2)})
+    detalle_g=[{'Semana':f"{date.fromisoformat(g['inicio']):%d/%m/%Y} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')} for g in sorted(gs,key=lambda x:x.get('inicio',''))]
+    detalle_a=[{'Fecha':date.fromisoformat(a['fecha']).strftime('%d/%m/%Y'),'Técnico':a.get('tecnico'),'CI':a.get('centro'),'Inicio':a.get('inicio'),'Fin':a.get('fin'),'Intervención (h)':a.get('horas_totales',0),'Fuera 08–20 (h)':a.get('horas_fuera',0),'HE generadas':a.get('he_generadas',0),'Importe (€)':a.get('importe',0),'Motivo':a.get('motivo','')} for a in sorted(acts,key=lambda x:(x.get('fecha',''),x.get('inicio','')))]
+    css="""body{font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#18313e;margin:0;padding:28px}main{max-width:1500px;margin:auto;background:white;padding:30px;border-radius:14px}h1{margin:8px 0;font-size:28px}h2{font-size:20px;margin-top:30px;border-bottom:2px solid #e2e8f0;padding-bottom:9px}.muted{color:#607584;font-size:12px}.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:22px 0}.metric{flex:1;min-width:160px;background:#edf6f8;border-top:4px solid #07566a;border-radius:10px;padding:15px}.metric strong{display:block;font-size:27px;margin-top:5px}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#123f4d;color:white;text-align:left;padding:9px}td{border-bottom:1px solid #e2e8f0;padding:8px}tbody tr:nth-child(even){background:#f8fafc}.empty{padding:12px;background:#f4f7f9;border-radius:8px}@page{size:A4 landscape;margin:9mm}@media print{body{padding:0;background:#fff}main{padding:0;max-width:none}.metric,th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr{break-inside:avoid}}"""
+    periodo=MESES[mes] if mes else 'Año completo'; calendario=''
+    for m in ([mes] if mes else list(range(1,13))): calendario+=f'<h3>{MESES[m]}</h3>'+guardias_calendario_html(equipo,m,anio)
+    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Guardias<strong>{len(gs)}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Semanas registradas</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
+
 def render_guardias():
     st.markdown("""<style>
     .guard-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:102px}
@@ -1061,7 +1098,7 @@ def render_guardias():
     c1,c2,c3,c4=st.columns(4)
     for col,label,val in [(c1,'Guardias registradas',len(guardias_anio)),(c2,'Activaciones',len(acts_anio)),(c3,'HE por activaciones',f'{total_he:g} h'),(c4,'Importe activaciones',f'{total_importe:,.2f} €')]:
         col.markdown(f'<div class="guard-kpi"><small>{label}</small><strong>{val}</strong></div>',unsafe_allow_html=True)
-    tab_plan,tab_act,tab_calc,tab_res=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen'])
+    tab_plan,tab_act,tab_calc,tab_res,tab_inf=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen','📄 Informe'])
     perfil_usuario = usuarios.get(st.session_state.get('usuario_id',''), {}) if hasattr(usuarios, 'get') else {}
     tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
     tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
@@ -1100,7 +1137,12 @@ def render_guardias():
         for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
             if centro!='Todos' and g.get('centro')!=centro: continue
             filas.append({'Semana':f"{date.fromisoformat(g['inicio']):%d/%m} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')})
-        st.markdown('#### Guardias registradas'); tabla(filas)
+        st.markdown('#### Calendario de guardias')
+        mes_guardia=st.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='mes_cal_guardias')
+        equipo_guardia=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        st.markdown(guardias_calendario_html(equipo_guardia,mes_guardia,dd_anio),unsafe_allow_html=True)
+        st.caption('G = guardia asignada · fines de semana sombreados · el día actual queda enmarcado.')
+        with st.expander('Ver listado de semanas registradas',expanded=False): tabla(filas)
         propias=[g for g in guardias_anio if EDITOR or g.get('tecnico')==tecnico_sesion]
         if propias:
             with st.expander('Eliminar una guardia registrada'):
@@ -1173,6 +1215,19 @@ def render_guardias():
         tabla(filas)
         st.caption('La hoja original indica una estimación de 5 activaciones de guardia máximo al año por cada CCII; se muestra como referencia, no como bloqueo.')
 
+    with tab_inf:
+        st.markdown('#### Informe de guardias')
+        st.caption('Genera un informe completo con resumen, calendarios, semanas registradas y activaciones. Se puede abrir en el navegador, imprimir o guardar como PDF.')
+        ir1,ir2=st.columns(2)
+        alcance=ir1.radio('Periodo',['Año completo','Mes'],horizontal=True,key='guard_inf_periodo')
+        mes_inf=ir2.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='guard_inf_mes',disabled=alcance=='Año completo')
+        equipo_inf=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        html_inf=informe_guardias_html(equipo_inf,dd_anio,None if alcance=='Año completo' else mes_inf)
+        st.download_button('📄 Descargar informe HTML',html_inf.encode('utf-8'),file_name=f'Informe_Guardias_{dd_anio}_{"Anual" if alcance=="Año completo" else MESES[mes_inf]}.html',mime='text/html')
+        st.markdown('##### Vista rápida')
+        vista_mes=mes_inf if alcance=='Mes' else (date.today().month if date.today().year==dd_anio else 1)
+        st.markdown(guardias_calendario_html(equipo_inf,vista_mes,dd_anio),unsafe_allow_html=True)
+
 def render_he():
     t = st.selectbox('Técnico',visibles)
     _,pendientes = saldos(t,dd_anio)
@@ -1204,7 +1259,7 @@ def render_he():
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
 def render_informes():
-    opcion = st.radio('Informe',['Balance','PRL','Solapamientos','Auditoría'],horizontal=True)
+    opcion = st.radio('Informe',['Balance','Guardias','PRL','Solapamientos','Auditoría'],horizontal=True)
     filas = []
     if opcion=='Balance':
         st.markdown('''<style>
@@ -1252,6 +1307,22 @@ def render_informes():
                 return estilos
             st.dataframe(df_balance.style.apply(estilo_balance,axis=1).format(precision=2,na_rep=''),use_container_width=True,hide_index=True,height=min(520,38*len(filas)+42))
         else: st.info('No hay técnicos para la selección actual.')
+    elif opcion=='Guardias':
+        st.markdown(f'### Guardias 12x7 · {dd_anio}')
+        equipo_inf=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        gs=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==dd_anio and g.get('tecnico') in equipo_inf]
+        acts=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==dd_anio and a.get('tecnico') in equipo_inf]
+        total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts); total_imp=sum(float(a.get('importe',0) or 0) for a in acts)
+        for col,(lab,val) in zip(st.columns(4),[('Guardias',len(gs)),('Activaciones',len(acts)),('HE generadas',f'{total_he:g} h'),('Importe',f'{total_imp:,.2f} €')]): col.metric(lab,val)
+        mes_rep=st.selectbox('Vista mensual',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='inf_guard_mes')
+        st.markdown(guardias_calendario_html(equipo_inf,mes_rep,dd_anio),unsafe_allow_html=True)
+        filas=[]
+        for t in equipo_inf:
+            gt=[g for g in gs if g.get('tecnico')==t]; at=[a for a in acts if a.get('tecnico')==t]
+            filas.append({'Técnico':t,'CI':TECNICOS[t]['ci'],'Guardias':len(gt),'Activaciones':len(at),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in at),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in at),2)})
+        tabla(filas)
+        html_guard=informe_guardias_html(equipo_inf,dd_anio,None)
+        st.download_button('📄 Descargar informe completo HTML',html_guard.encode('utf-8'),file_name=f'Informe_Guardias_{dd_anio}.html',mime='text/html')
     elif opcion=='PRL':
         filas=[{'Técnico':t,'Centro':TECNICOS[t]['ci'],'Estado':estado_prl(t)[0],'Caducidad':estado_prl(t)[1]} for t in visibles]
         tabla(filas)
@@ -1445,3 +1516,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+
