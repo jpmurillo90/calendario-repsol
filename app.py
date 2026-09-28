@@ -731,6 +731,11 @@ logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
 st.sidebar.title('Técnicos CI')
+
+st.markdown(r'''<style>
+.section-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.12em;color:#68808c;margin:20px 0 10px}.seg-card{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:15px 17px;box-shadow:0 7px 20px rgba(15,50,65,.035);min-height:145px}.seg-title{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#0d5869;margin-bottom:8px}.seg-row{display:flex;justify-content:space-between;border-top:1px solid #edf2f4;padding:7px 0;font-size:.84rem}.seg-row span{color:#718692}.seg-row.total{font-weight:800}.seg-week{text-align:center;font-weight:800;color:#607985;padding:8px}.seg-day{position:relative;min-height:92px;background:#f8fafb;border:1px solid #e0e8ec;border-radius:12px;padding:9px 10px;margin-bottom:6px}.seg-day.active{background:#f0fafb;border-color:#86bec9;box-shadow:0 4px 12px rgba(13,88,105,.05)}.seg-num{font-weight:800;color:#102a3a}.seg-origin{position:absolute;right:7px;top:7px;font-size:.56rem;font-weight:800;color:#0d5869;background:#dff1f4;border-radius:20px;padding:2px 6px}.seg-values{font-size:.68rem;margin-top:12px;color:#3d5967}.seg-total{font-size:.62rem;color:#80939d;margin-top:7px}
+</style>''', unsafe_allow_html=True)
+
 NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
 st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
@@ -1602,93 +1607,158 @@ def guardar_seguimiento_ci(nuevo, accion, ci):
 def seg_clave(ci, fecha):
     return f"{fecha.isoformat()}|{ci}"
 
-def seg_registro(ci, fecha):
-    base = {g: {r: 0 for r in ("RS", "RC", "RCorp")} for g in ("Parches", "AV", "BCK")}
-    raw = SEGUIMIENTO_CI.get(seg_clave(ci, fecha), {})
-    for g in base:
-        for red in base[g]:
-            try: base[g][red] = int(raw.get(g, {}).get(red, 0) or 0)
-            except (TypeError, ValueError): base[g][red] = 0
-    return base
+def _seg_int(v):
+    try: return int(v or 0)
+    except (TypeError, ValueError): return 0
 
-def seg_totales(ci, anio, mes=None):
-    out = {g: {r: 0 for r in ("RS", "RC", "RCorp")} for g in ("Parches", "AV", "BCK")}
-    for k, v in SEGUIMIENTO_CI.items():
-        try:
-            fs, c = k.split("|", 1); f = date.fromisoformat(fs)
-        except Exception: continue
-        if c != ci or f.year != anio or (mes and f.month != mes): continue
-        for g in out:
-            for r in out[g]:
-                try: out[g][r] += int(v.get(g, {}).get(r, 0) or 0)
-                except (TypeError, ValueError): pass
+def seg_es_v2():
+    return isinstance(SEGUIMIENTO_CI, dict) and isinstance(SEGUIMIENTO_CI.get("diario"), dict)
+
+def seg_anios_disponibles():
+    anos=set(ANOS_DISPONIBLES)|{date.today().year}
+    if seg_es_v2():
+        for dias in SEGUIMIENTO_CI.get("diario",{}).values():
+            if isinstance(dias,dict):
+                for fs in dias:
+                    try: anos.add(date.fromisoformat(fs).year)
+                    except Exception: pass
+    else:
+        for k in SEGUIMIENTO_CI if isinstance(SEGUIMIENTO_CI,dict) else {}:
+            try: anos.add(date.fromisoformat(k.split("|",1)[0]).year)
+            except Exception: pass
+    return sorted(anos,reverse=True)
+
+def seg_raw_dia(ci,fecha):
+    if seg_es_v2(): return copy.deepcopy(SEGUIMIENTO_CI.get("diario",{}).get(ci,{}).get(fecha.isoformat(),{}))
+    return copy.deepcopy(SEGUIMIENTO_CI.get(seg_clave(ci,fecha),{})) if isinstance(SEGUIMIENTO_CI,dict) else {}
+
+def seg_registro(ci,fecha):
+    redes={g:{r:0 for r in ("RS","RC","RCorp")} for g in ("Parches","AV","BCK")}
+    tot={"Parches":0,"AV":0,"BCK":0}; raw=seg_raw_dia(ci,fecha)
+    alias={"Parches":"Parches","AV":"Antivirus","BCK":"Backup"}
+    for g in redes:
+        obj=raw.get(g,{})
+        if isinstance(obj,dict) and any(r in obj for r in redes[g]):
+            for r in redes[g]: redes[g][r]=_seg_int(obj.get(r,0))
+            tot[g]=sum(redes[g].values())
+        else:
+            h=raw.get(alias[g],{})
+            tot[g]=_seg_int(h.get("total",0) if isinstance(h,dict) else h)
+    return {"redes":redes,"totales":tot,"historico_excel":bool(raw.get("detalle_red_no_disponible") or raw.get("origen")=="excel_historico"),"obs":str(raw.get("obs","") or "")}
+
+def seg_totales_diarios(ci,anio,mes=None):
+    out={"Parches":0,"AV":0,"BCK":0}; dias=0
+    for m in ([mes] if mes else range(1,13)):
+        for d in range(1,calendar.monthrange(anio,m)[1]+1):
+            rr=seg_registro(ci,date(anio,m,d)); n=sum(rr["totales"].values())
+            if n: dias+=1
+            for g in out: out[g]+=rr["totales"][g]
+    return out,dias
+
+def seg_totales_redes(ci,anio,mes=None):
+    out={g:{r:0 for r in ("RS","RC","RCorp")} for g in ("Parches","AV","BCK")}
+    # Histórico Excel: distribución mensual por red.
+    if seg_es_v2():
+        hist=SEGUIMIENTO_CI.get("resumen_redes_mensual",{}).get(ci,{})
+        alias={"Parches":"Parches","AV":"Antivirus","BCK":"Backup"}
+        for m in ([mes] if mes else range(1,13)):
+            raw=hist.get(f"{anio}-{m:02d}",{})
+            for g in out:
+                for r in out[g]: out[g][r]+=_seg_int(raw.get(alias[g],{}).get(r,0))
+    # Registros detallados creados desde la app.
+    for m in ([mes] if mes else range(1,13)):
+        for d in range(1,calendar.monthrange(anio,m)[1]+1):
+            rr=seg_registro(ci,date(anio,m,d))
+            if rr["historico_excel"]: continue
+            for g in out:
+                for r in out[g]: out[g][r]+=rr["redes"][g][r]
     return out
 
-def seg_total_grupo(t, g): return sum(t[g].values())
-def seg_total_red(t, r): return sum(t[g][r] for g in t)
+def seg_total_grupo(t,g): return sum(t[g].values())
+def seg_total_red(t,r): return sum(t[g][r] for g in t)
 
-def html_seguimiento(ci, anio, mes=None):
-    meses = [mes] if mes else list(range(1, 13)); periodo = f"{MESES[mes]} {anio}" if mes else f"Año {anio}"
-    t = seg_totales(ci, anio, mes); total = sum(seg_total_grupo(t, g) for g in t)
-    css = "body{font-family:Arial,sans-serif;color:#102a3a;margin:28px;background:#f5f8fa}.hero{background:#0d5869;color:white;padding:24px 28px;border-radius:14px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:white;border:1px solid #dbe4ea;border-radius:12px;padding:16px}.n{font-size:28px;font-weight:700}.muted{color:#6e8190;font-size:12px}table{width:100%;border-collapse:collapse;background:white;margin:14px 0 24px}th,td{border:1px solid #dbe4ea;padding:8px;text-align:center}th{background:#edf4f7}.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.day{min-height:72px;background:white;border:1px solid #dbe4ea;border-radius:8px;padding:6px}.dn{font-weight:700}.v{font-size:11px;margin-top:5px}.month{page-break-inside:avoid}"
-    parts = [f'<!doctype html><html><head><meta charset="utf-8"><title>Seguimiento {escape(ci)} {periodo}</title><style>{css}</style></head><body>', f'<div class="hero"><h1>Seguimiento operativo CI · {escape(ci)}</h1><div>{periodo} · Parches / Antivirus / Backup</div></div>', f'<div class="kpis"><div class="k"><div class="muted">TOTAL</div><div class="n">{total}</div></div><div class="k"><div class="muted">PARCHES</div><div class="n">{seg_total_grupo(t,"Parches")}</div></div><div class="k"><div class="muted">ANTIVIRUS</div><div class="n">{seg_total_grupo(t,"AV")}</div></div><div class="k"><div class="muted">BACKUP</div><div class="n">{seg_total_grupo(t,"BCK")}</div></div></div>', '<h2>Resumen por grupo y red</h2><table><tr><th></th><th>RS</th><th>RC</th><th>RCorp</th><th>Total</th></tr>']
-    for g, label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: parts.append(f'<tr><th>{label}</th><td>{t[g]["RS"]}</td><td>{t[g]["RC"]}</td><td>{t[g]["RCorp"]}</td><td><b>{seg_total_grupo(t,g)}</b></td></tr>')
-    parts.append(f'<tr><th>Total</th><td><b>{seg_total_red(t,"RS")}</b></td><td><b>{seg_total_red(t,"RC")}</b></td><td><b>{seg_total_red(t,"RCorp")}</b></td><td><b>{total}</b></td></tr></table>')
+def seg_guardar_dia(ci,fecha,vals,obs):
+    if seg_es_v2(): nuevo=copy.deepcopy(SEGUIMIENTO_CI)
+    else:
+        nuevo={"version":2,"diario":{},"resumen_redes_mensual":{}}
+        if isinstance(SEGUIMIENTO_CI,dict):
+            for k,v in SEGUIMIENTO_CI.items():
+                try: fs,c=k.split("|",1); date.fromisoformat(fs)
+                except Exception: continue
+                nuevo["diario"].setdefault(c,{})[fs]=copy.deepcopy(v)
+    nuevo.setdefault("diario",{}).setdefault(ci,{})[fecha.isoformat()]={**vals,"obs":obs.strip(),"actualizado_por":st.session_state.usuario_actual,"actualizado":datetime.now().isoformat(timespec="seconds"),"origen":"app"}
+    return nuevo
+
+def html_seguimiento(ci,anio,mes=None):
+    meses=[mes] if mes else list(range(1,13)); periodo=f"{MESES[mes]} {anio}" if mes else f"Año {anio}"
+    diarios,dias=seg_totales_diarios(ci,anio,mes); redes=seg_totales_redes(ci,anio,mes); total=sum(diarios.values())
+    css="body{font-family:Arial;color:#102a3a;margin:28px;background:#f5f8fa}.hero{background:#0d5869;color:white;padding:25px;border-radius:14px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:white;border:1px solid #dbe4ea;border-radius:12px;padding:16px}.n{font-size:28px;font-weight:700}.muted{color:#6e8190;font-size:12px}table{width:100%;border-collapse:collapse;background:white;margin:14px 0 24px}th,td{border:1px solid #dbe4ea;padding:8px;text-align:center}th{background:#edf4f7}.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.day{min-height:72px;background:white;border:1px solid #dbe4ea;border-radius:8px;padding:6px}.on{background:#f0fafb;border-color:#86bec9}.dn{font-weight:700}.v{font-size:11px;margin-top:5px}.month{page-break-inside:avoid}"
+    parts=[f'<!doctype html><html><head><meta charset="utf-8"><title>Seguimiento {escape(ci)} {periodo}</title><style>{css}</style></head><body>',f'<div class="hero"><small>GESTIÓN OPERATIVA CI</small><h1>Seguimiento operativo · {escape(ci)}</h1><div>{periodo}</div></div>',f'<div class="kpis"><div class="k"><div class="muted">TOTAL</div><div class="n">{total}</div><small>{dias} días con actividad</small></div><div class="k"><div class="muted">PARCHES</div><div class="n">{diarios["Parches"]}</div></div><div class="k"><div class="muted">ANTIVIRUS</div><div class="n">{diarios["AV"]}</div></div><div class="k"><div class="muted">BACKUP</div><div class="n">{diarios["BCK"]}</div></div></div>','<h2>Distribución por red</h2><table><tr><th></th><th>RS</th><th>RC</th><th>RCorp</th><th>Total</th></tr>']
+    for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: parts.append(f'<tr><th>{label}</th><td>{redes[g]["RS"]}</td><td>{redes[g]["RC"]}</td><td>{redes[g]["RCorp"]}</td><td><b>{seg_total_grupo(redes,g)}</b></td></tr>')
+    parts.append('</table><p class="muted">Histórico Excel 2026: RS/RC/RCorp procede del resumen mensual. Los registros nuevos conservan detalle diario por red.</p>')
     for m in meses:
         parts.append(f'<div class="month"><h2>{MESES[m]} {anio}</h2><div class="cal">')
         for wd in ["L","M","X","J","V","S","D"]: parts.append(f'<div style="text-align:center;font-weight:700">{wd}</div>')
-        first = date(anio,m,1); parts.extend(["<div></div>"] * first.weekday())
-        for d in range(1, calendar.monthrange(anio,m)[1]+1):
-            f=date(anio,m,d); r=seg_registro(ci,f); p=sum(r["Parches"].values()); av=sum(r["AV"].values()); b=sum(r["BCK"].values()); detail=f"P {p} · AV {av} · B {b}" if p+av+b else "—"
-            parts.append(f'<div class="day"><div class="dn">{d}</div><div class="v">{detail}</div></div>')
+        first=date(anio,m,1); parts.extend(["<div></div>"]*first.weekday())
+        for d in range(1,calendar.monthrange(anio,m)[1]+1):
+            f=date(anio,m,d); rr=seg_registro(ci,f); p=rr["totales"]["Parches"]; av=rr["totales"]["AV"]; b=rr["totales"]["BCK"]; n=p+av+b
+            parts.append(f'<div class="day {"on" if n else ""}"><div class="dn">{d}</div><div class="v">{f"P {p} · AV {av} · B {b}" if n else "—"}</div></div>')
         parts.append('</div></div>')
     parts.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
     return "".join(parts)
 
 def render_seguimiento_ci():
-    st.markdown('<div class="ci-hero"><div class="eyebrow">Producción y mantenimiento</div><h2>Seguimiento operativo por CI</h2><p>Registro diario de máquinas gestionadas en Parches, Antivirus y Backup, desglosado por RS, RC y RCorp.</p></div>', unsafe_allow_html=True)
-    permitidos = centros_seguimiento_permitidos(); opciones = CENTROS if EDITOR else permitidos
+    permitidos=centros_seguimiento_permitidos(); opciones=CENTROS if EDITOR else permitidos
     if not opciones:
         st.warning("Tu usuario no está vinculado a un técnico/CI. Configura el campo tecnico en Secrets para habilitar el registro."); return
-    c1,c2,c3=st.columns([1.3,1,1])
-    with c1: ci=st.selectbox("Complejo Industrial", opciones, index=opciones.index(centro) if centro in opciones else 0)
-    with c2: mes=st.selectbox("Mes", range(1,13), index=date.today().month-1, format_func=lambda x: MESES[x])
-    with c3: anio=st.selectbox("Ejercicio", ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(dd_anio) if dd_anio in ANOS_DISPONIBLES else 0, key="seg_anio")
-    t=seg_totales(ci,anio,mes); total=sum(seg_total_grupo(t,g) for g in t); ks=st.columns(4)
-    for col,label,val in zip(ks,["Total máquinas","Parches","Antivirus","Backup"],[total,seg_total_grupo(t,"Parches"),seg_total_grupo(t,"AV"),seg_total_grupo(t,"BCK")]):
-        with col: st.markdown(f'<div class="ci-kpi"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{MESES[mes]} · {ci}</div></div>', unsafe_allow_html=True)
-    tab_cal,tab_reg,tab_inf=st.tabs(["📅 Calendario","➕ Registrar actividad","📄 Informe HTML"])
+    st.markdown('<div class="ops-hero"><div class="k">Producción · mantenimiento · cumplimiento</div><div class="t">Seguimiento operativo CI</div><div class="n">Control diario de Parches, Antivirus y Backup con trazabilidad por RS, RC y RCorp.</div></div>',unsafe_allow_html=True)
+    c1,c2,c3=st.columns([1.35,1,1]); ci_default=centro if centro in opciones else opciones[0]
+    with c1: ci=st.selectbox("Complejo Industrial",opciones,index=opciones.index(ci_default),key="seg_ci")
+    with c2: mes=st.selectbox("Mes",range(1,13),index=date.today().month-1,format_func=lambda x:MESES[x],key="seg_mes")
+    anos=seg_anios_disponibles()
+    with c3: anio=st.selectbox("Ejercicio",anos,index=anos.index(dd_anio) if dd_anio in anos else 0,key="seg_anio")
+    diarios,dias=seg_totales_diarios(ci,anio,mes); total=sum(diarios.values())
+    st.markdown(f'<div class="section-eyebrow">RESUMEN · {MESES[mes].upper()} {anio} · {escape(ci).upper()}</div>',unsafe_allow_html=True)
+    ks=st.columns(4)
+    for col,label,val,sub in zip(ks,["Total máquinas","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
+        with col: st.markdown(f'<div class="ci-kpi"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
+    redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
+    for col,red in zip(cols,("RS","RC","RCorp")):
+        with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
+    tab_cal,tab_reg,tab_inf=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","📄 Informe HTML"])
     with tab_cal:
         heads=st.columns(7)
-        for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div style="text-align:center;font-weight:700;color:#647b88">{w}</div>',unsafe_allow_html=True)
+        for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div class="seg-week">{w}</div>',unsafe_allow_html=True)
         first=date(anio,mes,1); cells=[None]*first.weekday()+[date(anio,mes,d) for d in range(1,calendar.monthrange(anio,mes)[1]+1)]
         while len(cells)%7: cells.append(None)
         for i in range(0,len(cells),7):
-            cols=st.columns(7)
+            cols=st.columns(7,gap="small")
             for col,f in zip(cols,cells[i:i+7]):
                 with col:
-                    if not f: st.markdown('<div style="height:92px"></div>',unsafe_allow_html=True); continue
-                    r=seg_registro(ci,f); p=sum(r["Parches"].values()); av=sum(r["AV"].values()); b=sum(r["BCK"].values()); active=p+av+b; bg="#fff" if active else "#f8fafb"; border="#8fc4d0" if active else "#e1e8ec"
-                    st.markdown(f'<div style="min-height:82px;background:{bg};border:1px solid {border};border-radius:10px;padding:8px"><b>{f.day}</b><div style="font-size:11px;margin-top:8px">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div style="font-size:10px;color:#718692;margin-top:5px">Total {active}</div></div>',unsafe_allow_html=True)
-        st.caption("P = Parches · AV = Antivirus · B = Backup. El detalle por red se consulta y edita en Registrar actividad.")
+                    if not f: st.markdown('<div style="height:100px"></div>',unsafe_allow_html=True); continue
+                    rr=seg_registro(ci,f); p=rr["totales"]["Parches"]; av=rr["totales"]["AV"]; b=rr["totales"]["BCK"]; n=p+av+b; badge='<span class="seg-origin">Excel</span>' if rr["historico_excel"] and n else ''
+                    st.markdown(f'<div class="seg-day {"active" if n else ""}"><div class="seg-num">{f.day}</div>{badge}<div class="seg-values">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div class="seg-total">Total {n}</div></div>',unsafe_allow_html=True)
+        st.caption("Excel = dato histórico importado. El reparto RS/RC/RCorp de ese histórico está disponible a nivel mensual.")
     with tab_reg:
-        if ci not in permitidos:
-            st.info("Puedes consultar este CI, pero no registrar actividad.")
+        if ci not in permitidos: st.info("Puedes consultar este CI, pero no registrar actividad.")
         else:
             fecha=st.date_input("Fecha de trabajo",value=date.today(),min_value=date(anio,1,1),max_value=date(anio,12,31),key="seg_fecha"); actual=seg_registro(ci,fecha)
+            if actual["historico_excel"] and sum(actual["totales"].values()): st.info(f'Histórico Excel existente: P {actual["totales"]["Parches"]} · AV {actual["totales"]["AV"]} · B {actual["totales"]["BCK"]}.')
             with st.form("form_seg_ci"):
                 vals={}
                 for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
                     st.markdown(f"**{label}**"); cc=st.columns(3); vals[g]={}
                     for col,r in zip(cc,["RS","RC","RCorp"]):
-                        with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual[g][r]),key=f"seg_{g}_{r}")
-                obs=st.text_input("Observaciones (opcional)",value=str(SEGUIMIENTO_CI.get(seg_clave(ci,fecha),{}).get("obs",""))); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
+                        with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual["redes"][g][r]),key=f"seg_{g}_{r}")
+                obs=st.text_input("Observaciones (opcional)",value=actual["obs"]); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
             if ok:
-                nuevo=copy.deepcopy(SEGUIMIENTO_CI); nuevo[seg_clave(ci,fecha)]={**vals,"obs":obs.strip(),"actualizado_por":st.session_state.usuario_actual,"actualizado":datetime.now().isoformat(timespec="seconds")}
+                nuevo=seg_guardar_dia(ci,fecha,vals,obs)
                 if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci): st.rerun()
     with tab_inf:
-        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True); imes=mes if modo=="Mes seleccionado" else None; tt=seg_totales(ci,anio,imes)
-        df=pd.DataFrame([{"Grupo":"Parches",**tt["Parches"],"Total":seg_total_grupo(tt,"Parches")},{"Grupo":"Antivirus",**tt["AV"],"Total":seg_total_grupo(tt,"AV")},{"Grupo":"Backup",**tt["BCK"],"Total":seg_total_grupo(tt,"BCK")}]); st.dataframe(df,use_container_width=True,hide_index=True)
+        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True); imes=mes if modo=="Mes seleccionado" else None
+        dsum,dias_i=seg_totales_diarios(ci,anio,imes); rsum=seg_totales_redes(ci,anio,imes)
+        df=pd.DataFrame([{"Grupo":"Parches",**rsum["Parches"],"Total actividad":dsum["Parches"]},{"Grupo":"Antivirus",**rsum["AV"],"Total actividad":dsum["AV"]},{"Grupo":"Backup",**rsum["BCK"],"Total actividad":dsum["BCK"]}]); st.dataframe(df,use_container_width=True,hide_index=True)
+        st.caption("Histórico Excel 2026: el reparto por red es mensual; el total de actividad procede del calendario diario.")
         html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
         st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
 
