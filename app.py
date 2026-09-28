@@ -301,6 +301,83 @@ def enviar_email(asunto, mensaje, destinatario=None):
     except (smtplib.SMTPException, OSError) as e:
         return False, f"No se pudo enviar el correo: {e}"
 
+
+def avisos_prl_actuales():
+    """PRL que requieren atención ahora: sin fecha, caducados o con 60 días o menos."""
+    hoy = date.today()
+    avisos = []
+    for tecnico in sorted(TECNICOS):
+        datos = REGISTROS_PRL.get(tecnico, {}) or {}
+        valor = datos.get('fecha')
+        try:
+            fecha = date.fromisoformat(valor)
+        except (ValueError, TypeError):
+            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': None, 'dias': None, 'obs': datos.get('obs','')})
+            continue
+        dias = (fecha - hoy).days
+        if dias <= 60:
+            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': fecha, 'dias': dias, 'obs': datos.get('obs','')})
+    return sorted(avisos, key=lambda x: (999999 if x['dias'] is None else x['dias'], x['tecnico']))
+
+def texto_estado_prl(dias):
+    if dias is None:
+        return 'SIN FECHA REGISTRADA'
+    if dias < 0:
+        return f'CADUCADO HACE {abs(dias)} DÍAS'
+    if dias == 0:
+        return 'CADUCA HOY'
+    return f'CADUCA EN {dias} DÍAS'
+
+def siguiente_aviso_prl(dias):
+    """Describe el siguiente hito usado por el workflow automático 60/30/15/7."""
+    if dias is None:
+        return 'Sin aviso automático hasta registrar una fecha'
+    if dias < 0:
+        return 'Siguiente día laborable (caducado)'
+    if dias <= 7:
+        return 'Siguiente día laborable (aviso diario)'
+    for hito in (60, 30, 15, 7):
+        if dias > hito:
+            faltan = dias - hito
+            return f'En {faltan} día' + ('s' if faltan != 1 else '') + f' · hito {hito} días'
+    return 'Siguiente día laborable'
+
+def enviar_resumen_prl_manual():
+    avisos = avisos_prl_actuales()
+    if not avisos:
+        return False, 'No hay reconocimientos PRL que requieran atención en los próximos 60 días.'
+
+    lineas = [
+        'GESTIÓN DE TÉCNICOS CI · AVISO PRL FORZADO',
+        '',
+        f'Fecha de revisión: {date.today():%d/%m/%Y}',
+        f'Reconocimientos que requieren atención: {len(avisos)}',
+        ''
+    ]
+    for aviso in avisos:
+        lineas.append(aviso['tecnico'])
+        lineas.append(f"Centro: {aviso['centro']}")
+        lineas.append('Caducidad: ' + (aviso['fecha'].strftime('%d/%m/%Y') if aviso['fecha'] else 'Sin fecha registrada'))
+        lineas.append('Estado: ' + texto_estado_prl(aviso['dias']))
+        if aviso['dias'] is None or aviso['dias'] <= 30:
+            lineas.append('Acción: Gestionar/revisar la cita del reconocimiento.')
+        else:
+            lineas.append('Acción: Planificar la renovación.')
+        if aviso['obs']:
+            lineas.append(f"Observaciones: {aviso['obs']}")
+        lineas.append('')
+
+    lineas.extend([
+        'Próximos avisos automáticos: hitos de 60, 30 y 15 días; aviso diario desde 7 días y mientras permanezca caducado.',
+        'La comprobación automática está programada de lunes a viernes mediante GitHub Actions.',
+        '',
+        'Gestión de Técnicos CI · Indra / RPECII'
+    ])
+    return enviar_email(
+        f"⚠️ PRL · {len(avisos)} reconocimiento{'s' if len(avisos) != 1 else ''} requiere{'n' if len(avisos) != 1 else ''} revisión",
+        '\n'.join(lineas)
+    )
+
 def verificar_password(password, usuario):
     """Hash: pbkdf2_sha256$600000$sal_hex$hash_hex; o password legado en secrets."""
     encoded = usuario.get('password_hash', '')
@@ -946,24 +1023,50 @@ def render_config():
 
         if configurado:
             st.success('Gmail está configurado en los Secrets de Streamlit.')
-            st.write(f'**Remitente:** {remitente}')
-            st.write(f'**Destinatario:** {destinatario}')
+            c1, c2 = st.columns(2)
+            c1.write(f'**Remitente:** {remitente}')
+            c2.write(f'**Destinatario:** {destinatario}')
         else:
             st.warning('Falta configurar Gmail en los Secrets de Streamlit.')
 
-        st.caption('Esta prueba solo verifica el envío. Los avisos programados automáticos se configurarán después mediante una ejecución programada.')
-        if st.button('Enviar correo de prueba', type='primary', disabled=not configurado):
-            ok, resultado = enviar_email(
-                'Prueba · Gestión de Técnicos CI',
-                'Hola,\n\n'
-                'Este es un correo de prueba enviado desde la aplicación Gestión de Técnicos CI.\n\n'
-                'La configuración de avisos por Gmail funciona correctamente.\n\n'
-                'Gestión de Técnicos CI · Indra / RPECII'
-            )
-            if ok:
-                st.success(resultado)
-            else:
-                st.error(resultado)
+        st.markdown('#### Envío manual')
+        col_prueba, col_prl = st.columns(2)
+        with col_prueba:
+            st.caption('Comprueba únicamente que Gmail puede enviar correctamente.')
+            if st.button('Enviar correo de prueba', disabled=not configurado, use_container_width=True):
+                ok, resultado = enviar_email(
+                    'Prueba · Gestión de Técnicos CI',
+                    'Hola,\n\n'
+                    'Este es un correo de prueba enviado desde la aplicación Gestión de Técnicos CI.\n\n'
+                    'La configuración de avisos por Gmail funciona correctamente.\n\n'
+                    'Gestión de Técnicos CI · Indra / RPECII'
+                )
+                st.success(resultado) if ok else st.error(resultado)
+        with col_prl:
+            st.caption('Fuerza ahora un resumen con todos los PRL caducados, sin fecha o que vencen en ≤60 días.')
+            if st.button('⚠️ Enviar avisos PRL ahora', type='primary', disabled=not configurado, use_container_width=True):
+                ok, resultado = enviar_resumen_prl_manual()
+                st.success(resultado) if ok else st.warning(resultado)
+
+        st.divider()
+        st.markdown('#### Próximos avisos automáticos')
+        st.caption('GitHub Actions realiza la comprobación de lunes a viernes. Hitos: 60 días · 30 días · 15 días · aviso diario desde 7 días · aviso diario mientras esté caducado.')
+        pendientes = avisos_prl_actuales()
+        if pendientes:
+            filas_avisos = []
+            for aviso in pendientes:
+                filas_avisos.append({
+                    'Técnico': aviso['tecnico'],
+                    'Centro': aviso['centro'],
+                    'Caducidad': aviso['fecha'].strftime('%d/%m/%Y') if aviso['fecha'] else 'Sin fecha',
+                    'Estado actual': texto_estado_prl(aviso['dias']),
+                    'Siguiente aviso automático': siguiente_aviso_prl(aviso['dias'])
+                })
+            st.dataframe(pd.DataFrame(filas_avisos), use_container_width=True, hide_index=True)
+        else:
+            st.success('No hay PRL caducados, sin fecha ni con vencimiento en los próximos 60 días.')
+
+        st.info('Automatización configurada mediante GitHub Actions. El botón manual de PRL no altera la programación automática: únicamente fuerza un envío en ese momento.')
         return
 
     if opcion=='Copias de seguridad':
@@ -1019,4 +1122,3 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
-
