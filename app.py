@@ -827,11 +827,7 @@ def registrar_ausencia():
     fin = cols[1].date_input('Hasta',ini,min_value=minimo,max_value=maximo,key=f'fin_{dd_anio}_{ini}')
     tipo = st.selectbox('Tipo', [k for k in LEYENDA if k not in ('FEST','SAB','DOM')]+['BORRAR'],format_func=lambda k: LEYENDA[k][0] if k in LEYENDA else 'Eliminar marcas del rango')
     solo_laborables = st.checkbox('Solo días laborables según el calendario del centro',value=True)
-    he,hld = 0.,0.
-    if tipo in ('HE','HE+HLD'):
-        he = st.number_input('Horas HE por día',min_value=0.,max_value=24.,value=1.,step=.5)
-    if tipo in ('HLD','HE+HLD'):
-        hld = st.number_input('Horas HLD por día',min_value=0.,max_value=24.,value=1.,step=.5)
+
     if fin < ini:
         st.error('La fecha final no puede ser anterior a la inicial.'); return
     fechas = [ini+timedelta(days=i) for i in range((fin-ini).days+1)]
@@ -839,17 +835,67 @@ def registrar_ausencia():
         fechas = [f for f in fechas if obtener_horas_jornada_real(t,f.year,f.month,f.day)>0]
     if not fechas:
         st.info('No hay días aplicables en el rango.'); return
+
+    # HE/HLD: por defecto se registra la jornada completa REAL de cada fecha.
+    # Esto permite que un rango respete automáticamente viernes, verano, bolsas, etc.
+    he,hld = 0.,0.
+    jornada_completa = False
+    if tipo in ('HE','HLD'):
+        jornada_completa = st.checkbox('Registrar jornada completa', value=True,
+                                       help='Calcula automáticamente las horas máximas de cada día según la jornada configurada.')
+        if not jornada_completa:
+            jornada_ref = max(0.0, obtener_horas_jornada_real(t,ini.year,ini.month,ini.day))
+            etiqueta = 'HE' if tipo=='HE' else 'HLD'
+            valor_defecto = float(jornada_ref) if len(fechas)==1 and jornada_ref>0 else 1.0
+            manual = st.number_input(f'Horas {etiqueta} por día',min_value=0.,max_value=24.,value=valor_defecto,step=.5)
+            if tipo=='HE': he=manual
+            else: hld=manual
+    elif tipo=='HE+HLD':
+        st.caption('Para combinar HE + HLD indica el reparto diario. La suma no puede superar la jornada real de cada fecha.')
+        jornada_ref = max(0.0, obtener_horas_jornada_real(t,ini.year,ini.month,ini.day))
+        he = st.number_input('Horas HE por día',min_value=0.,max_value=24.,value=0.,step=.5)
+        hld_defecto = float(jornada_ref) if len(fechas)==1 and jornada_ref>0 else 1.0
+        hld = st.number_input('Horas HLD por día',min_value=0.,max_value=24.,value=hld_defecto,step=.5)
+
+    # Desglose previo: muestra exactamente qué se va a registrar cada día.
+    desglose = []
+    for f in fechas:
+        jornada = float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
+        he_dia = jornada if tipo=='HE' and jornada_completa else he if tipo in ('HE','HE+HLD') else 0.0
+        hld_dia = jornada if tipo=='HLD' and jornada_completa else hld if tipo in ('HLD','HE+HLD') else 0.0
+        desglose.append({'fecha':f,'jornada':jornada,'he':float(he_dia),'hld':float(hld_dia)})
+
+    if tipo in ('HE','HLD','HE+HLD'):
+        st.markdown('#### Desglose del periodo')
+        filas_desglose=[]
+        dias_semana=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+        for x in desglose:
+            consumo_dia=x['he']+x['hld']
+            filas_desglose.append({
+                'Fecha':f"{dias_semana[x['fecha'].weekday()]} {x['fecha']:%d/%m/%Y}",
+                'Jornada prevista':f"{x['jornada']:g} h",
+                'HE':f"{x['he']:g} h" if x['he'] else '—',
+                'HLD':f"{x['hld']:g} h" if x['hld'] else '—',
+                'Total a registrar':f"{consumo_dia:g} h"
+            })
+        tabla(filas_desglose)
+        total_he=sum(x['he'] for x in desglose); total_hld=sum(x['hld'] for x in desglose)
+        partes=[]
+        if total_he: partes.append(f'HE: {total_he:g} h')
+        if total_hld: partes.append(f'HLD: {total_hld:g} h')
+        st.info(f"Total del periodo: {' · '.join(partes)} · {len(fechas)} día{'s' if len(fechas)!=1 else ''} laborable{'s' if len(fechas)!=1 else ''}.")
+
     propuesta = copy.deepcopy(REGISTROS)
     existentes, conflictos = [], []
-    for f in fechas:
+    for x in desglose:
+        f=x['fecha']; jornada=x['jornada']; he_dia=x['he']; hld_dia=x['hld']
         key = (f.year,t,str(f.month),str(f.day))
         if propuesta.get(key): existentes.append(f)
-        jornada = obtener_horas_jornada_real(t,f.year,f.month,f.day)
-        if tipo in ('HE','HLD','HE+HLD') and (he+hld<=0 or he+hld>jornada):
+        if tipo in ('HE','HLD','HE+HLD') and (he_dia+hld_dia<=0 or he_dia+hld_dia>jornada+1e-9):
             st.error(f'{f:%d/%m/%Y}: las horas deben ser positivas y no superar la jornada ({jornada:g} h).'); return
         if tipo=='BORRAR': propuesta.pop(key,None)
-        elif tipo=='HE+HLD': propuesta[key]={'tipo':tipo,'he_horas':he,'hld_horas':hld,'anio':f.year,'tec':t}
-        elif tipo in ('HE','HLD'): propuesta[key]={'tipo':tipo,'horas_gastadas':he if tipo=='HE' else hld,'anio':f.year,'tec':t}
+        elif tipo=='HE+HLD': propuesta[key]={'tipo':tipo,'he_horas':he_dia,'hld_horas':hld_dia,'anio':f.year,'tec':t}
+        elif tipo in ('HE','HLD'): propuesta[key]={'tipo':tipo,'horas_gastadas':he_dia if tipo=='HE' else hld_dia,'anio':f.year,'tec':t}
         else: propuesta[key]=tipo
         if tipo!='BORRAR':
             for otro in visibles_del_centro(t):
@@ -862,7 +908,7 @@ def registrar_ausencia():
     if excede: st.error('El cambio supera el saldo disponible.')
     if conflictos:
         st.warning('Hay otras marcas en el mismo centro. Revisa si afectan a la cobertura.'); tabla(conflictos)
-    firma = hashlib.sha256(repr((t,ini,fin,tipo,he,hld,solo_laborables)).encode()).hexdigest()[:16]
+    firma = hashlib.sha256(repr((t,ini,fin,tipo,[(x['fecha'].isoformat(),x['he'],x['hld']) for x in desglose],solo_laborables)).encode()).hexdigest()[:16]
     confirmado = st.checkbox('He revisado el consumo, las sustituciones y los solapamientos.',key=f'confirmar_{firma}')
     if st.button('Confirmar registro',type='primary',disabled=not confirmado or excede):
         accion = f'{t}: {tipo}, {ini} a {fin}, {len(fechas)} días; solapamientos: {len(conflictos)}'
