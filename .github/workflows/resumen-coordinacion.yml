@@ -1,0 +1,62 @@
+name: Resumen coordinación CI
+on:
+  schedule:
+    - cron: '0 6 * * 1'      # lunes: semana anterior
+    - cron: '10 6 1 * *'     # día 1: mes anterior
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: Tipo de resumen
+        required: true
+        default: semanal
+        type: choice
+        options: [semanal, mensual]
+jobs:
+  semanal:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Enviar resumen semanal
+        env:
+          RESUMEN_MODO: semanal
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GMAIL_USUARIO: ${{ secrets.GMAIL_USUARIO }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_DESTINATARIO: ${{ secrets.GMAIL_DESTINATARIO }}
+        run: python resumen_coordinacion.py
+  mensual:
+    if: github.event_name == 'schedule' && github.event.schedule == '10 6 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Enviar resumen mensual
+        env:
+          RESUMEN_MODO: mensual
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GMAIL_USUARIO: ${{ secrets.GMAIL_USUARIO }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_DESTINATARIO: ${{ secrets.GMAIL_DESTINATARIO }}
+        run: python resumen_coordinacion.py
+  manual:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Enviar resumen manual
+        env:
+          RESUMEN_MODO: ${{ inputs.modo }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GMAIL_USUARIO: ${{ secrets.GMAIL_USUARIO }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_DESTINATARIO: ${{ secrets.GMAIL_DESTINATARIO }}
+        run: python resumen_coordinacion.py
