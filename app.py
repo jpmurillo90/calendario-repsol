@@ -748,7 +748,7 @@ def render_inicio():
             guardia_actual = []
             proximas_guardias = []
             for tg in [x for x,v in TECNICOS.items() if v.get('activo', True) and v.get('ci') == c]:
-                for ini_g, fin_g in periodos_guardia_reales(GUARDIAS, tecnico=tg):
+                for ini_g, fin_g in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
                     if ini_g <= fecha <= fin_g:
                         guardia_actual.append((tg, ini_g, fin_g))
                     elif ini_g > fecha:
