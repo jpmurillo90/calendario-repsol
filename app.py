@@ -1083,7 +1083,7 @@ def informe_guardias_html(equipo, anio, mes=None):
     css="""body{font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#18313e;margin:0;padding:28px}main{max-width:1500px;margin:auto;background:white;padding:30px;border-radius:14px}h1{margin:8px 0;font-size:28px}h2{font-size:20px;margin-top:30px;border-bottom:2px solid #e2e8f0;padding-bottom:9px}.muted{color:#607584;font-size:12px}.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:22px 0}.metric{flex:1;min-width:160px;background:#edf6f8;border-top:4px solid #07566a;border-radius:10px;padding:15px}.metric strong{display:block;font-size:27px;margin-top:5px}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#123f4d;color:white;text-align:left;padding:9px}td{border-bottom:1px solid #e2e8f0;padding:8px}tbody tr:nth-child(even){background:#f8fafc}.empty{padding:12px;background:#f4f7f9;border-radius:8px}@page{size:A4 landscape;margin:9mm}@media print{body{padding:0;background:#fff}main{padding:0;max-width:none}.metric,th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr{break-inside:avoid}}"""
     periodo=MESES[mes] if mes else 'Año completo'; calendario=''
     for m in ([mes] if mes else list(range(1,13))): calendario+=f'<h3>{MESES[m]}</h3>'+guardias_calendario_html(equipo,m,anio)
-    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Guardias<strong>{len(gs)}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Semanas registradas</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
+    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Guardias<strong>{len(gs)}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Periodos registrados</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
 
 def render_guardias():
     st.markdown("""<style>
@@ -1103,7 +1103,8 @@ def render_guardias():
     tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
     tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
     with tab_plan:
-        st.markdown('#### Marcar semana de guardia')
+        st.markdown('#### Registrar guardia')
+        st.caption('La guardia puede abarcar cualquier periodo: lunes–domingo, miércoles–miércoles o el rango excepcional que corresponda.')
         if EDITOR:
             candidatos=visibles
         elif tecnico_sesion and TECNICOS.get(tecnico_sesion,{}).get('activo',True):
@@ -1112,37 +1113,56 @@ def render_guardias():
             candidatos=[]
             st.info('Tu usuario no está vinculado a un técnico con el mismo nombre. Un Editor puede registrar la guardia o ajustar el nombre del usuario en Secrets.')
         if candidatos:
+            fecha_base=date.today() if date.today().year==dd_anio else date(dd_anio,1,1)
+            fecha_fin_base=min(fecha_base+timedelta(days=6),date(dd_anio,12,31))
             with st.form('form_guardia'):
                 tg=st.selectbox('Técnico',candidatos,disabled=not EDITOR)
-                fsel=st.date_input('Cualquier día de la semana',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
+                cg1,cg2=st.columns(2)
+                with cg1:
+                    inicio_guardia=st.date_input('Fecha de inicio',value=fecha_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_inicio')
+                with cg2:
+                    fin_guardia=st.date_input('Fecha de fin',value=fecha_fin_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_fin')
                 nota=st.text_input('Observaciones (opcional)')
-                guardar=st.form_submit_button('Registrar semana',type='primary')
-            lunes=fsel-timedelta(days=fsel.weekday()); domingo=lunes+timedelta(days=6)
-            st.caption(f'Semana propuesta: {lunes:%d/%m/%Y} → {domingo:%d/%m/%Y}')
+                guardar=st.form_submit_button('Registrar guardia',type='primary')
+            if inicio_guardia<=fin_guardia:
+                dias_guardia=(fin_guardia-inicio_guardia).days+1
+                st.caption(f'Periodo propuesto: {inicio_guardia:%d/%m/%Y} → {fin_guardia:%d/%m/%Y} · {dias_guardia} día(s)')
+            else:
+                st.warning('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
             if guardar:
                 ci=TECNICOS[tg]['ci']; conflicto=[]
                 for g in REGISTROS_GUARDIAS:
                     if g.get('centro')!=ci or g.get('tecnico')==tg: continue
                     gi,gf=_parse_fecha_iso(g.get('inicio')),_parse_fecha_iso(g.get('fin'))
-                    if gi and gf and lunes<=gf and domingo>=gi: conflicto.append(g)
-                duplicada=any(g.get('tecnico')==tg and g.get('inicio')==lunes.isoformat() for g in REGISTROS_GUARDIAS)
-                if lunes.year!=dd_anio or domingo.year!=dd_anio: st.error('La semana debe quedar completa dentro del año seleccionado.')
-                elif duplicada: st.info('Esa semana ya está registrada para el técnico.')
-                elif conflicto: st.error('No se puede guardar: ya existe otra guardia solapada en el mismo CI: '+', '.join(x.get('tecnico','') for x in conflicto))
+                    if gi and gf and inicio_guardia<=gf and fin_guardia>=gi: conflicto.append(g)
+                duplicada=any(
+                    g.get('tecnico')==tg and
+                    g.get('inicio')==inicio_guardia.isoformat() and
+                    g.get('fin')==fin_guardia.isoformat()
+                    for g in REGISTROS_GUARDIAS
+                )
+                if inicio_guardia>fin_guardia:
+                    st.error('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+                elif duplicada:
+                    st.info('Ese periodo ya está registrado para el técnico.')
+                elif conflicto:
+                    detalle=', '.join(f"{x.get('tecnico','')} ({(_parse_fecha_iso(x.get('inicio')) or date.min):%d/%m}–{(_parse_fecha_iso(x.get('fin')) or date.min):%d/%m})" for x in conflicto)
+                    st.error('No se puede guardar: existe otra guardia que se solapa en el mismo CI: '+detalle)
                 else:
                     nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
-                    nuevo.append({'id':hashlib.sha256(f'{tg}|{lunes.isoformat()}'.encode()).hexdigest()[:16],'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':lunes.isoformat(),'fin':domingo.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
-                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Guardia 12x7: {tg}, {lunes} a {domingo}'): st.rerun()
+                    gid=hashlib.sha256(f'{tg}|{inicio_guardia.isoformat()}|{fin_guardia.isoformat()}'.encode()).hexdigest()[:16]
+                    nuevo.append({'id':gid,'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':inicio_guardia.isoformat(),'fin':fin_guardia.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
+                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}'): st.rerun()
         filas=[]
         for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
             if centro!='Todos' and g.get('centro')!=centro: continue
-            filas.append({'Semana':f"{date.fromisoformat(g['inicio']):%d/%m} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')})
+            filas.append({'Periodo':f"{date.fromisoformat(g['inicio']):%d/%m/%Y} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Días':(date.fromisoformat(g['fin'])-date.fromisoformat(g['inicio'])).days+1,'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')})
         st.markdown('#### Calendario de guardias')
         mes_guardia=st.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='mes_cal_guardias')
         equipo_guardia=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
         st.markdown(guardias_calendario_html(equipo_guardia,mes_guardia,dd_anio),unsafe_allow_html=True)
         st.caption('G = guardia asignada · fines de semana sombreados · el día actual queda enmarcado.')
-        with st.expander('Ver listado de semanas registradas',expanded=False): tabla(filas)
+        with st.expander('Ver listado de periodos registrados',expanded=False): tabla(filas)
         propias=[g for g in guardias_anio if EDITOR or g.get('tecnico')==tecnico_sesion]
         if propias:
             with st.expander('Eliminar una guardia registrada'):
@@ -1217,7 +1237,7 @@ def render_guardias():
 
     with tab_inf:
         st.markdown('#### Informe de guardias')
-        st.caption('Genera un informe completo con resumen, calendarios, semanas registradas y activaciones. Se puede abrir en el navegador, imprimir o guardar como PDF.')
+        st.caption('Genera un informe completo con resumen, calendarios, periodos registrados y activaciones. Se puede abrir en el navegador, imprimir o guardar como PDF.')
         ir1,ir2=st.columns(2)
         alcance=ir1.radio('Periodo',['Año completo','Mes'],horizontal=True,key='guard_inf_periodo')
         mes_inf=ir2.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='guard_inf_mes',disabled=alcance=='Año completo')
@@ -1516,4 +1536,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
-
