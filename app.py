@@ -1746,7 +1746,10 @@ def render_config():
 
         st.markdown('#### Notificaciones automáticas a técnicos')
         actual_notif = bool(CONFIG_NOTIFICACIONES.get('notificar_tecnicos', True))
-        st.success('🟢 Activo · Los cambios del cuadrante se notifican al técnico afectado.') if actual_notif else st.info('⚪ Desactivado · Los cambios del cuadrante se guardan sin enviar correo al técnico.')
+        if actual_notif:
+            st.success('🟢 Activo · Los cambios del cuadrante se notifican al técnico afectado.')
+        else:
+            st.info('⚪ Desactivado · Los cambios del cuadrante se guardan sin enviar correo al técnico.')
         nuevo_notif = st.checkbox(
             'Notificar automáticamente al técnico cuando se registre, modifique o elimine una ausencia, permiso o vacaciones',
             value=actual_notif,
