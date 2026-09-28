@@ -709,6 +709,10 @@ def render_inicio():
       font-size:12px;font-weight:700;margin:4px 4px 4px 0;}
     .home-person {padding:12px 0;border-top:1px solid #dbe3ea;margin-top:12px;}
     .home-person strong {display:block;color:#172b3a;margin-bottom:4px;}
+    .home-guard {margin:13px 0 4px;padding:11px 12px;border-radius:10px;background:#e8f4f7;border:1px solid #b9dce5;color:#123f4d;}
+    .home-guard-title {font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0b667c;margin-bottom:4px;}
+    .home-guard strong {display:block;font-size:14px;color:#123f4d;margin-bottom:3px;}
+    .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
@@ -739,7 +743,35 @@ def render_inicio():
             no_laborable = all(estados[t][0]=='No laborable' for t in miembros)
             hay_ausencias = any(t in ausentes for t in miembros)
             color,etiqueta = ('neutral','NO LABORABLE') if no_laborable else ('danger','SIN COBERTURA') if c in sin_cobertura else ('warning','COBERTURA CON AUSENCIAS') if hay_ausencias else ('success','EQUIPO DISPONIBLE')
-            detalle = ''
+            # Guardia del CI para la fecha de planificación seleccionada.
+            # Los registros contiguos/solapados del mismo técnico se tratan como un único periodo real.
+            guardia_actual = []
+            proximas_guardias = []
+            for tg in [x for x,v in TECNICOS.items() if v.get('activo', True) and v.get('ci') == c]:
+                for ini_g, fin_g in periodos_guardia_reales(GUARDIAS, tecnico=tg):
+                    if ini_g <= fecha <= fin_g:
+                        guardia_actual.append((tg, ini_g, fin_g))
+                    elif ini_g > fecha:
+                        proximas_guardias.append((ini_g, fin_g, tg))
+            guardia_actual.sort(key=lambda x: (x[1], x[0]))
+            proximas_guardias.sort(key=lambda x: (x[0], x[2]))
+            if guardia_actual:
+                tg, ini_g, fin_g = guardia_actual[0]
+                guardia_html = (
+                    f'<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div>'
+                    f'<strong>{escape(tg)}</strong><div>{ini_g:%d/%m/%Y} → {fin_g:%d/%m/%Y}</div>'
+                )
+                if proximas_guardias:
+                    p_ini, p_fin, p_t = proximas_guardias[0]
+                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+                guardia_html += '</div>'
+            else:
+                guardia_html = '<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div><strong>Sin guardia asignada</strong>'
+                if proximas_guardias:
+                    p_ini, p_fin, p_t = proximas_guardias[0]
+                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+                guardia_html += '</div>'
+            detalle = guardia_html
             for t in miembros:
                 estado,horas = estados[t]
                 tipo = tipo_registro(valor_registro(t,fecha))
