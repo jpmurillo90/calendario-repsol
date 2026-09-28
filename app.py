@@ -302,7 +302,20 @@ button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!
 .grid th.name {background:#123b49;z-index:2;}
 .today {box-shadow:inset 0 0 0 2px #087c94;}
 .tag {display:inline-block;padding:5px 9px;border-radius:999px;margin:4px;font-size:11px;font-weight:650;color:#172b3a;border:1px solid rgba(23,43,58,.07);}
-@media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}}
+/* v11 Professional UI */
+.ci-section-label{font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:#8a9aa5;margin:15px 0 5px;padding:0 4px;}
+.ci-page-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:0 0 14px;padding:0 2px;}
+.ci-page-intro .eyebrow{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#0b667c;}
+.ci-page-intro .context{font-size:12px;color:#718493;margin-top:3px;}
+.ci-panel{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:18px 19px;box-shadow:0 5px 16px rgba(15,43,56,.035);margin:8px 0 16px;}
+.ci-panel-title{font-size:13px;font-weight:800;color:#274654;margin-bottom:4px;}
+.ci-panel-note{font-size:12px;color:#718493;}
+.ci-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.025em;border:1px solid #dbe4e9;background:#f8fafc;color:#536b78;}
+.ci-badge.ok{background:#f0fdf4;color:#166534;border-color:#bbf7d0}.ci-badge.warn{background:#fffbeb;color:#92400e;border-color:#fde68a}.ci-badge.danger{background:#fef2f2;color:#991b1b;border-color:#fecaca}.ci-badge.info{background:#eff6ff;color:#075985;border-color:#bfdbfe}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:6px;background:#f5f8fa;padding:5px;border-radius:11px;border:1px solid #e4ebef;}
+[data-testid="stTabs"] [data-baseweb="tab"]{height:38px;border-radius:8px;padding:0 14px;font-weight:650;}
+[data-testid="stTabs"] [aria-selected="true"]{background:#fff;box-shadow:0 2px 7px rgba(15,43,56,.08);}
+@media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}.ci-page-intro{display:block;}}
 </style>''', unsafe_allow_html=True)
 
 BASE = Path(__file__).resolve().parent
@@ -648,7 +661,10 @@ logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
 st.sidebar.title('Técnicos CI')
-pagina = st.sidebar.radio('Navegación', ['Inicio', 'Cuadrante', 'Guardias', 'Técnicos', 'Horas extra', 'Informes', 'Configuración'])
+NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
+st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
+pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
+pagina = NAV_LABELS[pagina_label]
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
 visibles = [t for t,v in TECNICOS.items() if v.get('activo', True) and (centro == 'Todos' or v['ci'] == centro)]
@@ -663,7 +679,7 @@ if 'guardado' in st.session_state:
 if 'aviso_local' in st.session_state:
     st.warning(st.session_state.pop('aviso_local'))
 st.title(pagina)
-st.caption(f'Gestión de Técnicos CI · {centro} · {dd_anio}')
+st.markdown(f'<div class="ci-page-intro"><div><div class="eyebrow">Gestión operativa CI</div><div class="context">{escape(centro)} · Ejercicio {dd_anio}</div></div><span class="ci-badge info">{escape(st.session_state.rol_actual)}</span></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="ci-statusbar">'
     f'<span class="ci-statusitem"><span class="ci-dot"></span>{"Datos remotos conectados" if REMOTE else "Almacenamiento local"}</span>'
@@ -719,6 +735,17 @@ def render_inicio():
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
     estados = {t: disponibilidad(t, fecha) for t in visibles}
+    # Resumen operativo superior: guardias activas y activaciones del día.
+    cis_visibles = sorted({TECNICOS[t]['ci'] for t in visibles})
+    guardias_hoy = 0
+    for ci_op in cis_visibles:
+        activa_ci = False
+        for tg in [x for x in visibles if TECNICOS[x]['ci'] == ci_op]:
+            if any(ini <= fecha <= fin for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg)):
+                activa_ci = True; break
+        guardias_hoy += int(activa_ci)
+    activaciones_hoy = sum(1 for a in ACTIVACIONES_GUARDIA if a.get('fecha') == fecha.isoformat() and a.get('tecnico') in visibles)
+    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Situación operativa · {fecha:%d/%m/%Y}</div><div class="ci-panel-note">👥 <b>{len(visibles)}</b> técnicos visibles &nbsp;·&nbsp; 🛡️ <b>{guardias_hoy}</b> CI con guardia activa &nbsp;·&nbsp; ⚡ <b>{activaciones_hoy}</b> activaciones registradas hoy</div></div>', unsafe_allow_html=True)
     centros = sorted({TECNICOS[t]['ci'] for t in visibles})
     sin_cobertura = [c for c in centros if any(obtener_horas_jornada_real(t,fecha.year,fecha.month,fecha.day)>0 for t in visibles if TECNICOS[t]['ci']==c) and not any(estados[t][1]>0 for t in visibles if TECNICOS[t]['ci']==c)]
     avisos = [t for t in visibles if estado_prl(t)[0] != 'Vigente']
@@ -1048,7 +1075,7 @@ def render_cuadrante():
                            key='descarga_informe_ampliado')
         st.caption('Cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los mismos filtros.')
     if EDITOR:
-        with st.expander('＋ Registrar ausencia / permiso',expanded=False): registrar_ausencia()
+        with st.expander('＋ Registrar novedad · ausencia, permiso, HLD o HE',expanded=False): registrar_ausencia()
     else: st.caption('Modo consulta: no puedes modificar registros.')
 
 def render_tecnicos():
@@ -1213,6 +1240,16 @@ def render_guardias():
     .guard-kpi small{color:#718493;font-weight:700}.guard-kpi strong{display:block;font-size:27px;color:#12313d;margin-top:5px}
     </style>""",unsafe_allow_html=True)
     st.caption('Guardias 12x7 · horario de referencia 08:00–20:00. Un mismo CI no puede tener dos técnicos de guardia en fechas solapadas.')
+    hoy_g = date.today()
+    activas_txt=[]
+    for ci_g in CENTROS:
+        if centro!='Todos' and ci_g!=centro: continue
+        for tg in [x for x in TECNICOS if TECNICOS[x]['ci']==ci_g and TECNICOS[x].get('activo',True)]:
+            for ig,fg in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
+                if ig <= hoy_g <= fg:
+                    activas_txt.append(f'<span class="ci-badge ok">🛡️ {escape(ci_g)} · {escape(tg)} · hasta {fg:%d/%m}</span>')
+                    break
+    st.markdown('<div class="ci-panel"><div class="ci-panel-title">Guardias activas hoy</div><div style="margin-top:8px">'+(' '.join(activas_txt) if activas_txt else '<span class="ci-badge warn">Sin guardias activas registradas hoy</span>')+'</div></div>',unsafe_allow_html=True)
     guardias_anio=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==dd_anio]
     acts_anio=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==dd_anio]
     total_importe=sum(float(a.get('importe',0) or 0) for a in acts_anio)
@@ -1405,7 +1442,10 @@ def render_he():
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
 def render_informes():
-    opcion = st.radio('Informe',['Balance','Guardias','PRL','Solapamientos','Auditoría'],horizontal=True)
+    st.markdown('<div class="ci-panel"><div class="ci-panel-title">Centro de informes</div><div class="ci-panel-note">Consulta saldos, guardias, PRL, coincidencias y trazabilidad desde un único punto.</div></div>',unsafe_allow_html=True)
+    INFO_LABELS={'📊 Balance':'Balance','🛡️ Guardias':'Guardias','🩺 PRL':'PRL','⚠️ Solapamientos':'Solapamientos','🧾 Auditoría':'Auditoría'}
+    opcion_label = st.radio('Informe',list(INFO_LABELS),horizontal=True,label_visibility='collapsed')
+    opcion = INFO_LABELS[opcion_label]
     filas = []
     if opcion=='Balance':
         st.markdown('''<style>
