@@ -512,11 +512,30 @@ if not st.session_state.get('autenticado'):
     with login_left:
         st.markdown('''<div class="login-brand" style="border-radius:22px 0 0 22px;min-height:430px"><div><div class="login-kicker">Operación · Infraestructuras y Sistemas</div><div class="login-title">Gestión Técnicos CI · REPSOL</div><div class="login-copy">Plataforma de planificación y gestión operativa de los Complejos Industriales Repsol</div><div class="login-meta"><span class="login-pill">Planificación CI</span><span class="login-pill">Guardias 12x7</span><span class="login-pill">PRL y recursos</span><span class="login-pill">Informes operativos</span></div></div><div class="login-foot">Uso interno · Indra Group / RPECII</div></div>''', unsafe_allow_html=True)
     with login_right:
-        st.markdown('''<div style="background:#fff;border:1px solid #dce6eb;border-left:0;border-radius:0 22px 22px 0;padding:38px 40px 8px;min-height:430px;box-shadow:0 18px 55px rgba(15,43,56,.08)"><div class="login-form-head"><b>Acceso a la plataforma</b><span>Identifícate con tus credenciales autorizadas.</span></div>''', unsafe_allow_html=True)
+        st.markdown('''<div class="login-form-head" style="margin:38px 28px 18px"><b>Acceso a la plataforma</b><span>Identifícate con tus credenciales autorizadas.</span></div>''', unsafe_allow_html=True)
         if not usuarios:
             st.warning('Configura los usuarios en .streamlit/secrets.toml. Se han eliminado las contraseñas de respaldo del código.')
             st.code('[usuarios.coordinador]\nnombre = "Coordinador"\nrol = "Editor"\npassword = "SUSTITUIR_POR_UNA_CLAVE_LARGA_Y_UNICA"', language='toml')
             st.stop()
+        with st.form('login'):
+            user = st.text_input('Usuario')
+            password = st.text_input('Contraseña', type='password')
+            entrar = st.form_submit_button('Entrar', type='primary', use_container_width=True)
+        if entrar:
+            if time.time() < st.session_state.get('bloqueado_hasta', 0):
+                st.error('Espera un minuto antes de volver a intentarlo.')
+            elif user in usuarios and verificar_password(password, usuarios[user]):
+                st.session_state.update(autenticado=True, usuario_actual=usuarios[user].get('nombre', user),
+                                        rol_actual=usuarios[user].get('rol', 'Lector'), usuario_id=user, intentos=0)
+                st.rerun()
+            else:
+                st.session_state.intentos = st.session_state.get('intentos', 0) + 1
+                if st.session_state.intentos >= 5:
+                    st.session_state.bloqueado_hasta = time.time() + 60
+                    st.session_state.intentos = 0
+                st.error('Credenciales no válidas.')
+    st.stop()
+
 EDITOR = st.session_state.rol_actual == 'Editor'
 # El límite de intentos es por sesión; el despliegue debe restringirse a la organización.
 
