@@ -1057,26 +1057,55 @@ def _cancelar_registros_solicitud(sol_cancelacion):
 def _estado_solicitud_visual(estado):
     return {'Aprobada':'🟢 Aprobada','Pendiente':'🟡 Pendiente','Rechazada':'🔴 Rechazada','Cancelación pendiente':'🟠 Cancelación pendiente','Cancelada':'⚫ Cancelada'}.get(estado,estado or '—')
 
+def _resumen_saldo_solicitud(tecnico, tipo, desde, hasta, horas_dia=0.0):
+    mapa = {"Vacaciones":"V", "Vacaciones año anterior":"VPA", "HLD":"HLD", "Consumir HE":"HE"}
+    codigo = mapa[tipo]; anio = desde.year
+    _, saldo = saldos(tecnico, anio)
+    saldo_actual = float(saldo.get(codigo, 0) or 0)
+    def consumo_sol(sol):
+        ini=_parse_fecha_iso(sol.get("desde")); fin=_parse_fecha_iso(sol.get("hasta"))
+        if not ini or not fin or ini.year != anio: return 0.0
+        ini=max(ini,date(anio,1,1)); fin=min(fin,date(anio,12,31))
+        if fin < ini: return 0.0
+        fs=[ini+timedelta(days=i) for i in range((fin-ini).days+1)]
+        fs=[f for f in fs if obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)>0]
+        if codigo in ("HLD","HE"):
+            h=float(sol.get("horas_dia") or 0)
+            return sum(h if h>0 else float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) for f in fs)
+        return float(len(fs))
+    reservado=sum(consumo_sol(x) for x in SOLICITUDES if x.get("tecnico")==tecnico and x.get("estado")=="Pendiente" and not x.get("solicitud_origen") and mapa.get(x.get("tipo"))==codigo)
+    fs=[] if hasta<desde else [desde+timedelta(days=i) for i in range((hasta-desde).days+1)]
+    fs=[f for f in fs if f.year==anio and obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)>0]
+    if codigo in ("HLD","HE"):
+        solicitado=sum(float(horas_dia) if float(horas_dia)>0 else float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) for f in fs); unidad="h"
+    else:
+        solicitado=float(len(fs)); unidad="días"
+    disponible=round(saldo_actual-reservado,2); restante=round(disponible-solicitado,2)
+    return {"saldo_actual":round(saldo_actual,2),"reservado":round(reservado,2),"disponible":disponible,"solicitado":round(solicitado,2),"restante":restante,"unidad":unidad,"valido":hasta>=desde and solicitado>0 and restante>=-1e-9}
+
 def render_solicitudes():
     st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, vacaciones del año anterior, HLD y consumo de HE con aprobación, trazabilidad y actualización automática del cuadrante.</div></div>',unsafe_allow_html=True)
     if ES_TECNICO:
         t=tecnico_sesion(); st.subheader('Nueva solicitud')
-        with st.form('nueva_solicitud'):
-            tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'])
-            c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today()); hasta=c2.date_input('Hasta',date.today())
-            aplica_horas=tipo in ('HLD','Consumir HE')
-            horas=st.number_input('Horas por día (solo HLD / HE; 0 = jornada completa)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=not aplica_horas)
-            comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.')
-            enviar=st.form_submit_button('Enviar solicitud',type='primary')
+        tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'],key='sol_tipo')
+        c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today(),key='sol_desde'); hasta=c2.date_input('Hasta',date.today(),key='sol_hasta')
+        aplica_horas=tipo in ('HLD','Consumir HE')
+        horas=st.number_input('Horas por día (solo HLD / HE; 0 = jornada completa)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=not aplica_horas,key='sol_horas')
+        rs=_resumen_saldo_solicitud(t,tipo,desde,hasta,horas if aplica_horas else 0)
+        titulo={'Vacaciones':'Vacaciones','Vacaciones año anterior':'Vacaciones año anterior','HLD':'HLD','Consumir HE':'Horas extra'}[tipo]
+        st.markdown(f"""<div class='balance-head' style='margin:8px 0 14px'><h3>Saldo disponible · {escape(titulo)}</h3><p>Saldo anual actualizado y solicitudes pendientes ya reservadas.</p></div><div class='seg-grid'><div class='seg-kpi'><div class='label'>SALDO ACTUAL</div><div class='value'>{rs['saldo_actual']:g} {rs['unidad']}</div><div class='sub'>Saldo consolidado</div></div><div class='seg-kpi'><div class='label'>PENDIENTE DE APROBACIÓN</div><div class='value'>{rs['reservado']:g} {rs['unidad']}</div><div class='sub'>Ya reservado</div></div><div class='seg-kpi total'><div class='label'>DISPONIBLE PARA SOLICITAR</div><div class='value'>{rs['disponible']:g} {rs['unidad']}</div><div class='sub'>Saldo utilizable ahora</div></div><div class='seg-kpi'><div class='label'>ESTA SOLICITUD</div><div class='value'>{rs['solicitado']:g} {rs['unidad']}</div><div class='sub'>Consumo calculado</div></div><div class='seg-kpi'><div class='label'>SALDO RESTANTE</div><div class='value'>{rs['restante']:g} {rs['unidad']}</div><div class='sub'>Si se aprueba</div></div></div>""",unsafe_allow_html=True)
+        if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
+        elif rs['solicitado']<=0: st.warning('El periodo seleccionado no contiene jornadas laborables computables.')
+        elif rs['restante']<0: st.error(f"Saldo insuficiente. La solicitud supera en {abs(rs['restante']):g} {rs['unidad']} el saldo realmente disponible.")
+        comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.',key='sol_comentario')
+        enviar=st.button('Enviar solicitud',type='primary',disabled=not rs['valido'],key='sol_enviar')
         if enviar:
-            if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
-            else:
-                sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
-                nuevo=SOLICITUDES+[sol]
-                if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
-                    destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
-                    if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nComentario: {comentario or "—"}',destino)
-                    st.rerun()
+            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
+            nuevo=SOLICITUDES+[sol]
+            if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
+                destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nConsumo: {rs["solicitado"]:g} {rs["unidad"]}\nSaldo restante si se aprueba: {rs["restante"]:g} {rs["unidad"]}\nComentario: {comentario or "—"}',destino)
+                st.rerun()
         st.subheader('Mis solicitudes')
         propias=[x for x in reversed(SOLICITUDES) if x.get('tecnico')==t and not x.get('solicitud_origen')]
         filas=[{'Creada':x.get('creada','')[:16].replace('T',' '),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':_estado_solicitud_visual(x.get('estado')),'Resolución':x.get('resolucion','')} for x in propias]
@@ -2380,8 +2409,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.2</div><div class="sub">Avisos de Coordinación · envío opcional por email · alcance segmentado · resultado de entrega</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.3</div><div class="sub">Solicitudes inteligentes · saldo real · reservas pendientes · consumo y saldo restante en tiempo real</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.3','28/09/2026','Saldo inteligente en solicitudes','El técnico ve en tiempo real el saldo del concepto seleccionado, lo reservado por solicitudes pendientes, el consumo de la nueva petición y el saldo restante. Se bloquean solicitudes que superen el saldo realmente disponible.'),
       ('v16.2','28/09/2026','Avisos también por email','Los avisos de Coordinación pueden publicarse solo en la plataforma o enviarse además por correo. Respeta el alcance Todos, CI o técnicos concretos, muestra cuántos destinatarios tienen correo disponible e informa del resultado de entrega sin bloquear la publicación del aviso.'),
       ('v16.1','28/09/2026','Solicitudes y cancelaciones','Solicitudes limitadas a Vacaciones, Vacaciones año anterior, HLD y consumo de HE. Estados visuales por color y nuevo flujo de cancelación: el técnico solicita cancelar una petición aprobada y Coordinación debe aprobarla antes de retirar la planificación y restituir el saldo.'),
       ('v16','28/09/2026','Portal del Técnico','Mi espacio personalizado, centro de notificaciones con leído/no leído, buzón de solicitudes con aprobación y alta automática en cuadrante, y avisos segmentados de Coordinación.'),
@@ -2763,3 +2793,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
