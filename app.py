@@ -47,6 +47,8 @@ RUTA_HLD_ANUAL = "hld_anual_repsol.json"
 
 RUTA_PRL = "prl_repsol.json"
 
+RUTA_TECNICOS = "tecnicos_repsol.json"
+
 PRL_DEFAULT = {
     'Juan Pedro Murillo Huete': {'nip': '709355', 'dni': '05933159X', 'fecha': '2027-03-27', 'obs': 'BIENAL'},
     'David Muñoz Burguillo': {'nip': '709743', 'dni': '70052109C', 'fecha': '2027-03-28', 'obs': 'BIENAL'},
@@ -456,7 +458,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -553,6 +555,17 @@ def normalizar_registros(datos):
         result[(int(a), t, str(int(m)), str(int(d)))] = val
     return result
 
+# Catálogo dinámico de técnicos. Si tecnicos_repsol.json todavía no existe,
+# se usan exactamente los técnicos definidos en esta versión como migración inicial.
+# Esto NO modifica los registros históricos: vacaciones, ausencias, HE/HLD y PRL
+# continúan identificándose por el mismo nombre del técnico.
+TECNICOS = cargar_json(RUTA_TECNICOS, TECNICOS)
+for _nombre, _datos in TECNICOS.items():
+    _datos.setdefault('activo', True)
+    _datos.setdefault('vac_totales', 22)
+    _datos.setdefault('vpa_base', 0)
+    _datos.setdefault('he_totales', 0.0)
+
 REGISTROS = normalizar_registros(cargar_json(RUTA_BDD, {}))
 REGISTROS_HE = cargar_json(RUTA_HE, {})
 REGISTROS_PRL = cargar_json(RUTA_PRL, PRL_DEFAULT)
@@ -630,7 +643,7 @@ st.sidebar.title('Técnicos CI')
 pagina = st.sidebar.radio('Navegación', ['Inicio', 'Cuadrante', 'Técnicos', 'Horas extra', 'Informes', 'Configuración'])
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
-visibles = [t for t,v in TECNICOS.items() if centro == 'Todos' or v['ci'] == centro]
+visibles = [t for t,v in TECNICOS.items() if v.get('activo', True) and (centro == 'Todos' or v['ci'] == centro)]
 st.sidebar.divider()
 st.sidebar.caption(f'{st.session_state.usuario_actual} · {st.session_state.rol_actual}')
 st.sidebar.caption('Datos remotos conectados' if REMOTE else 'Almacenamiento local')
@@ -1087,7 +1100,71 @@ def render_informes():
 def render_config():
     if not EDITOR:
         st.info('Configuración reservada a editores.'); return
-    opcion = st.radio('Ajustes',['Festivos','Horarios','HLD','Avisos por email','Copias de seguridad'],horizontal=True)
+    opcion = st.radio('Ajustes',['Técnicos','Festivos','Horarios','HLD','Avisos por email','Copias de seguridad'],horizontal=True)
+    if opcion=='Técnicos':
+        st.subheader('Gestión de técnicos')
+        st.caption('Añade nuevos técnicos o modifica su centro y asignaciones. Los registros históricos existentes no se alteran.')
+
+        activos = sum(1 for d in TECNICOS.values() if d.get('activo', True))
+        c1, c2, c3 = st.columns(3)
+        c1.metric('Técnicos activos', activos)
+        c2.metric('Técnicos históricos', len(TECNICOS))
+        c3.metric('Centros', len({d.get('ci','') for d in TECNICOS.values() if d.get('ci')}))
+
+        tab_nuevo, tab_editar = st.tabs(['➕ Añadir técnico','✏️ Editar / desactivar'])
+        centros_existentes = sorted({d.get('ci','') for d in TECNICOS.values() if d.get('ci')})
+
+        with tab_nuevo:
+            st.markdown('#### Alta de nuevo técnico')
+            with st.form('alta_tecnico', clear_on_submit=False):
+                nombre = st.text_input('Nombre y apellidos')
+                ci = st.selectbox('CI asignado', centros_existentes)
+                ca, cb = st.columns(2)
+                vac = ca.number_input('Vacaciones anuales (días)', min_value=0, max_value=60, value=22, step=1)
+                vpa = cb.number_input('VPA iniciales (días)', min_value=0, max_value=60, value=0, step=1)
+                st.markdown('**Datos PRL (opcionales)**')
+                cp1, cp2 = st.columns(2)
+                nip = cp1.text_input('NIP')
+                dni = cp2.text_input('DNI')
+                fecha_prl = st.date_input('Caducidad PRL', value=None)
+                obs_prl = st.text_input('Observaciones PRL')
+                confirmar = st.checkbox('Confirmo el alta del nuevo técnico')
+                alta = st.form_submit_button('Añadir técnico', type='primary', disabled=not confirmar)
+            if alta:
+                nombre = ' '.join(nombre.split()).strip()
+                if not nombre:
+                    st.error('Indica el nombre y apellidos del técnico.')
+                elif nombre in TECNICOS:
+                    st.error('Ya existe un técnico con ese nombre. Usa Editar / desactivar para modificarlo.')
+                else:
+                    nuevos_tecnicos = copy.deepcopy(TECNICOS)
+                    nuevos_tecnicos[nombre] = {'ci':ci,'vac_totales':int(vac),'vpa_base':int(vpa),'he_totales':0.0,'activo':True}
+                    nuevo_prl = copy.deepcopy(REGISTROS_PRL)
+                    nuevo_prl[nombre] = {'nip':nip.strip(),'dni':dni.strip(),'fecha':fecha_prl.isoformat() if fecha_prl else '', 'obs':obs_prl.strip()}
+                    if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos,RUTA_PRL:nuevo_prl},f'Alta técnico: {nombre} · {ci}'):
+                        st.rerun()
+
+        with tab_editar:
+            st.markdown('#### Editar técnico existente')
+            elegido = st.selectbox('Técnico', sorted(TECNICOS), key='config_tecnico_editar')
+            actual = TECNICOS[elegido]
+            ci_actual = actual.get('ci','')
+            opciones_ci = centros_existentes if ci_actual in centros_existentes else centros_existentes + [ci_actual]
+            with st.form(f'editar_tecnico_{elegido}'):
+                nuevo_ci = st.selectbox('CI asignado', opciones_ci, index=opciones_ci.index(ci_actual))
+                ce1, ce2 = st.columns(2)
+                nuevas_vac = ce1.number_input('Vacaciones anuales (días)', min_value=0, max_value=60, value=int(actual.get('vac_totales',22)), step=1)
+                nuevo_vpa = ce2.number_input('VPA base (días)', min_value=0, max_value=60, value=int(actual.get('vpa_base',0)), step=1)
+                activo = st.checkbox('Técnico activo', value=bool(actual.get('activo',True)))
+                st.caption('Desactivar oculta al técnico de la operativa habitual, pero conserva vacaciones, ausencias, HE/HLD, PRL y auditoría históricas.')
+                guardar_tec = st.form_submit_button('Guardar cambios', type='primary')
+            if guardar_tec:
+                nuevos_tecnicos = copy.deepcopy(TECNICOS)
+                nuevos_tecnicos[elegido].update({'ci':nuevo_ci,'vac_totales':int(nuevas_vac),'vpa_base':int(nuevo_vpa),'activo':activo})
+                if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos},f'Actualizar técnico: {elegido} · {nuevo_ci} · activo={activo}'):
+                    st.rerun()
+        return
+
     if opcion=='Avisos por email':
         st.subheader('Avisos por email')
         remitente = str(secreto('GMAIL_USUARIO', '')).strip()
@@ -1143,7 +1220,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -1195,4 +1272,3 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
-
