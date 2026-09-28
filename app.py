@@ -49,6 +49,8 @@ RUTA_PRL = "prl_repsol.json"
 
 RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
+RUTA_CONFIG_NOTIFICACIONES = "config_notificaciones_repsol.json"
+CONFIG_NOTIFICACIONES_DEFAULT = {"notificar_tecnicos": True}
 PERFILES_DEFAULT = {}
 VEHICULOS_DEFAULT = {}
 RUTA_GUARDIAS = "guardias_repsol.json"
@@ -445,6 +447,8 @@ def enviar_resumen_prl_manual():
 
 def notificar_cambio_planificacion(tecnico, tipo, inicio, fin, fechas, desglose, accion_borrar=False):
     """Notifica al técnico tras guardar correctamente una novedad del cuadrante."""
+    if not CONFIG_NOTIFICACIONES.get("notificar_tecnicos", True):
+        return True, "Registro guardado. Las notificaciones automáticas a técnicos están desactivadas."
     perfil = PERFILES_TECNICOS.get(tecnico, {})
     destinatario = str(perfil.get('correo', '')).strip()
     if not destinatario:
@@ -519,7 +523,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -632,6 +636,8 @@ REGISTROS_HE = cargar_json(RUTA_HE, {})
 REGISTROS_PRL = cargar_json(RUTA_PRL, PRL_DEFAULT)
 PERFILES_TECNICOS = cargar_json(RUTA_PERFILES, PERFILES_DEFAULT)
 VEHICULOS = cargar_json(RUTA_VEHICULOS, VEHICULOS_DEFAULT)
+CONFIG_NOTIFICACIONES = cargar_json(RUTA_CONFIG_NOTIFICACIONES, CONFIG_NOTIFICACIONES_DEFAULT)
+CONFIG_NOTIFICACIONES.setdefault("notificar_tecnicos", True)
 REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
@@ -984,10 +990,13 @@ def registrar_ausencia():
         st.warning('Hay otras marcas en el mismo centro. Revisa si afectan a la cobertura.'); tabla(conflictos)
     firma = hashlib.sha256(repr((t,ini,fin,tipo,[(x['fecha'].isoformat(),x['he'],x['hld']) for x in desglose],solo_laborables)).encode()).hexdigest()[:16]
     correo_tecnico = str(PERFILES_TECNICOS.get(t, {}).get('correo', '')).strip()
-    if correo_tecnico:
+    notificaciones_activas = bool(CONFIG_NOTIFICACIONES.get('notificar_tecnicos', True))
+    if notificaciones_activas and correo_tecnico:
         st.info(f'📧 Al confirmar, se enviará una notificación a **{correo_tecnico}**.')
-    else:
+    elif notificaciones_activas:
         st.warning(f'📧 {t} no tiene Correo Minsait configurado. El registro se guardará, pero no podrá enviarse la notificación.')
+    else:
+        st.caption('🔕 Las notificaciones automáticas a técnicos están desactivadas en Configuración → Avisos por email.')
     confirmado = st.checkbox('He revisado el consumo, las sustituciones y los solapamientos.',key=f'confirmar_{firma}')
     if st.button('Confirmar registro',type='primary',disabled=not confirmado or excede):
         accion = f'{t}: {tipo}, {ini} a {fin}, {len(fechas)} días; solapamientos: {len(conflictos)}'
@@ -1735,6 +1744,25 @@ def render_config():
         else:
             st.warning('Falta configurar Gmail en los Secrets de Streamlit.')
 
+        st.markdown('#### Notificaciones automáticas a técnicos')
+        actual_notif = bool(CONFIG_NOTIFICACIONES.get('notificar_tecnicos', True))
+        st.success('🟢 Activo · Los cambios del cuadrante se notifican al técnico afectado.') if actual_notif else st.info('⚪ Desactivado · Los cambios del cuadrante se guardan sin enviar correo al técnico.')
+        nuevo_notif = st.checkbox(
+            'Notificar automáticamente al técnico cuando se registre, modifique o elimine una ausencia, permiso o vacaciones',
+            value=actual_notif,
+            key='cfg_notificar_tecnicos'
+        )
+        st.caption('Afecta a las novedades registradas desde el cuadrante (Vacaciones, VPA, HLD, HE, formación, bajas, permisos, etc.). Los avisos PRL funcionan de forma independiente.')
+        if nuevo_notif != actual_notif:
+            if st.button('Guardar configuración de notificaciones', type='primary', use_container_width=True):
+                nueva_cfg = copy.deepcopy(CONFIG_NOTIFICACIONES)
+                nueva_cfg['notificar_tecnicos'] = bool(nuevo_notif)
+                if guardar_cambios({RUTA_CONFIG_NOTIFICACIONES: nueva_cfg}, f'Notificaciones a técnicos: {"activadas" if nuevo_notif else "desactivadas"}'):
+                    st.rerun()
+        else:
+            st.caption('Configuración guardada actualmente.')
+
+        st.divider()
         st.markdown('#### Envío manual')
         col_prueba, col_prl = st.columns(2)
         with col_prueba:
@@ -1776,7 +1804,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
