@@ -49,10 +49,12 @@ RUTA_PRL = "prl_repsol.json"
 
 RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
-
 PERFILES_DEFAULT = {}
-
 VEHICULOS_DEFAULT = {}
+RUTA_GUARDIAS = "guardias_repsol.json"
+RUTA_ACTIVACIONES = "activaciones_guardia_repsol.json"
+
+RUTA_TECNICOS = "tecnicos_repsol.json"
 
 PRL_DEFAULT = {
     'Juan Pedro Murillo Huete': {'nip': '709355', 'dni': '05933159X', 'fecha': '2027-03-27', 'obs': 'BIENAL'},
@@ -203,10 +205,14 @@ def obtener_horas_hld(tecnico, mes, dia, anio):
 def obtener_horas_jornada_real(tecnico, anio, mes, dia):
     return obtener_horas_hld(tecnico, mes, dia, anio)
 
+def he_compensadas_registro(item):
+    if 'horas_compensadas' in item:
+        return float(item.get('horas_compensadas', 0) or 0)
+    return float(item.get('horas_reales', 0) or 0) * 1.75
+
 def calcular_he_compensadas_totales(tecnico, anio):
     lista_he = REGISTROS_HE.get(tecnico, [])
-    total_reales = sum(item['horas_reales'] for item in lista_he if item['anio'] == anio)
-    return round(total_reales * 1.75, 2)
+    return round(sum(he_compensadas_registro(item) for item in lista_he if item.get('anio') == anio), 2)
 
 def extraer_info_registro(val_reg, tec, anio, mes, dia):
     if not val_reg:
@@ -255,23 +261,66 @@ def verificar_coincidencias(tecnico_actual, mes, dia, tipo_marca, anio):
 
 # -------------------- Presentación y autenticación --------------------
 st.markdown('''<style>
-.stApp {background:#f5f7fa;color:#172b3a;}
-.block-container {padding-top:2rem;max-width:1600px;}
-[data-testid="stSidebar"] {background:#fff;border-right:1px solid #e2e8f0;}
+:root {--ci-primary:#07566a;--ci-primary-dark:#123b49;--ci-bg:#f4f7f9;--ci-card:#ffffff;--ci-border:#e2e8f0;--ci-text:#172b3a;--ci-muted:#647785;--ci-radius:14px;}
+.stApp {background:linear-gradient(180deg,#f7f9fb 0,#f4f7f9 240px);color:var(--ci-text);}
+.block-container {padding-top:1.55rem;padding-bottom:2.5rem;max-width:1600px;}
+[data-testid="stSidebar"] {background:#fff;border-right:1px solid var(--ci-border);box-shadow:4px 0 18px rgba(15,43,56,.035);}
+[data-testid="stSidebar"] [data-testid="stImage"] {padding:8px 4px 4px;}
+[data-testid="stSidebar"] h1 {font-size:1.18rem!important;margin-bottom:.7rem;}
+[data-testid="stSidebar"] [role="radiogroup"] {gap:.2rem;}
+[data-testid="stSidebar"] [role="radiogroup"] label {padding:.45rem .55rem;border-radius:9px;transition:.15s ease;}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {background:#f1f6f8;}
 h1,h2,h3 {letter-spacing:-.025em;color:#12313d;}
-[data-testid="stMetric"] {background:white;padding:18px;border:1px solid #e5ebf0;border-radius:12px;}
-button[kind="primary"] {background:#07566a;border-color:#07566a;color:white;}
-.ci-card {background:white;border:1px solid #e5ebf0;border-radius:14px;padding:20px;margin:8px 0 18px;min-height:150px;}
+h1 {font-weight:750!important;font-size:2rem!important;margin-bottom:.1rem!important;}
+h2 {font-size:1.35rem!important;margin-top:1.4rem!important;}
+h3 {font-size:1.05rem!important;}
+p, .stCaption {line-height:1.5;}
+[data-testid="stCaptionContainer"] {color:var(--ci-muted);}
+hr {border-color:#e7edf1!important;margin:1.3rem 0!important;}
+[data-testid="stMetric"] {background:#fff;padding:17px 18px;border:1px solid var(--ci-border);border-radius:var(--ci-radius);box-shadow:0 5px 16px rgba(15,43,56,.045);}
+[data-testid="stMetricLabel"] {color:#607584;font-weight:650;}
+[data-testid="stMetricValue"] {color:#12313d;font-weight:750;letter-spacing:-.03em;}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button {border-radius:9px!important;min-height:2.55rem;font-weight:650;border-color:#d7e1e7;transition:.15s ease;}
+.stButton>button:hover,.stDownloadButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover {border-color:#7ba5b0;box-shadow:0 3px 10px rgba(7,86,106,.09);}
+button[kind="primary"] {background:var(--ci-primary)!important;border-color:var(--ci-primary)!important;color:white!important;box-shadow:0 4px 12px rgba(7,86,106,.16);}
+button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!important;}
+[data-baseweb="select"]>div,[data-baseweb="input"]>div,[data-testid="stDateInput"]>div>div {border-radius:9px!important;border-color:#dbe4e9!important;background:#fff;}
+[data-testid="stExpander"] {background:#fff;border:1px solid var(--ci-border)!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,43,56,.025);overflow:hidden;}
+[data-testid="stExpander"] summary {font-weight:650;color:#274654;}
+[data-testid="stDataFrame"] {border:1px solid var(--ci-border);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 3px 12px rgba(15,43,56,.025);}
+[data-testid="stAlert"] {border-radius:11px!important;border-width:1px!important;}
+[role="radiogroup"] {gap:.25rem;}
+[role="radiogroup"] label {font-weight:550;}
+.ci-statusbar {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:.7rem 0 1.15rem;padding:9px 12px;background:rgba(255,255,255,.82);border:1px solid #e3eaee;border-radius:11px;box-shadow:0 3px 12px rgba(15,43,56,.025);}
+.ci-statusitem {display:inline-flex;align-items:center;gap:6px;color:#536b78;font-size:12px;font-weight:650;padding:3px 7px;}
+.ci-dot {width:7px;height:7px;border-radius:50%;background:#15803d;box-shadow:0 0 0 3px #dcfce7;}
+.ci-sep {width:1px;height:16px;background:#e1e8ec;}
+.ci-card {background:white;border:1px solid var(--ci-border);border-radius:var(--ci-radius);padding:20px;margin:8px 0 18px;box-shadow:0 5px 16px rgba(15,43,56,.04);min-height:150px;}
 .ci-card h3 {margin:0 0 12px;font-size:19px;}
 .subtle {color:#607584;font-size:14px;}
-.grid-wrap {overflow:auto;border:1px solid #dee6ec;border-radius:12px;background:white;}
+.grid-wrap {overflow:auto;border:1px solid #dee6ec;border-radius:13px;background:white;box-shadow:0 4px 14px rgba(15,43,56,.035);}
 .grid {border-collapse:separate;border-spacing:0;width:100%;font-size:13px;white-space:nowrap;}
-.grid th {background:#123b49;color:white;padding:12px 9px;position:sticky;top:0;}
+.grid th {background:#123b49;color:white;padding:12px 9px;position:sticky;top:0;font-weight:650;}
 .grid td {border-bottom:1px solid #edf1f4;padding:12px 9px;text-align:center;min-width:42px;}
-.grid .name {position:sticky;left:0;text-align:left;background:white;min-width:200px;z-index:1;}
+.grid tbody tr:hover td {filter:brightness(.985);}
+.grid .name {position:sticky;left:0;text-align:left;background:white;min-width:200px;z-index:1;font-weight:600;}
 .grid th.name {background:#123b49;z-index:2;}
 .today {box-shadow:inset 0 0 0 2px #087c94;}
-.tag {display:inline-block;padding:4px 9px;border-radius:6px;margin:4px;font-size:12px;color:#172b3a;}
+.tag {display:inline-block;padding:5px 9px;border-radius:999px;margin:4px;font-size:11px;font-weight:650;color:#172b3a;border:1px solid rgba(23,43,58,.07);}
+/* v11 Professional UI */
+.ci-section-label{font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:#8a9aa5;margin:15px 0 5px;padding:0 4px;}
+.ci-page-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:0 0 14px;padding:0 2px;}
+.ci-page-intro .eyebrow{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#0b667c;}
+.ci-page-intro .context{font-size:12px;color:#718493;margin-top:3px;}
+.ci-panel{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:18px 19px;box-shadow:0 5px 16px rgba(15,43,56,.035);margin:8px 0 16px;}
+.ci-panel-title{font-size:13px;font-weight:800;color:#274654;margin-bottom:4px;}
+.ci-panel-note{font-size:12px;color:#718493;}
+.ci-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.025em;border:1px solid #dbe4e9;background:#f8fafc;color:#536b78;}
+.ci-badge.ok{background:#f0fdf4;color:#166534;border-color:#bbf7d0}.ci-badge.warn{background:#fffbeb;color:#92400e;border-color:#fde68a}.ci-badge.danger{background:#fef2f2;color:#991b1b;border-color:#fecaca}.ci-badge.info{background:#eff6ff;color:#075985;border-color:#bfdbfe}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:6px;background:#f5f8fa;padding:5px;border-radius:11px;border:1px solid #e4ebef;}
+[data-testid="stTabs"] [data-baseweb="tab"]{height:38px;border-radius:8px;padding:0 14px;font-weight:650;}
+[data-testid="stTabs"] [aria-selected="true"]{background:#fff;box-shadow:0 2px 7px rgba(15,43,56,.08);}
+@media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}.ci-page-intro{display:block;}}
 </style>''', unsafe_allow_html=True)
 
 BASE = Path(__file__).resolve().parent
@@ -433,7 +482,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_PERFILES, RUTA_VEHICULOS, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -530,11 +579,24 @@ def normalizar_registros(datos):
         result[(int(a), t, str(int(m)), str(int(d)))] = val
     return result
 
+# Catálogo dinámico de técnicos. Si tecnicos_repsol.json todavía no existe,
+# se usan exactamente los técnicos definidos en esta versión como migración inicial.
+# Esto NO modifica los registros históricos: vacaciones, ausencias, HE/HLD y PRL
+# continúan identificándose por el mismo nombre del técnico.
+TECNICOS = cargar_json(RUTA_TECNICOS, TECNICOS)
+for _nombre, _datos in TECNICOS.items():
+    _datos.setdefault('activo', True)
+    _datos.setdefault('vac_totales', 22)
+    _datos.setdefault('vpa_base', 0)
+    _datos.setdefault('he_totales', 0.0)
+
 REGISTROS = normalizar_registros(cargar_json(RUTA_BDD, {}))
 REGISTROS_HE = cargar_json(RUTA_HE, {})
 REGISTROS_PRL = cargar_json(RUTA_PRL, PRL_DEFAULT)
 PERFILES_TECNICOS = cargar_json(RUTA_PERFILES, PERFILES_DEFAULT)
 VEHICULOS = cargar_json(RUTA_VEHICULOS, VEHICULOS_DEFAULT)
+REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
+ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
 FESTIVOS_POR_ANIO = {int(a): {c: [tuple(x) for x in v] for c,v in cs.items()} for a,cs in cargar_json(RUTA_FESTIVOS, FESTIVOS_POR_ANIO_DEFAULT).items()}
 CONFIG_ANUAL_POR_ANIO = {int(a): v for a,v in cargar_json(RUTA_CONFIG_ANUAL, CONFIG_ANUAL_DEFAULT).items()}
@@ -606,10 +668,13 @@ logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
 st.sidebar.title('Técnicos CI')
-pagina = st.sidebar.radio('Navegación', ['Inicio', 'Cuadrante', 'Técnicos', 'Horas extra', 'Informes', 'Configuración'])
+NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
+st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
+pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
+pagina = NAV_LABELS[pagina_label]
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
-visibles = [t for t,v in TECNICOS.items() if centro == 'Todos' or v['ci'] == centro]
+visibles = [t for t,v in TECNICOS.items() if v.get('activo', True) and (centro == 'Todos' or v['ci'] == centro)]
 st.sidebar.divider()
 st.sidebar.caption(f'{st.session_state.usuario_actual} · {st.session_state.rol_actual}')
 st.sidebar.caption('Datos remotos conectados' if REMOTE else 'Almacenamiento local')
@@ -621,7 +686,15 @@ if 'guardado' in st.session_state:
 if 'aviso_local' in st.session_state:
     st.warning(st.session_state.pop('aviso_local'))
 st.title(pagina)
-st.caption(f'Gestión de Técnicos CI · {centro} · {dd_anio}')
+st.markdown(f'<div class="ci-page-intro"><div><div class="eyebrow">Gestión operativa CI</div><div class="context">{escape(centro)} · Ejercicio {dd_anio}</div></div><span class="ci-badge info">{escape(st.session_state.rol_actual)}</span></div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="ci-statusbar">'
+    f'<span class="ci-statusitem"><span class="ci-dot"></span>{"Datos remotos conectados" if REMOTE else "Almacenamiento local"}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">👥 {len(visibles)} técnico{"s" if len(visibles) != 1 else ""}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">📍 {escape(centro)}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">📅 {dd_anio}</span>'
+    f'<span class="ci-sep"></span><span class="ci-statusitem">{escape(st.session_state.usuario_actual)} · {escape(st.session_state.rol_actual)}</span>'
+    f'</div>', unsafe_allow_html=True)
 
 def tabla(datos):
     if datos:
@@ -645,26 +718,41 @@ def render_inicio():
     st.markdown('''<style>
     .home-box {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;
       background:var(--surface);color:var(--ink);border:1px solid #dbe3ea;
-      border-top:5px solid var(--accent);border-radius:12px;padding:18px;margin:8px 0 16px;}
+      border-top:4px solid var(--accent);border-radius:14px;padding:18px 19px;margin:8px 0 16px;box-shadow:0 5px 16px rgba(15,43,56,.04);}
     .home-box.success,.home-badge.success {--accent:#15803d;--surface:#f0fdf4;--ink:#166534;}
     .home-box.warning,.home-badge.warning {--accent:#b45309;--surface:#fffbeb;--ink:#92400e;}
     .home-box.danger,.home-badge.danger {--accent:#b91c1c;--surface:#fef2f2;--ink:#991b1b;}
     .home-box.info,.home-badge.info {--accent:#0369a1;--surface:#eff6ff;--ink:#075985;}
     .home-box.neutral,.home-badge.neutral {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;}
-    .home-value {font-size:34px;font-weight:800;line-height:1.2;margin:8px 0;}
-    .home-label {font-weight:700;font-size:14px;}
+    .home-value {font-size:36px;font-weight:780;letter-spacing:-.04em;line-height:1.15;margin:9px 0 7px;}
+    .home-label {font-weight:700;font-size:13px;letter-spacing:.01em;}
     .home-note {font-size:13px;margin-top:8px;}
-    .home-badge {display:inline-block;border-radius:6px;padding:5px 9px;
+    .home-badge {display:inline-block;border-radius:999px;padding:5px 10px;
       background:var(--surface);color:var(--ink);border:1px solid var(--accent);
       font-size:12px;font-weight:700;margin:4px 4px 4px 0;}
     .home-person {padding:12px 0;border-top:1px solid #dbe3ea;margin-top:12px;}
     .home-person strong {display:block;color:#172b3a;margin-bottom:4px;}
+    .home-guard {margin:13px 0 4px;padding:11px 12px;border-radius:10px;background:#e8f4f7;border:1px solid #b9dce5;color:#123f4d;}
+    .home-guard-title {font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0b667c;margin-bottom:4px;}
+    .home-guard strong {display:block;font-size:14px;color:#123f4d;margin-bottom:3px;}
+    .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
     estados = {t: disponibilidad(t, fecha) for t in visibles}
+    # Resumen operativo superior: guardias activas y activaciones del día.
+    cis_visibles = sorted({TECNICOS[t]['ci'] for t in visibles})
+    guardias_hoy = 0
+    for ci_op in cis_visibles:
+        activa_ci = False
+        for tg in [x for x in visibles if TECNICOS[x]['ci'] == ci_op]:
+            if any(ini <= fecha <= fin for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg)):
+                activa_ci = True; break
+        guardias_hoy += int(activa_ci)
+    activaciones_hoy = sum(1 for a in ACTIVACIONES_GUARDIA if a.get('fecha') == fecha.isoformat() and a.get('tecnico') in visibles)
+    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Situación operativa · {fecha:%d/%m/%Y}</div><div class="ci-panel-note">👥 <b>{len(visibles)}</b> técnicos visibles &nbsp;·&nbsp; 🛡️ <b>{guardias_hoy}</b> CI con guardia activa &nbsp;·&nbsp; ⚡ <b>{activaciones_hoy}</b> activaciones registradas hoy</div></div>', unsafe_allow_html=True)
     centros = sorted({TECNICOS[t]['ci'] for t in visibles})
     sin_cobertura = [c for c in centros if any(obtener_horas_jornada_real(t,fecha.year,fecha.month,fecha.day)>0 for t in visibles if TECNICOS[t]['ci']==c) and not any(estados[t][1]>0 for t in visibles if TECNICOS[t]['ci']==c)]
     avisos = [t for t in visibles if estado_prl(t)[0] != 'Vigente']
@@ -689,7 +777,35 @@ def render_inicio():
             no_laborable = all(estados[t][0]=='No laborable' for t in miembros)
             hay_ausencias = any(t in ausentes for t in miembros)
             color,etiqueta = ('neutral','NO LABORABLE') if no_laborable else ('danger','SIN COBERTURA') if c in sin_cobertura else ('warning','COBERTURA CON AUSENCIAS') if hay_ausencias else ('success','EQUIPO DISPONIBLE')
-            detalle = ''
+            # Guardia del CI para la fecha de planificación seleccionada.
+            # Los registros contiguos/solapados del mismo técnico se tratan como un único periodo real.
+            guardia_actual = []
+            proximas_guardias = []
+            for tg in [x for x,v in TECNICOS.items() if v.get('activo', True) and v.get('ci') == c]:
+                for ini_g, fin_g in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
+                    if ini_g <= fecha <= fin_g:
+                        guardia_actual.append((tg, ini_g, fin_g))
+                    elif ini_g > fecha:
+                        proximas_guardias.append((ini_g, fin_g, tg))
+            guardia_actual.sort(key=lambda x: (x[1], x[0]))
+            proximas_guardias.sort(key=lambda x: (x[0], x[2]))
+            if guardia_actual:
+                tg, ini_g, fin_g = guardia_actual[0]
+                guardia_html = (
+                    f'<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div>'
+                    f'<strong>{escape(tg)}</strong><div>{ini_g:%d/%m/%Y} → {fin_g:%d/%m/%Y}</div>'
+                )
+                if proximas_guardias:
+                    p_ini, p_fin, p_t = proximas_guardias[0]
+                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+                guardia_html += '</div>'
+            else:
+                guardia_html = '<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div><strong>Sin guardia asignada</strong>'
+                if proximas_guardias:
+                    p_ini, p_fin, p_t = proximas_guardias[0]
+                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+                guardia_html += '</div>'
+            detalle = guardia_html
             for t in miembros:
                 estado,horas = estados[t]
                 tipo = tipo_registro(valor_registro(t,fecha))
@@ -745,11 +861,7 @@ def registrar_ausencia():
     fin = cols[1].date_input('Hasta',ini,min_value=minimo,max_value=maximo,key=f'fin_{dd_anio}_{ini}')
     tipo = st.selectbox('Tipo', [k for k in LEYENDA if k not in ('FEST','SAB','DOM')]+['BORRAR'],format_func=lambda k: LEYENDA[k][0] if k in LEYENDA else 'Eliminar marcas del rango')
     solo_laborables = st.checkbox('Solo días laborables según el calendario del centro',value=True)
-    he,hld = 0.,0.
-    if tipo in ('HE','HE+HLD'):
-        he = st.number_input('Horas HE por día',min_value=0.,max_value=24.,value=1.,step=.5)
-    if tipo in ('HLD','HE+HLD'):
-        hld = st.number_input('Horas HLD por día',min_value=0.,max_value=24.,value=1.,step=.5)
+
     if fin < ini:
         st.error('La fecha final no puede ser anterior a la inicial.'); return
     fechas = [ini+timedelta(days=i) for i in range((fin-ini).days+1)]
@@ -757,17 +869,67 @@ def registrar_ausencia():
         fechas = [f for f in fechas if obtener_horas_jornada_real(t,f.year,f.month,f.day)>0]
     if not fechas:
         st.info('No hay días aplicables en el rango.'); return
+
+    # HE/HLD: por defecto se registra la jornada completa REAL de cada fecha.
+    # Esto permite que un rango respete automáticamente viernes, verano, bolsas, etc.
+    he,hld = 0.,0.
+    jornada_completa = False
+    if tipo in ('HE','HLD'):
+        jornada_completa = st.checkbox('Registrar jornada completa', value=True,
+                                       help='Calcula automáticamente las horas máximas de cada día según la jornada configurada.')
+        if not jornada_completa:
+            jornada_ref = max(0.0, obtener_horas_jornada_real(t,ini.year,ini.month,ini.day))
+            etiqueta = 'HE' if tipo=='HE' else 'HLD'
+            valor_defecto = float(jornada_ref) if len(fechas)==1 and jornada_ref>0 else 1.0
+            manual = st.number_input(f'Horas {etiqueta} por día',min_value=0.,max_value=24.,value=valor_defecto,step=.5)
+            if tipo=='HE': he=manual
+            else: hld=manual
+    elif tipo=='HE+HLD':
+        st.caption('Para combinar HE + HLD indica el reparto diario. La suma no puede superar la jornada real de cada fecha.')
+        jornada_ref = max(0.0, obtener_horas_jornada_real(t,ini.year,ini.month,ini.day))
+        he = st.number_input('Horas HE por día',min_value=0.,max_value=24.,value=0.,step=.5)
+        hld_defecto = float(jornada_ref) if len(fechas)==1 and jornada_ref>0 else 1.0
+        hld = st.number_input('Horas HLD por día',min_value=0.,max_value=24.,value=hld_defecto,step=.5)
+
+    # Desglose previo: muestra exactamente qué se va a registrar cada día.
+    desglose = []
+    for f in fechas:
+        jornada = float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
+        he_dia = jornada if tipo=='HE' and jornada_completa else he if tipo in ('HE','HE+HLD') else 0.0
+        hld_dia = jornada if tipo=='HLD' and jornada_completa else hld if tipo in ('HLD','HE+HLD') else 0.0
+        desglose.append({'fecha':f,'jornada':jornada,'he':float(he_dia),'hld':float(hld_dia)})
+
+    if tipo in ('HE','HLD','HE+HLD'):
+        st.markdown('#### Desglose del periodo')
+        filas_desglose=[]
+        dias_semana=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+        for x in desglose:
+            consumo_dia=x['he']+x['hld']
+            filas_desglose.append({
+                'Fecha':f"{dias_semana[x['fecha'].weekday()]} {x['fecha']:%d/%m/%Y}",
+                'Jornada prevista':f"{x['jornada']:g} h",
+                'HE':f"{x['he']:g} h" if x['he'] else '—',
+                'HLD':f"{x['hld']:g} h" if x['hld'] else '—',
+                'Total a registrar':f"{consumo_dia:g} h"
+            })
+        tabla(filas_desglose)
+        total_he=sum(x['he'] for x in desglose); total_hld=sum(x['hld'] for x in desglose)
+        partes=[]
+        if total_he: partes.append(f'HE: {total_he:g} h')
+        if total_hld: partes.append(f'HLD: {total_hld:g} h')
+        st.info(f"Total del periodo: {' · '.join(partes)} · {len(fechas)} día{'s' if len(fechas)!=1 else ''} laborable{'s' if len(fechas)!=1 else ''}.")
+
     propuesta = copy.deepcopy(REGISTROS)
     existentes, conflictos = [], []
-    for f in fechas:
+    for x in desglose:
+        f=x['fecha']; jornada=x['jornada']; he_dia=x['he']; hld_dia=x['hld']
         key = (f.year,t,str(f.month),str(f.day))
         if propuesta.get(key): existentes.append(f)
-        jornada = obtener_horas_jornada_real(t,f.year,f.month,f.day)
-        if tipo in ('HE','HLD','HE+HLD') and (he+hld<=0 or he+hld>jornada):
+        if tipo in ('HE','HLD','HE+HLD') and (he_dia+hld_dia<=0 or he_dia+hld_dia>jornada+1e-9):
             st.error(f'{f:%d/%m/%Y}: las horas deben ser positivas y no superar la jornada ({jornada:g} h).'); return
         if tipo=='BORRAR': propuesta.pop(key,None)
-        elif tipo=='HE+HLD': propuesta[key]={'tipo':tipo,'he_horas':he,'hld_horas':hld,'anio':f.year,'tec':t}
-        elif tipo in ('HE','HLD'): propuesta[key]={'tipo':tipo,'horas_gastadas':he if tipo=='HE' else hld,'anio':f.year,'tec':t}
+        elif tipo=='HE+HLD': propuesta[key]={'tipo':tipo,'he_horas':he_dia,'hld_horas':hld_dia,'anio':f.year,'tec':t}
+        elif tipo in ('HE','HLD'): propuesta[key]={'tipo':tipo,'horas_gastadas':he_dia if tipo=='HE' else hld_dia,'anio':f.year,'tec':t}
         else: propuesta[key]=tipo
         if tipo!='BORRAR':
             for otro in visibles_del_centro(t):
@@ -780,7 +942,7 @@ def registrar_ausencia():
     if excede: st.error('El cambio supera el saldo disponible.')
     if conflictos:
         st.warning('Hay otras marcas en el mismo centro. Revisa si afectan a la cobertura.'); tabla(conflictos)
-    firma = hashlib.sha256(repr((t,ini,fin,tipo,he,hld,solo_laborables)).encode()).hexdigest()[:16]
+    firma = hashlib.sha256(repr((t,ini,fin,tipo,[(x['fecha'].isoformat(),x['he'],x['hld']) for x in desglose],solo_laborables)).encode()).hexdigest()[:16]
     confirmado = st.checkbox('He revisado el consumo, las sustituciones y los solapamientos.',key=f'confirmar_{firma}')
     if st.button('Confirmar registro',type='primary',disabled=not confirmado or excede):
         accion = f'{t}: {tipo}, {ini} a {fin}, {len(fechas)} días; solapamientos: {len(conflictos)}'
@@ -920,7 +1082,7 @@ def render_cuadrante():
                            key='descarga_informe_ampliado')
         st.caption('Cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los mismos filtros.')
     if EDITOR:
-        with st.expander('＋ Registrar ausencia / permiso',expanded=False): registrar_ausencia()
+        with st.expander('＋ Registrar novedad · ausencia, permiso, HLD o HE',expanded=False): registrar_ausencia()
     else: st.caption('Modo consulta: no puedes modificar registros.')
 
 def render_tecnicos():
@@ -934,6 +1096,7 @@ def render_tecnicos():
         col.caption(f'Consumidos: {usados[k]:g} {unidad}')
 
     perfil = PERFILES_TECNICOS.get(t, {})
+    st.markdown('<div class="section-kicker">FICHA OPERATIVA</div>',unsafe_allow_html=True)
     st.subheader('Datos corporativos y contacto')
     c1,c2,c3 = st.columns(3)
     c1.markdown(f"**Correo Minsait**  \n{perfil.get('correo','—') or '—'}")
@@ -1004,6 +1167,305 @@ def render_tecnicos():
     tabla(sorted([x for x in eventos if x['Fecha']>=date.today()],key=lambda x:x['Fecha']))
     with st.expander('Histórico del año'): tabla(sorted(eventos,key=lambda x:x['Fecha'],reverse=True))
 
+
+def _parse_fecha_iso(valor):
+    try:
+        return date.fromisoformat(str(valor))
+    except (ValueError, TypeError):
+        return None
+
+def calcular_activacion_guardia(fecha, hora_inicio, hora_fin, centro_ci):
+    """Condiciones 12x7: franja 08:00-20:00, HE x2 y abono tras superar 4 h."""
+    ini = datetime.combine(fecha, hora_inicio)
+    fin = datetime.combine(fecha, hora_fin)
+    if fin <= ini:
+        fin += timedelta(days=1)
+    total = (fin-ini).total_seconds()/3600
+    if total > 24:
+        raise ValueError('La activación no puede superar 24 horas.')
+    fuera = 0.0
+    cursor = ini
+    while cursor < fin:
+        d = cursor.date()
+        tramo_ini = max(ini, datetime.combine(d, datetime.min.time()))
+        tramo_fin = min(fin, datetime.combine(d+timedelta(days=1), datetime.min.time()))
+        g_ini = datetime.combine(d, datetime.strptime('08:00','%H:%M').time())
+        g_fin = datetime.combine(d, datetime.strptime('20:00','%H:%M').time())
+        dentro_ini, dentro_fin = max(tramo_ini,g_ini), min(tramo_fin,g_fin)
+        dentro_dia = max(0.0,(dentro_fin-dentro_ini).total_seconds()/3600)
+        fuera += max(0.0,(tramo_fin-tramo_ini).total_seconds()/3600-dentro_dia)
+        cursor = tramo_fin
+    dentro = max(0.0,total-fuera)
+    exceso_dentro = max(0.0,dentro-4.0)
+    he_generadas = 2.0*(fuera+exceso_dentro)
+    horas_abono = max(0.0,total-4.0)
+    es_festivo = (fecha.month,fecha.day) in FESTIVOS_POR_ANIO.get(fecha.year,{}).get(centro_ci,[])
+    laborable = fecha.weekday() < 5 and not es_festivo
+    tarifa = 20.0 if laborable else 25.0
+    importe = horas_abono*tarifa
+    return {'horas_totales':round(total,2),'horas_dentro':round(dentro,2),'horas_fuera':round(fuera,2),
+            'horas_exceso_4':round(exceso_dentro,2),'he_generadas':round(he_generadas,2),
+            'horas_abono':round(horas_abono,2),'tarifa':tarifa,'importe':round(importe,2),
+            'tipo_dia':'Laborable' if laborable else 'Sábado/domingo/festivo'}
+
+
+def periodos_guardia_reales(registros, tecnico=None, anio=None, mes=None):
+    """Fusiona registros solapados o contiguos en periodos reales de guardia.
+    Opcionalmente recorta el cálculo al año/mes solicitado.
+    """
+    if anio is not None:
+        limite_ini = date(anio, mes or 1, 1)
+        limite_fin = date(anio, mes, calendar.monthrange(anio, mes)[1]) if mes else date(anio, 12, 31)
+    else:
+        limite_ini = limite_fin = None
+
+    intervalos = []
+    for g in registros:
+        if tecnico is not None and g.get('tecnico') != tecnico:
+            continue
+        ini = _parse_fecha_iso(g.get('inicio'))
+        fin = _parse_fecha_iso(g.get('fin'))
+        if not ini or not fin:
+            continue
+        if fin < ini:
+            ini, fin = fin, ini
+        if limite_ini is not None:
+            ini = max(ini, limite_ini)
+            fin = min(fin, limite_fin)
+            if ini > fin:
+                continue
+        intervalos.append((ini, fin))
+
+    intervalos.sort()
+    fusionados = []
+    for ini, fin in intervalos:
+        if not fusionados or ini > fusionados[-1][1] + timedelta(days=1):
+            fusionados.append([ini, fin])
+        else:
+            fusionados[-1][1] = max(fusionados[-1][1], fin)
+    return [(ini, fin) for ini, fin in fusionados]
+
+def resumen_guardias_tecnico(registros, tecnico, anio, mes=None):
+    periodos = periodos_guardia_reales(registros, tecnico=tecnico, anio=anio, mes=mes)
+    dias = sum((fin - ini).days + 1 for ini, fin in periodos)
+    return len(periodos), dias
+
+def guardias_calendario_html(equipo, mes, anio):
+    ndias=calendar.monthrange(anio,mes)[1]; dias_sem=['L','M','X','J','V','S','D']; hoy=date.today()
+    css="""<style>.gcal-wrap{overflow-x:auto;border:1px solid #dce5eb;border-radius:12px;background:white;margin:10px 0 18px}table.gcal{border-collapse:collapse;width:100%;min-width:1050px;font-size:11px}.gcal th{background:#123f4d;color:#fff;padding:8px 5px;border-right:1px solid #d7e0e5;text-align:center}.gcal th.name{min-width:190px;text-align:left;padding-left:12px}.gcal td{height:42px;text-align:center;border-right:1px solid #e3e9ed;border-bottom:1px solid #e3e9ed;padding:3px}.gcal td.name{text-align:left;padding:7px 10px;white-space:nowrap}.gcal .ci{display:block;color:#607584;font-size:10px;margin-top:2px}.gcal .weekend{background:#f1f3f5}.gcal .guard{background:#c9e7f0;color:#0b5267;font-weight:800}.gcal .today{box-shadow:inset 0 0 0 2px #008bb0}.gcal .dow{display:block;font-size:9px;margin-top:2px;opacity:.9}</style>"""
+    head='<th class="name">Técnico / centro</th>'+''.join(f'<th>{d}<span class="dow">{dias_sem[date(anio,mes,d).weekday()]}</span></th>' for d in range(1,ndias+1))
+    rows=[]
+    for t in equipo:
+        cells=[]
+        for d in range(1,ndias+1):
+            f=date(anio,mes,d); clases=[]
+            if f.weekday()>=5: clases.append('weekend')
+            if f==hoy: clases.append('today')
+            en_guardia=any(g.get('tecnico')==t and (_parse_fecha_iso(g.get('inicio')) or date.max)<=f<=(_parse_fecha_iso(g.get('fin')) or date.min) for g in REGISTROS_GUARDIAS)
+            if en_guardia: clases.append('guard')
+            cells.append(f'<td class="{" ".join(clases)}">{"G" if en_guardia else "·"}</td>')
+        rows.append(f'<tr><td class="name"><strong>{escape(t)}</strong><span class="ci">{escape(TECNICOS[t]["ci"])}</span></td>'+''.join(cells)+'</tr>')
+    return css+'<div class="gcal-wrap"><table class="gcal"><thead><tr>'+head+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
+
+def informe_guardias_html(equipo, anio, mes=None):
+    gs=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==anio and g.get('tecnico') in equipo]
+    acts=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==anio and a.get('tecnico') in equipo]
+    if mes:
+        gs=[g for g in gs if any((_parse_fecha_iso(g.get('inicio')) or date.max)<=date(anio,mes,d)<=(_parse_fecha_iso(g.get('fin')) or date.min) for d in range(1,calendar.monthrange(anio,mes)[1]+1))]
+        acts=[a for a in acts if _parse_fecha_iso(a.get('fecha')) and _parse_fecha_iso(a.get('fecha')).month==mes]
+    total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts); total_imp=sum(float(a.get('importe',0) or 0) for a in acts)
+    def th(rows): return '<p class="empty">Sin registros.</p>' if not rows else '<div class="scroll">'+pd.DataFrame(rows).to_html(index=False,escape=True,border=0)+'</div>'
+    resumen=[]
+    for t in equipo:
+        gt=[g for g in gs if g.get('tecnico')==t]; at=[a for a in acts if a.get('tecnico')==t]
+        n_periodos, dias_guardia = resumen_guardias_tecnico(gs, t, anio, mes)
+        resumen.append({'Técnico':t,'CI':TECNICOS[t]['ci'],'Periodos':n_periodos,'Días de guardia':dias_guardia,'Activaciones':len(at),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in at),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in at),2)})
+    detalle_g=[{'Periodo':f"{date.fromisoformat(g['inicio']):%d/%m/%Y} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')} for g in sorted(gs,key=lambda x:x.get('inicio',''))]
+    detalle_a=[{'Fecha':date.fromisoformat(a['fecha']).strftime('%d/%m/%Y'),'Técnico':a.get('tecnico'),'CI':a.get('centro'),'Inicio':a.get('inicio'),'Fin':a.get('fin'),'Intervención (h)':a.get('horas_totales',0),'Fuera 08–20 (h)':a.get('horas_fuera',0),'HE generadas':a.get('he_generadas',0),'Importe (€)':a.get('importe',0),'Motivo':a.get('motivo','')} for a in sorted(acts,key=lambda x:(x.get('fecha',''),x.get('inicio','')))]
+    css="""body{font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#18313e;margin:0;padding:28px}main{max-width:1500px;margin:auto;background:white;padding:30px;border-radius:14px}h1{margin:8px 0;font-size:28px}h2{font-size:20px;margin-top:30px;border-bottom:2px solid #e2e8f0;padding-bottom:9px}.muted{color:#607584;font-size:12px}.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:22px 0}.metric{flex:1;min-width:160px;background:#edf6f8;border-top:4px solid #07566a;border-radius:10px;padding:15px}.metric strong{display:block;font-size:27px;margin-top:5px}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#123f4d;color:white;text-align:left;padding:9px}td{border-bottom:1px solid #e2e8f0;padding:8px}tbody tr:nth-child(even){background:#f8fafc}.empty{padding:12px;background:#f4f7f9;border-radius:8px}@page{size:A4 landscape;margin:9mm}@media print{body{padding:0;background:#fff}main{padding:0;max-width:none}.metric,th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr{break-inside:avoid}}"""
+    total_periodos=sum(resumen_guardias_tecnico(gs,t,anio,mes)[0] for t in equipo)
+    total_dias=sum(resumen_guardias_tecnico(gs,t,anio,mes)[1] for t in equipo)
+    periodo=MESES[mes] if mes else 'Año completo'; calendario=''
+    for m in ([mes] if mes else list(range(1,13))): calendario+=f'<h3>{MESES[m]}</h3>'+guardias_calendario_html(equipo,m,anio)
+    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Periodos de guardia<strong>{total_periodos}</strong></div><div class="metric">Días de guardia<strong>{total_dias}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Periodos registrados</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
+
+def render_guardias():
+    st.markdown("""<style>
+    .guard-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:102px}
+    .guard-kpi small{color:#718493;font-weight:700}.guard-kpi strong{display:block;font-size:27px;color:#12313d;margin-top:5px}
+    </style>""",unsafe_allow_html=True)
+    st.caption('Guardias 12x7 · horario de referencia 08:00–20:00. Un mismo CI no puede tener dos técnicos de guardia en fechas solapadas.')
+    hoy_g = date.today()
+    activas_txt=[]
+    for ci_g in CENTROS:
+        if centro!='Todos' and ci_g!=centro: continue
+        for tg in [x for x in TECNICOS if TECNICOS[x]['ci']==ci_g and TECNICOS[x].get('activo',True)]:
+            for ig,fg in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
+                if ig <= hoy_g <= fg:
+                    activas_txt.append(f'<span class="ci-badge ok">🛡️ {escape(ci_g)} · {escape(tg)} · hasta {fg:%d/%m}</span>')
+                    break
+    st.markdown('<div class="ci-panel"><div class="ci-panel-title">Guardias activas hoy</div><div style="margin-top:8px">'+(' '.join(activas_txt) if activas_txt else '<span class="ci-badge warn">Sin guardias activas registradas hoy</span>')+'</div></div>',unsafe_allow_html=True)
+    guardias_anio=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==dd_anio]
+    acts_anio=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==dd_anio]
+    total_importe=sum(float(a.get('importe',0) or 0) for a in acts_anio)
+    total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts_anio)
+    total_periodos_anio=sum(resumen_guardias_tecnico(guardias_anio,t,dd_anio)[0] for t in TECNICOS)
+    total_dias_anio=sum(resumen_guardias_tecnico(guardias_anio,t,dd_anio)[1] for t in TECNICOS)
+    c1,c2,c3,c4,c5=st.columns(5)
+    for col,label,val in [(c1,'Periodos de guardia',total_periodos_anio),(c2,'Días de guardia',total_dias_anio),(c3,'Activaciones',len(acts_anio)),(c4,'HE por activaciones',f'{total_he:g} h'),(c5,'Importe activaciones',f'{total_importe:,.2f} €')]:
+        col.markdown(f'<div class="guard-kpi"><small>{label}</small><strong>{val}</strong></div>',unsafe_allow_html=True)
+    tab_plan,tab_act,tab_calc,tab_res,tab_inf=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen','📄 Informe'])
+    perfil_usuario = usuarios.get(st.session_state.get('usuario_id',''), {}) if hasattr(usuarios, 'get') else {}
+    tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
+    tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
+    with tab_plan:
+        st.markdown('#### Registrar guardia')
+        st.caption('La guardia puede abarcar cualquier periodo: lunes–domingo, miércoles–miércoles o el rango excepcional que corresponda.')
+        if EDITOR:
+            candidatos=visibles
+        elif tecnico_sesion and TECNICOS.get(tecnico_sesion,{}).get('activo',True):
+            candidatos=[tecnico_sesion]
+        else:
+            candidatos=[]
+            st.info('Tu usuario no está vinculado a un técnico con el mismo nombre. Un Editor puede registrar la guardia o ajustar el nombre del usuario en Secrets.')
+        if candidatos:
+            fecha_base=date.today() if date.today().year==dd_anio else date(dd_anio,1,1)
+            fecha_fin_base=min(fecha_base+timedelta(days=6),date(dd_anio,12,31))
+            with st.form('form_guardia'):
+                tg=st.selectbox('Técnico',candidatos,disabled=not EDITOR)
+                cg1,cg2=st.columns(2)
+                with cg1:
+                    inicio_guardia=st.date_input('Fecha de inicio',value=fecha_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_inicio')
+                with cg2:
+                    fin_guardia=st.date_input('Fecha de fin',value=fecha_fin_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_fin')
+                nota=st.text_input('Observaciones (opcional)')
+                guardar=st.form_submit_button('Registrar guardia',type='primary')
+            if inicio_guardia<=fin_guardia:
+                dias_guardia=(fin_guardia-inicio_guardia).days+1
+                st.caption(f'Periodo propuesto: {inicio_guardia:%d/%m/%Y} → {fin_guardia:%d/%m/%Y} · {dias_guardia} día(s)')
+            else:
+                st.warning('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+            if guardar:
+                ci=TECNICOS[tg]['ci']; conflicto=[]
+                for g in REGISTROS_GUARDIAS:
+                    if g.get('centro')!=ci or g.get('tecnico')==tg: continue
+                    gi,gf=_parse_fecha_iso(g.get('inicio')),_parse_fecha_iso(g.get('fin'))
+                    if gi and gf and inicio_guardia<=gf and fin_guardia>=gi: conflicto.append(g)
+                duplicada=any(
+                    g.get('tecnico')==tg and
+                    g.get('inicio')==inicio_guardia.isoformat() and
+                    g.get('fin')==fin_guardia.isoformat()
+                    for g in REGISTROS_GUARDIAS
+                )
+                if inicio_guardia>fin_guardia:
+                    st.error('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+                elif duplicada:
+                    st.info('Ese periodo ya está registrado para el técnico.')
+                elif conflicto:
+                    detalle=', '.join(f"{x.get('tecnico','')} ({(_parse_fecha_iso(x.get('inicio')) or date.min):%d/%m}–{(_parse_fecha_iso(x.get('fin')) or date.min):%d/%m})" for x in conflicto)
+                    st.error('No se puede guardar: existe otra guardia que se solapa en el mismo CI: '+detalle)
+                else:
+                    nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
+                    gid=hashlib.sha256(f'{tg}|{inicio_guardia.isoformat()}|{fin_guardia.isoformat()}'.encode()).hexdigest()[:16]
+                    nuevo.append({'id':gid,'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':inicio_guardia.isoformat(),'fin':fin_guardia.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
+                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}'): st.rerun()
+        filas=[]
+        for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
+            if centro!='Todos' and g.get('centro')!=centro: continue
+            filas.append({'Periodo':f"{date.fromisoformat(g['inicio']):%d/%m/%Y} – {date.fromisoformat(g['fin']):%d/%m/%Y}",'Días':(date.fromisoformat(g['fin'])-date.fromisoformat(g['inicio'])).days+1,'Técnico':g.get('tecnico'),'CI':g.get('centro'),'Observaciones':g.get('nota','')})
+        st.markdown('#### Calendario de guardias')
+        mes_guardia=st.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='mes_cal_guardias')
+        equipo_guardia=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        st.markdown(guardias_calendario_html(equipo_guardia,mes_guardia,dd_anio),unsafe_allow_html=True)
+        st.caption('G = guardia asignada · fines de semana sombreados · el día actual queda enmarcado.')
+        with st.expander('Ver listado de periodos registrados',expanded=False): tabla(filas)
+        propias=[g for g in guardias_anio if EDITOR or g.get('tecnico')==tecnico_sesion]
+        if propias:
+            with st.expander('Eliminar una guardia registrada'):
+                gid=st.selectbox('Guardia',[g['id'] for g in propias],format_func=lambda i:next(f"{g['tecnico']} · {date.fromisoformat(g['inicio']):%d/%m/%Y}" for g in propias if g['id']==i))
+                conf=st.checkbox('Confirmar eliminación',key='conf_del_guardia')
+                if st.button('Eliminar guardia',disabled=not conf):
+                    nuevo=[g for g in REGISTROS_GUARDIAS if g.get('id')!=gid]
+                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Eliminar guardia {gid}'): st.rerun()
+    with tab_act:
+        st.markdown('#### Registrar activación')
+        if not EDITOR:
+            st.info('Las activaciones y su repercusión económica/HE solo pueden registrarlas los Editores.')
+        else:
+            with st.form('form_activacion'):
+                ta=st.selectbox('Técnico activado',visibles,key='act_tec')
+                fa=st.date_input('Fecha de activación',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
+                ca,cb=st.columns(2); hi=ca.time_input('Hora inicio',value=datetime.strptime('18:00','%H:%M').time()); hf=cb.time_input('Hora fin',value=datetime.strptime('20:00','%H:%M').time())
+                motivo=st.text_area('Motivo / detalle de la activación')
+                calcular=st.form_submit_button('Calcular activación',type='primary')
+            if calcular:
+                calc=calcular_activacion_guardia(fa,hi,hf,TECNICOS[ta]['ci'])
+                st.session_state['act_preview']={'tecnico':ta,'fecha':fa.isoformat(),'inicio':hi.strftime('%H:%M'),'fin':hf.strftime('%H:%M'),'motivo':motivo.strip(),**calc}
+            prev=st.session_state.get('act_preview')
+            if prev:
+                st.markdown('##### Resultado')
+                a1,a2,a3,a4=st.columns(4); a1.metric('Intervención',f"{prev['horas_totales']:g} h"); a2.metric('Fuera 08–20',f"{prev['horas_fuera']:g} h"); a3.metric('HE generadas',f"{prev['he_generadas']:g} h"); a4.metric('Importe bruto',f"{prev['importe']:,.2f} €")
+                st.caption(f"{prev['tipo_dia']} · {prev['horas_abono']:g} h a abonar × {prev['tarifa']:g} €/h. Las HE se incorporarán automáticamente a la bolsa del técnico.")
+                confirmar=st.checkbox('Confirmo los datos y quiero registrar la activación.',key='confirm_act')
+                if st.button('Guardar activación',type='primary',disabled=not confirmar):
+                    aid=hashlib.sha256(f"{prev['tecnico']}|{prev['fecha']}|{prev['inicio']}|{prev['fin']}|{time.time()}".encode()).hexdigest()[:16]
+                    act={**prev,'id':aid,'anio':dd_anio,'centro':TECNICOS[prev['tecnico']]['ci'],'usuario':st.session_state.usuario_actual,'registrado':datetime.now().isoformat(timespec='seconds')}
+                    nuevas_act=copy.deepcopy(ACTIVACIONES_GUARDIA); nuevas_act.append(act)
+                    nuevas_he=copy.deepcopy(REGISTROS_HE)
+                    if prev['he_generadas']:
+                        nuevas_he.setdefault(prev['tecnico'],[]).append({'anio':dd_anio,'horas_reales':prev['horas_totales'],'horas_compensadas':prev['he_generadas'],'motivo':f"Activación guardia {prev['fecha']} · {prev['motivo'] or 'Sin detalle'}",'usuario':st.session_state.usuario_actual,'fecha':datetime.now().strftime('%d/%m/%Y %H:%M'),'origen':'guardia','activacion_id':aid})
+                    if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f"Activación guardia: {prev['tecnico']} · {prev['fecha']} · {prev['he_generadas']:g} HE · {prev['importe']:.2f} €"):
+                        st.session_state.pop('act_preview',None); st.rerun()
+        filas_act=[]
+        for a in sorted(acts_anio,key=lambda x:(x.get('fecha',''),x.get('inicio','')),reverse=True):
+            if centro!='Todos' and a.get('centro')!=centro: continue
+            filas_act.append({'Fecha':date.fromisoformat(a['fecha']).strftime('%d/%m/%Y'),'CI':a.get('centro'),'Técnico':a.get('tecnico'),'Inicio':a.get('inicio'),'Fin':a.get('fin'),'Fuera horario (h)':a.get('horas_fuera',0),'HE':a.get('he_generadas',0),'Importe bruto (€)':a.get('importe',0),'Motivo':a.get('motivo','')})
+        st.markdown('#### Histórico de activaciones'); tabla(filas_act)
+        if EDITOR and acts_anio:
+            with st.expander('Eliminar activación errónea'):
+                aid=st.selectbox('Activación',[a['id'] for a in acts_anio],format_func=lambda i:next(f"{a['fecha']} · {a['tecnico']} · {a.get('he_generadas',0)} HE" for a in acts_anio if a['id']==i),key='del_act')
+                conf=st.checkbox('Confirmar eliminación de la activación y de las HE asociadas',key='conf_del_act')
+                if st.button('Eliminar activación',disabled=not conf):
+                    nuevas_act=[a for a in ACTIVACIONES_GUARDIA if a.get('id')!=aid]
+                    nuevas_he=copy.deepcopy(REGISTROS_HE)
+                    for tec in nuevas_he: nuevas_he[tec]=[h for h in nuevas_he[tec] if h.get('activacion_id')!=aid]
+                    if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f'Eliminar activación guardia {aid}'): st.rerun()
+    with tab_calc:
+        st.markdown('#### Calculadora 12x7')
+        st.caption('Simulación sin guardar datos. Condiciones trasladadas de la hoja “Condiciones Guardias”.')
+        cc=st.selectbox('CI para festivos/tarifa',CENTROS,key='calc_ci')
+        fc=st.date_input('Fecha',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),key='calc_fecha')
+        x1,x2=st.columns(2); hic=x1.time_input('Inicio',value=datetime.strptime('18:00','%H:%M').time(),key='calc_ini'); hfc=x2.time_input('Fin',value=datetime.strptime('23:00','%H:%M').time(),key='calc_fin')
+        r=calcular_activacion_guardia(fc,hic,hfc,cc)
+        tabla([{'Tipo día':r['tipo_dia'],'Horas totales':r['horas_totales'],'Dentro 08–20':r['horas_dentro'],'Fuera 08–20':r['horas_fuera'],'Exceso dentro tras 4 h':r['horas_exceso_4'],'HE generadas':r['he_generadas'],'Horas a abonar':r['horas_abono'],'€/h':r['tarifa'],'Importe bruto (€)':r['importe']}])
+        st.info('Regla aplicada: las horas fuera de 08:00–20:00 y las horas dentro de guardia que excedan las primeras 4 h generan 2 HE por hora. El abono económico se aplica a las horas totales que exceden de 4: 20 €/h laborable y 25 €/h sábado, domingo o festivo.')
+    with tab_res:
+        st.markdown('#### Resumen mensual por CI')
+        filas=[]
+        for ci in CENTROS:
+            if centro!='Todos' and ci!=centro: continue
+            for mes in range(1,13):
+                tecnicos_ci=[t for t in TECNICOS if TECNICOS[t]['ci']==ci]
+                periodos_mes=sum(resumen_guardias_tecnico(guardias_anio,t,dd_anio,mes)[0] for t in tecnicos_ci)
+                dias_mes=sum(resumen_guardias_tecnico(guardias_anio,t,dd_anio,mes)[1] for t in tecnicos_ci)
+                aa=[a for a in acts_anio if a.get('centro')==ci and _parse_fecha_iso(a.get('fecha')) and _parse_fecha_iso(a.get('fecha')).month==mes]
+                if periodos_mes or aa: filas.append({'CI':ci,'Mes':MESES[mes],'Periodos':periodos_mes,'Días de guardia':dias_mes,'Activaciones':len(aa),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in aa),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in aa),2)})
+        tabla(filas)
+        st.caption('La hoja original indica una estimación de 5 activaciones de guardia máximo al año por cada CCII; se muestra como referencia, no como bloqueo.')
+
+    with tab_inf:
+        st.markdown('#### Informe de guardias')
+        st.caption('Genera un informe completo con resumen, calendarios, periodos registrados y activaciones. Se puede abrir en el navegador, imprimir o guardar como PDF.')
+        ir1,ir2=st.columns(2)
+        alcance=ir1.radio('Periodo',['Año completo','Mes'],horizontal=True,key='guard_inf_periodo')
+        mes_inf=ir2.selectbox('Mes',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='guard_inf_mes',disabled=alcance=='Año completo')
+        equipo_inf=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        html_inf=informe_guardias_html(equipo_inf,dd_anio,None if alcance=='Año completo' else mes_inf)
+        st.download_button('📄 Descargar informe HTML',html_inf.encode('utf-8'),file_name=f'Informe_Guardias_{dd_anio}_{"Anual" if alcance=="Año completo" else MESES[mes_inf]}.html',mime='text/html')
+        st.markdown('##### Vista rápida')
+        vista_mes=mes_inf if alcance=='Mes' else (date.today().month if date.today().year==dd_anio else 1)
+        st.markdown(guardias_calendario_html(equipo_inf,vista_mes,dd_anio),unsafe_allow_html=True)
+
 def render_he():
     t = st.selectbox('Técnico',visibles)
     _,pendientes = saldos(t,dd_anio)
@@ -1031,45 +1493,197 @@ def render_he():
             if st.button('Eliminar',disabled=not confirmar):
                 nuevo = copy.deepcopy(REGISTROS_HE)
                 retirado = nuevo[t].pop(idx)
-                if pendientes['HE']-retirado['horas_reales']*1.75<0: st.error('La eliminación dejaría horas ya consumidas sin saldo.')
+                if pendientes['HE']-he_compensadas_registro(retirado)<0: st.error('La eliminación dejaría horas ya consumidas sin saldo.')
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
 def render_informes():
-    opcion = st.radio('Informe',['Balance','PRL','Solapamientos','Auditoría'],horizontal=True)
+    st.markdown('<div class="ci-panel"><div class="ci-panel-title">Centro de informes</div><div class="ci-panel-note">Consulta saldos, guardias, PRL, coincidencias y trazabilidad desde un único punto.</div></div>',unsafe_allow_html=True)
+    INFO_LABELS={'📊 Balance':'Balance','🛡️ Guardias':'Guardias','🩺 PRL':'PRL','⚠️ Solapamientos':'Solapamientos','🧾 Auditoría':'Auditoría'}
+    opcion_label = st.radio('Informe',list(INFO_LABELS),horizontal=True,label_visibility='collapsed')
+    opcion = INFO_LABELS[opcion_label]
     filas = []
     if opcion=='Balance':
+        st.markdown('''<style>
+        .balance-head{margin:8px 0 18px}.balance-head h3{margin:0 0 4px;color:#12313d;font-size:20px}
+        .balance-head p{margin:0;color:#718493;font-size:13px}
+        .balance-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:104px}
+        .balance-kpi .k-label{font-size:12px;font-weight:700;color:#607584;text-transform:uppercase;letter-spacing:.035em}
+        .balance-kpi .k-value{font-size:28px;font-weight:800;color:#12313d;line-height:1.15;margin:6px 0 3px}
+        .balance-kpi .k-note{font-size:12px;color:#8293a0}
+        .balance-legend{margin:12px 0 16px;color:#718493;font-size:12px}
+        </style>''', unsafe_allow_html=True)
         for t in visibles:
-            usados,pendientes = saldos(t,dd_anio)
-            fila = {'Técnico':t,'Centro':TECNICOS[t]['ci']}
-            for k in usados:
-                unidad = 'días' if k in ('V','VPA') else 'h'
-                fila[f'{k} consumido ({unidad})']=usados[k]
-                fila[f'{k} pendiente ({unidad})']=pendientes[k]
-            filas.append(fila)
+            usados, pendientes = saldos(t, dd_anio)
+            totales = {k: round(usados[k] + pendientes[k], 2) for k in usados}
+            acciones = []
+            if pendientes['VPA'] > 0: acciones.append('Planificar VPA pendientes')
+            if pendientes['V'] >= 20: acciones.append('Planificar vacaciones pendientes')
+            if pendientes['HLD'] >= 40: acciones.append('Planificar HLD pendientes')
+            accion = ' · '.join(acciones) if acciones else 'Sin acción'
+            filas.append({'Centro':TECNICOS[t]['ci'],'Técnico':t,
+                'V Total':totales['V'],'V Consumidas':usados['V'],'V Pendientes':pendientes['V'],
+                'VPA Total':totales['VPA'],'VPA Consumidas':usados['VPA'],'VPA Pendientes':pendientes['VPA'],
+                'HLD Total (h)':totales['HLD'],'HLD Consumidas (h)':usados['HLD'],'HLD Pendientes (h)':pendientes['HLD'],
+                'HE Total (h)':totales['HE'],'HE Consumidas (h)':usados['HE'],'HE Pendientes (h)':pendientes['HE'],
+                'Acción recomendada':accion})
+        st.markdown(f'<div class="balance-head"><h3>Resumen anual de saldos · {dd_anio}</h3><p>Totales asignados, consumo, saldo pendiente y necesidades de planificación del equipo seleccionado.</p></div>',unsafe_allow_html=True)
+        if filas:
+            total_v=sum(x['V Total'] for x in filas); consum_v=sum(x['V Consumidas'] for x in filas)
+            pend_hld=sum(x['HLD Pendientes (h)'] for x in filas); pend_he=sum(x['HE Pendientes (h)'] for x in filas)
+            con_accion=sum(x['Acción recomendada']!='Sin acción' for x in filas)
+            kpis=[('Vacaciones consumidas',f'{consum_v:g} / {total_v:g}','días-persona'),('HLD pendientes',f'{pend_hld:g} h','saldo conjunto del equipo'),('HE pendientes',f'{pend_he:g} h','horas compensadas disponibles'),('Requieren planificación',str(con_accion),f'de {len(filas)} técnicos')]
+            for col,(label,value,note) in zip(st.columns(4),kpis):
+                col.markdown(f'<div class="balance-kpi"><div class="k-label">{escape(label)}</div><div class="k-value">{escape(value)}</div><div class="k-note">{escape(note)}</div></div>',unsafe_allow_html=True)
+            st.markdown('<div class="balance-legend">Los resaltados ayudan a localizar saldos pendientes. La acción recomendada es una ayuda visual y no modifica ningún registro.</div>',unsafe_allow_html=True)
+            df_balance=pd.DataFrame(filas)
+            def estilo_balance(row):
+                estilos=['']*len(row); columnas=list(row.index)
+                def marcar(col,cond,color):
+                    if col in columnas and cond: estilos[columnas.index(col)]=f'background-color:{color};font-weight:700'
+                marcar('V Pendientes',row['V Pendientes']>=20,'#fff8c5')
+                marcar('VPA Pendientes',row['VPA Pendientes']>0,'#fff8c5')
+                marcar('HLD Pendientes (h)',row['HLD Pendientes (h)']>=40,'#fff8c5')
+                if row['Acción recomendada']!='Sin acción': estilos[columnas.index('Acción recomendada')]='background-color:#fff8c5;font-weight:700;color:#6b5200'
+                else: estilos[columnas.index('Acción recomendada')]='color:#527064'
+                return estilos
+            st.dataframe(df_balance.style.apply(estilo_balance,axis=1).format(precision=2,na_rep=''),use_container_width=True,hide_index=True,height=min(520,38*len(filas)+42))
+        else: st.info('No hay técnicos para la selección actual.')
+    elif opcion=='Guardias':
+        st.markdown(f'### Guardias 12x7 · {dd_anio}')
+        equipo_inf=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        gs=[g for g in REGISTROS_GUARDIAS if int(g.get('anio',0))==dd_anio and g.get('tecnico') in equipo_inf]
+        acts=[a for a in ACTIVACIONES_GUARDIA if int(a.get('anio',0))==dd_anio and a.get('tecnico') in equipo_inf]
+        total_he=sum(float(a.get('he_generadas',0) or 0) for a in acts); total_imp=sum(float(a.get('importe',0) or 0) for a in acts)
+        total_periodos=sum(resumen_guardias_tecnico(gs,t,dd_anio)[0] for t in equipo_inf)
+        total_dias=sum(resumen_guardias_tecnico(gs,t,dd_anio)[1] for t in equipo_inf)
+        for col,(lab,val) in zip(st.columns(5),[('Periodos',total_periodos),('Días de guardia',total_dias),('Activaciones',len(acts)),('HE generadas',f'{total_he:g} h'),('Importe',f'{total_imp:,.2f} €')]): col.metric(lab,val)
+        mes_rep=st.selectbox('Vista mensual',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='inf_guard_mes')
+        st.markdown(guardias_calendario_html(equipo_inf,mes_rep,dd_anio),unsafe_allow_html=True)
+        filas=[]
+        for t in equipo_inf:
+            gt=[g for g in gs if g.get('tecnico')==t]; at=[a for a in acts if a.get('tecnico')==t]
+            n_periodos, dias_guardia = resumen_guardias_tecnico(gs,t,dd_anio)
+            filas.append({'Técnico':t,'CI':TECNICOS[t]['ci'],'Periodos':n_periodos,'Días de guardia':dias_guardia,'Activaciones':len(at),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in at),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in at),2)})
+        tabla(filas)
+        html_guard=informe_guardias_html(equipo_inf,dd_anio,None)
+        st.download_button('📄 Descargar informe completo HTML',html_guard.encode('utf-8'),file_name=f'Informe_Guardias_{dd_anio}.html',mime='text/html')
     elif opcion=='PRL':
-        filas = [{'Técnico':t,'Centro':TECNICOS[t]['ci'],'Estado':estado_prl(t)[0],'Caducidad':estado_prl(t)[1]} for t in visibles]
+        filas=[{'Técnico':t,'Centro':TECNICOS[t]['ci'],'Estado':estado_prl(t)[0],'Caducidad':estado_prl(t)[1]} for t in visibles]
+        tabla(filas)
     elif opcion=='Solapamientos':
-        por_dia = {}
+        por_dia={}
         for (a,t,m,d),v in REGISTROS.items():
-            if a==dd_anio and t in visibles and tipo_registro(v):
-                por_dia.setdefault((date(a,int(m),int(d)),TECNICOS[t]['ci']),[]).append(t)
-        filas = [{'Fecha':f,'Centro':c,'Técnicos':', '.join(ts)} for (f,c),ts in sorted(por_dia.items()) if len(ts)>1]
-        st.caption('Coincidencia de marcas, no necesariamente ausencia completa. Revisar cobertura antes de actuar.')
+            if a==dd_anio and t in visibles and tipo_registro(v): por_dia.setdefault((date(a,int(m),int(d)),TECNICOS[t]['ci']),[]).append(t)
+        filas=[{'Fecha':f,'Centro':c,'Técnicos':', '.join(ts)} for (f,c),ts in sorted(por_dia.items()) if len(ts)>1]
+        st.caption('Coincidencia de marcas, no necesariamente ausencia completa. Revisar cobertura antes de actuar.'); tabla(filas)
     else:
         if not EDITOR: st.info('Auditoría reservada a editores.'); return
-        filas = [x for x in reversed(AUDITORIA) if x.get('fecha','').startswith(str(dd_anio))]
-        st.caption('Auditoría global del año, sin filtro de centro. Persistida desde esta versión; el histórico de sesiones anteriores no estaba guardado.')
-    tabla(filas)
+        filas=[x for x in reversed(AUDITORIA) if x.get('fecha','').startswith(str(dd_anio))]
+        st.caption('Auditoría global del año, sin filtro de centro. Persistida desde esta versión; el histórico de sesiones anteriores no estaba guardado.'); tabla(filas)
     if filas:
-        df = pd.DataFrame(filas)
-        # Evitar fórmulas al abrir CSV en hojas de cálculo.
-        seguro = df.map(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v) if hasattr(df,'map') else df.applymap(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v)
+        df=pd.DataFrame(filas)
+        seguro=df.map(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v) if hasattr(df,'map') else df.applymap(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v)
         st.download_button('Descargar CSV',seguro.to_csv(index=False,sep=';').encode('utf-8-sig'),file_name=f'{opcion}_{dd_anio}.csv',mime='text/csv')
 
 def render_config():
     if not EDITOR:
         st.info('Configuración reservada a editores.'); return
-    opcion = st.radio('Ajustes',['Festivos','Horarios','HLD','Vehículos','Avisos por email','Copias de seguridad'],horizontal=True)
+    opcion = st.radio('Ajustes',['Técnicos','Festivos','Horarios','HLD','Vehículos','Avisos por email','Copias de seguridad'],horizontal=True)
+    if opcion=='Técnicos':
+        st.subheader('Gestión de técnicos')
+        st.caption('Añade nuevos técnicos o modifica su centro y asignaciones. Los registros históricos existentes no se alteran.')
+
+        activos = sum(1 for d in TECNICOS.values() if d.get('activo', True))
+        c1, c2, c3 = st.columns(3)
+        c1.metric('Técnicos activos', activos)
+        c2.metric('Técnicos históricos', len(TECNICOS))
+        c3.metric('Centros', len({d.get('ci','') for d in TECNICOS.values() if d.get('ci')}))
+
+        tab_nuevo, tab_editar = st.tabs(['➕ Añadir técnico','✏️ Editar / desactivar'])
+        centros_existentes = sorted({d.get('ci','') for d in TECNICOS.values() if d.get('ci')})
+
+        with tab_nuevo:
+            st.markdown('#### Alta de nuevo técnico')
+            with st.form('alta_tecnico', clear_on_submit=False):
+                nombre = st.text_input('Nombre y apellidos')
+                ci = st.selectbox('CI asignado', centros_existentes)
+                ca, cb = st.columns(2)
+                vac = ca.number_input('Vacaciones anuales (días)', min_value=0, max_value=60, value=22, step=1)
+                vpa = cb.number_input('VPA iniciales (días)', min_value=0, max_value=60, value=0, step=1)
+                st.markdown('**Datos PRL (opcionales)**')
+                cp1, cp2 = st.columns(2)
+                nip = cp1.text_input('NIP')
+                dni = cp2.text_input('DNI')
+                fecha_prl = st.date_input('Caducidad PRL', value=None)
+                obs_prl = st.text_input('Observaciones PRL')
+                confirmar = st.checkbox('Confirmo el alta del nuevo técnico')
+                alta = st.form_submit_button('Añadir técnico', type='primary', disabled=not confirmar)
+            if alta:
+                nombre = ' '.join(nombre.split()).strip()
+                if not nombre:
+                    st.error('Indica el nombre y apellidos del técnico.')
+                elif nombre in TECNICOS:
+                    st.error('Ya existe un técnico con ese nombre. Usa Editar / desactivar para modificarlo.')
+                else:
+                    nuevos_tecnicos = copy.deepcopy(TECNICOS)
+                    nuevos_tecnicos[nombre] = {'ci':ci,'vac_totales':int(vac),'vpa_base':int(vpa),'he_totales':0.0,'activo':True}
+                    nuevo_prl = copy.deepcopy(REGISTROS_PRL)
+                    nuevo_prl[nombre] = {'nip':nip.strip(),'dni':dni.strip(),'fecha':fecha_prl.isoformat() if fecha_prl else '', 'obs':obs_prl.strip()}
+                    if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos,RUTA_PRL:nuevo_prl},f'Alta técnico: {nombre} · {ci}'):
+                        st.rerun()
+
+        with tab_editar:
+            st.markdown('#### Editar técnico existente')
+            elegido = st.selectbox('Técnico', sorted(TECNICOS), key='config_tecnico_editar')
+            actual = TECNICOS[elegido]
+            ci_actual = actual.get('ci','')
+            opciones_ci = centros_existentes if ci_actual in centros_existentes else centros_existentes + [ci_actual]
+            with st.form(f'editar_tecnico_{elegido}'):
+                nuevo_ci = st.selectbox('CI asignado', opciones_ci, index=opciones_ci.index(ci_actual))
+                ce1, ce2 = st.columns(2)
+                nuevas_vac = ce1.number_input('Vacaciones anuales (días)', min_value=0, max_value=60, value=int(actual.get('vac_totales',22)), step=1)
+                nuevo_vpa = ce2.number_input('VPA base (días)', min_value=0, max_value=60, value=int(actual.get('vpa_base',0)), step=1)
+                activo = st.checkbox('Técnico activo', value=bool(actual.get('activo',True)))
+                st.caption('Desactivar oculta al técnico de la operativa habitual, pero conserva vacaciones, ausencias, HE/HLD, PRL y auditoría históricas.')
+                guardar_tec = st.form_submit_button('Guardar cambios', type='primary')
+            if guardar_tec:
+                nuevos_tecnicos = copy.deepcopy(TECNICOS)
+                nuevos_tecnicos[elegido].update({'ci':nuevo_ci,'vac_totales':int(nuevas_vac),'vpa_base':int(nuevo_vpa),'activo':activo})
+                if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos},f'Actualizar técnico: {elegido} · {nuevo_ci} · activo={activo}'):
+                    st.rerun()
+        return
+
+    if opcion=='Vehículos':
+        st.markdown('<div class="ci-panel"><div class="ci-panel-title">Vehículos CI</div><div class="ci-panel-note">Catálogo centralizado de vehículos. La asignación se realiza desde la ficha de cada técnico.</div></div>', unsafe_allow_html=True)
+        filas=[]
+        for mat,v in sorted(VEHICULOS.items()):
+            asignados=[t for t,p in PERFILES_TECNICOS.items() if p.get('matricula')==mat]
+            tarjeta=str(v.get('tarjeta',''))
+            filas.append({'Matrícula':mat,'Modelo':v.get('modelo',''),'Asignado a':', '.join(asignados) or 'Sin asignar','Tarjeta':('•••• '+tarjeta[-4:]) if tarjeta else 'Sin datos'})
+        tabla(filas)
+        st.divider()
+        mats=sorted(VEHICULOS)
+        modo=st.radio('Operación',['Editar vehículo','Añadir vehículo'],horizontal=True,key='modo_vehiculo')
+        elegido=st.selectbox('Vehículo',mats,key='vehiculo_editar') if modo=='Editar vehículo' and mats else ''
+        actual=VEHICULOS.get(elegido,{})
+        with st.form('gestion_vehiculo'):
+            matricula=st.text_input('Matrícula',value=elegido,disabled=bool(elegido)).strip().upper().replace(' ','')
+            modelo=st.text_input('Modelo',value=actual.get('modelo',''))
+            st.caption('🔐 Datos de pago restringidos a usuarios Editor.')
+            tarjeta=st.text_input('N.º tarjeta',value=actual.get('tarjeta',''),type='password')
+            pin=st.text_input('PIN',value=actual.get('pin',''),type='password')
+            guardar_v=st.form_submit_button('Guardar vehículo',type='primary')
+        if guardar_v:
+            if not matricula:
+                st.error('Indica la matrícula.'); return
+            if modo=='Añadir vehículo' and matricula in VEHICULOS:
+                st.error('La matrícula ya existe.'); return
+            nuevo=copy.deepcopy(VEHICULOS)
+            nuevo[matricula]={'modelo':modelo.strip(),'tarjeta':tarjeta.strip(),'pin':pin.strip()}
+            if guardar_cambios({RUTA_VEHICULOS:nuevo},f'Vehículo: {matricula}'):
+                st.rerun()
+        return
+
     if opcion=='Avisos por email':
         st.subheader('Avisos por email')
         remitente = str(secreto('GMAIL_USUARIO', '')).strip()
@@ -1124,34 +1738,8 @@ def render_config():
         st.info('Automatización configurada mediante GitHub Actions. El botón manual de PRL no altera la programación automática: únicamente fuerza un envío en ese momento.')
         return
 
-    if opcion=='Vehículos':
-        st.subheader('Vehículos CI')
-        st.caption('Catálogo centralizado. La asignación a técnicos se realiza desde la ficha del técnico. Tarjeta y PIN solo son visibles para Editor.')
-        filas=[]
-        for mat,v in sorted(VEHICULOS.items()):
-            asignados=[t for t,p in PERFILES_TECNICOS.items() if p.get('matricula')==mat]
-            tarjeta=str(v.get('tarjeta',''))
-            filas.append({'Matrícula':mat,'Modelo':v.get('modelo',''),'Asignado a':', '.join(asignados) or 'Sin asignar','Tarjeta':('•••• '+tarjeta[-5:]) if tarjeta else 'Sin datos'})
-        tabla(filas)
-        mats=sorted(VEHICULOS)
-        modo=st.radio('Operación',['Editar vehículo','Añadir vehículo'],horizontal=True)
-        elegido=st.selectbox('Vehículo',mats) if modo=='Editar vehículo' and mats else ''
-        actual=VEHICULOS.get(elegido,{})
-        with st.form('gestion_vehiculo'):
-            matricula=st.text_input('Matrícula',value=elegido,disabled=bool(elegido)).strip().upper().replace(' ','')
-            modelo=st.text_input('Modelo',value=actual.get('modelo',''))
-            tarjeta=st.text_input('N.º tarjeta',value=actual.get('tarjeta',''),type='password')
-            pin=st.text_input('PIN',value=actual.get('pin',''),type='password')
-            guardar_v=st.form_submit_button('Guardar vehículo',type='primary')
-        if guardar_v:
-            if not matricula: st.error('Indica la matrícula.'); return
-            if modo=='Añadir vehículo' and matricula in VEHICULOS: st.error('La matrícula ya existe.'); return
-            nuevo=copy.deepcopy(VEHICULOS); nuevo[matricula]={'modelo':modelo.strip(),'tarjeta':tarjeta.strip(),'pin':pin.strip()}
-            if guardar_cambios({RUTA_VEHICULOS:nuevo},f'Vehículo: {matricula}'): st.rerun()
-        return
-
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -1200,6 +1788,6 @@ def render_config():
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
 {'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
- 'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
+ 'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
