@@ -30,7 +30,7 @@ import ssl
 from email.message import EmailMessage
 import streamlit as st
 
-st.set_page_config(page_title="Gestión de Técnicos CI", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Gestión Técnicos CI · REPSOL", page_icon="🏭", layout="wide")
 ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
 
 RUTA_BDD = "datos_tecnicos_repsol.json"
@@ -329,6 +329,10 @@ button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!
 .info-card{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:16px 17px;box-shadow:0 4px 14px rgba(15,43,56,.035);min-height:128px;margin-bottom:10px}.info-card .title,.resource-card .title{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#82939e;margin-bottom:11px}
 .info-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f0f3f5;font-size:12px}.info-row:last-child{border-bottom:0}.info-row span{color:#718493}.info-row b{color:#173542;text-align:right;font-weight:700;overflow-wrap:anywhere}
 .resource-card{background:#fff;border:1px solid #dce6eb;border-left:4px solid #087c94;border-radius:14px;padding:17px 18px;box-shadow:0 4px 14px rgba(15,43,56,.035);min-height:112px}.resource-name{font-size:16px;font-weight:800;color:#173542}.resource-meta{font-size:12px;color:#607584;margin-top:5px}
+/* v13 · Unificación visual */
+.ops-hero{background:linear-gradient(135deg,#123b49,#07566a);color:white;border-radius:16px;padding:18px 21px;margin:7px 0 16px;box-shadow:0 8px 22px rgba(15,43,56,.10)}
+.ops-hero .k{font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;opacity:.70}.ops-hero .t{font-size:20px;font-weight:800;margin-top:4px}.ops-hero .n{font-size:12px;opacity:.80;margin-top:4px}
+.ops-card{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:17px 18px;box-shadow:0 4px 14px rgba(15,43,56,.035);margin:7px 0 14px}.ops-card .title{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#718493;margin-bottom:5px}.ops-card .note{font-size:12px;color:#718493}
 @media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}.ci-page-intro{display:block;}}
 </style>''', unsafe_allow_html=True)
 
@@ -491,14 +495,27 @@ def verificar_password(password, usuario):
 
 usuarios = secreto('usuarios', {})
 if not st.session_state.get('autenticado'):
-    st.title('Gestión de Técnicos CI')
-    st.caption('Planificación del equipo · Infraestructuras y Sistemas')
+    # v13 · Login corporativo. No modifica la autenticación, solo su presentación.
+    st.markdown('''<style>
+    [data-testid="stSidebar"]{display:none!important}
+    .login-shell{max-width:1120px;margin:5vh auto 0;display:grid;grid-template-columns:1.08fr .92fr;background:#fff;border:1px solid #dce6eb;border-radius:22px;overflow:hidden;box-shadow:0 18px 55px rgba(15,43,56,.10)}
+    .login-brand{background:linear-gradient(145deg,#123b49 0%,#07566a 72%,#087c94 100%);padding:52px 48px;color:white;min-height:410px;display:flex;flex-direction:column;justify-content:space-between}
+    .login-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;opacity:.72}
+    .login-title{font-size:35px;font-weight:850;letter-spacing:-.035em;line-height:1.08;margin:16px 0 16px}
+    .login-copy{font-size:16px;line-height:1.6;max-width:520px;color:rgba(255,255,255,.82)}
+    .login-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:28px}.login-pill{font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08)}
+    .login-foot{font-size:11px;opacity:.62;margin-top:34px}.login-form-head{margin:7px 0 20px}.login-form-head b{font-size:19px;color:#173542}.login-form-head span{display:block;font-size:12px;color:#718493;margin-top:5px}
+    div[data-testid="stForm"]{border:1px solid #dce6eb!important;border-radius:16px!important;padding:22px!important;background:#fff!important;box-shadow:0 7px 22px rgba(15,43,56,.045)}
+    @media(max-width:850px){.login-shell{display:block;margin-top:1vh}.login-brand{min-height:auto;padding:32px 28px}.login-title{font-size:28px}}
+    </style>''', unsafe_allow_html=True)
+    st.markdown('''<div class="login-shell"><section class="login-brand"><div><div class="login-kicker">Operación · Infraestructuras y Sistemas</div><div class="login-title">Gestión Técnicos CI · REPSOL</div><div class="login-copy">Plataforma de planificación y gestión operativa de los Complejos Industriales Repsol</div><div class="login-meta"><span class="login-pill">Planificación CI</span><span class="login-pill">Guardias 12x7</span><span class="login-pill">PRL y recursos</span><span class="login-pill">Informes operativos</span></div></div><div class="login-foot">Uso interno · Indra Group / RPECII</div></section><section style="padding:45px 42px 20px"><div class="login-form-head"><b>Acceso a la plataforma</b><span>Identifícate con tus credenciales autorizadas.</span></div></section></div>''', unsafe_allow_html=True)
     if not usuarios:
         st.warning('Configura los usuarios en .streamlit/secrets.toml. Se han eliminado las contraseñas de respaldo del código.')
         st.code('[usuarios.coordinador]\nnombre = "Coordinador"\nrol = "Editor"\npassword = "SUSTITUIR_POR_UNA_CLAVE_LARGA_Y_UNICA"', language='toml')
         st.stop()
-    _, centro_login, _ = st.columns([1, 2, 1])
+    _, centro_login, _ = st.columns([1.18, 1.64, 1.18])
     with centro_login:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         with st.form('login'):
             user = st.text_input('Usuario')
             password = st.text_input('Contraseña', type='password')
@@ -1328,6 +1345,7 @@ def informe_guardias_html(equipo, anio, mes=None):
     return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Periodos de guardia<strong>{total_periodos}</strong></div><div class="metric">Días de guardia<strong>{total_dias}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Periodos registrados</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
 
 def render_guardias():
+    st.markdown('<div class="ops-hero"><div class="k">Cobertura operativa</div><div class="t">Guardias 12x7</div><div class="n">Planificación de periodos, activaciones, compensaciones y seguimiento por Complejo Industrial.</div></div>', unsafe_allow_html=True)
     st.markdown("""<style>
     .guard-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:102px}
     .guard-kpi small{color:#718493;font-weight:700}.guard-kpi strong{display:block;font-size:27px;color:#12313d;margin-top:5px}
@@ -1505,6 +1523,7 @@ def render_guardias():
         st.markdown(guardias_calendario_html(equipo_inf,vista_mes,dd_anio),unsafe_allow_html=True)
 
 def render_he():
+    st.markdown('<div class="ops-hero"><div class="k">Compensación y seguimiento</div><div class="t">Horas extra</div><div class="n">Registro, saldo compensado y trazabilidad de horas extraordinarias del equipo.</div></div>', unsafe_allow_html=True)
     t = st.selectbox('Técnico',visibles)
     _,pendientes = saldos(t,dd_anio)
     st.metric('Horas disponibles',f'{pendientes["HE"]:g} h')
@@ -1535,7 +1554,7 @@ def render_he():
                 elif guardar_cambios({RUTA_HE:nuevo},f'Eliminar HE: {t}, ID {idx}'): st.rerun()
 
 def render_informes():
-    st.markdown('<div class="ci-panel"><div class="ci-panel-title">Centro de informes</div><div class="ci-panel-note">Consulta saldos, guardias, PRL, coincidencias y trazabilidad desde un único punto.</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="ops-hero"><div class="k">Análisis y trazabilidad</div><div class="t">Centro de informes</div><div class="n">Consulta saldos, guardias, PRL, coincidencias y auditoría desde un único punto.</div></div>',unsafe_allow_html=True)
     INFO_LABELS={'📊 Balance':'Balance','🛡️ Guardias':'Guardias','🩺 PRL':'PRL','⚠️ Solapamientos':'Solapamientos','🧾 Auditoría':'Auditoría'}
     opcion_label = st.radio('Informe',list(INFO_LABELS),horizontal=True,label_visibility='collapsed')
     opcion = INFO_LABELS[opcion_label]
@@ -1626,6 +1645,7 @@ def render_informes():
 def render_config():
     if not EDITOR:
         st.info('Configuración reservada a editores.'); return
+    st.markdown('<div class="ops-hero"><div class="k">Administración de la plataforma</div><div class="t">Configuración</div><div class="n">Gestiona técnicos, calendarios, horarios, vehículos, avisos y copias de seguridad desde un único espacio.</div></div>', unsafe_allow_html=True)
     opcion = st.radio('Ajustes',['Técnicos','Festivos','Horarios','HLD','Vehículos','Avisos por email','Copias de seguridad'],horizontal=True)
     if opcion=='Técnicos':
         st.subheader('Gestión de técnicos')
@@ -1867,4 +1887,4 @@ def render_config():
 {'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
-st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
