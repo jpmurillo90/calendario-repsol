@@ -441,6 +441,36 @@ def enviar_resumen_prl_manual():
         '\n'.join(lineas)
     )
 
+
+
+def notificar_cambio_planificacion(tecnico, tipo, inicio, fin, fechas, desglose, accion_borrar=False):
+    """Notifica al técnico tras guardar correctamente una novedad del cuadrante."""
+    perfil = PERFILES_TECNICOS.get(tecnico, {})
+    destinatario = str(perfil.get('correo', '')).strip()
+    if not destinatario:
+        return False, f'El registro se guardó, pero {tecnico} no tiene Correo Minsait configurado.'
+
+    nombres = {k: v[0] for k, v in LEYENDA.items()}
+    nombre_tipo = 'Eliminación de registro' if accion_borrar else nombres.get(tipo, tipo)
+    periodo = inicio.strftime('%d/%m/%Y') if inicio == fin else f"{inicio:%d/%m/%Y} al {fin:%d/%m/%Y}"
+    lineas = [
+        f'Hola {tecnico.split()[0]},', '',
+        'Se ha actualizado tu planificación en Gestión de Técnicos CI.', '',
+        f'Tipo: {nombre_tipo}',
+        f'Periodo: {periodo}',
+        f'Días afectados: {len(fechas)}',
+    ]
+    if tipo in ('HE','HLD','HE+HLD') and not accion_borrar:
+        total_he = sum(float(x.get('he', 0)) for x in desglose)
+        total_hld = sum(float(x.get('hld', 0)) for x in desglose)
+        if total_he: lineas.append(f'HE registradas: {total_he:g} h')
+        if total_hld: lineas.append(f'HLD registradas: {total_hld:g} h')
+    lineas += ['', f'Registrado por: {st.session_state.get("usuario_actual", "Coordinación")}', '',
+               'Este mensaje es informativo. Si detectas algún dato incorrecto, contacta con Coordinación.', '',
+               'Gestión de Técnicos CI · Indra / RPECII']
+    asunto = f'Gestión Técnicos CI · {nombre_tipo} · {periodo}'
+    return enviar_email(asunto, '\n'.join(lineas), destinatario=destinatario)
+
 def verificar_password(password, usuario):
     """Hash: pbkdf2_sha256$600000$sal_hex$hash_hex; o password legado en secrets."""
     encoded = usuario.get('password_hash', '')
@@ -692,6 +722,9 @@ if 'guardado' in st.session_state:
     st.success(st.session_state.pop('guardado'))
 if 'aviso_local' in st.session_state:
     st.warning(st.session_state.pop('aviso_local'))
+if 'aviso_email_planificacion' in st.session_state:
+    nivel, mensaje = st.session_state.pop('aviso_email_planificacion')
+    st.success('📧 ' + mensaje) if nivel == 'success' else st.warning('📧 ' + mensaje)
 st.title(pagina)
 st.markdown(f'<div class="ci-page-intro"><div><div class="eyebrow">Gestión operativa CI</div><div class="context">{escape(centro)} · Ejercicio {dd_anio}</div></div><span class="ci-badge info">{escape(st.session_state.rol_actual)}</span></div>', unsafe_allow_html=True)
 st.markdown(
@@ -950,10 +983,18 @@ def registrar_ausencia():
     if conflictos:
         st.warning('Hay otras marcas en el mismo centro. Revisa si afectan a la cobertura.'); tabla(conflictos)
     firma = hashlib.sha256(repr((t,ini,fin,tipo,[(x['fecha'].isoformat(),x['he'],x['hld']) for x in desglose],solo_laborables)).encode()).hexdigest()[:16]
+    correo_tecnico = str(PERFILES_TECNICOS.get(t, {}).get('correo', '')).strip()
+    if correo_tecnico:
+        st.info(f'📧 Al confirmar, se enviará una notificación a **{correo_tecnico}**.')
+    else:
+        st.warning(f'📧 {t} no tiene Correo Minsait configurado. El registro se guardará, pero no podrá enviarse la notificación.')
     confirmado = st.checkbox('He revisado el consumo, las sustituciones y los solapamientos.',key=f'confirmar_{firma}')
     if st.button('Confirmar registro',type='primary',disabled=not confirmado or excede):
         accion = f'{t}: {tipo}, {ini} a {fin}, {len(fechas)} días; solapamientos: {len(conflictos)}'
-        if guardar_cambios({RUTA_BDD:serializar_registros(propuesta)},accion): st.rerun()
+        if guardar_cambios({RUTA_BDD:serializar_registros(propuesta)},accion):
+            ok_mail, resultado_mail = notificar_cambio_planificacion(t, tipo, ini, fin, fechas, desglose, accion_borrar=(tipo=='BORRAR'))
+            st.session_state['aviso_email_planificacion'] = ('success' if ok_mail else 'warning', resultado_mail)
+            st.rerun()
 
 def visibles_del_centro(t):
     return [n for n,v in TECNICOS.items() if v['ci']==TECNICOS[t]['ci']]
@@ -1787,4 +1828,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
-
