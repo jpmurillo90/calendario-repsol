@@ -1144,6 +1144,38 @@ def render_solicitudes():
     st.subheader('Histórico')
     tabla([{'Técnico':x.get('tecnico'),'CI':x.get('ci'),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':_estado_solicitud_visual(x.get('estado')),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES)])
 
+def _destinatarios_aviso(destino, elegidos=None):
+    """Devuelve técnicos objetivo según el alcance seleccionado por Coordinación."""
+    elegidos = elegidos or []
+    if destino == 'Todos':
+        return sorted(TECNICOS)
+    if destino == 'Técnicos concretos':
+        return sorted([t for t in elegidos if t in TECNICOS])
+    return sorted([t for t,d in TECNICOS.items() if d.get('ci') == destino])
+
+
+def _enviar_aviso_email(titulo, mensaje, importante, tecnicos):
+    """Envía el aviso individualmente y devuelve detalle de enviados/no enviados."""
+    enviados, sin_correo, errores = [], [], []
+    prefijo = 'IMPORTANTE · ' if importante else ''
+    asunto = f"Aviso de Coordinación · {prefijo}{titulo}"
+    for tecnico in tecnicos:
+        destino = correo_tecnico(tecnico)
+        if not destino:
+            sin_correo.append(tecnico)
+            continue
+        nombre = tecnico.split()[0] if tecnico else 'compañero/a'
+        cuerpo = (f"Hola {nombre},\n\n"
+                  f"{'AVISO IMPORTANTE DE COORDINACIÓN\n\n' if importante else ''}"
+                  f"{titulo}\n\n{mensaje}\n\n"
+                  "Este aviso también está disponible en Gestión Técnicos CI · REPSOL.\n\n"
+                  "Gestión Técnicos CI · REPSOL")
+        ok, detalle = enviar_email(asunto, cuerpo, destino)
+        if ok: enviados.append(tecnico)
+        else: errores.append(f"{tecnico}: {detalle}")
+    return enviados, sin_correo, errores
+
+
 def render_avisos():
     if not EDITOR: st.error('Área reservada a Coordinación.'); return
     st.markdown('<div class="ops-hero"><div class="k">Comunicación interna</div><div class="t">Avisos del coordinador</div><div class="n">Publica comunicaciones para todos los técnicos, un CI concreto o personas seleccionadas.</div></div>',unsafe_allow_html=True)
@@ -1151,16 +1183,34 @@ def render_avisos():
         titulo=st.text_input('Título'); mensaje=st.text_area('Mensaje'); destino=st.selectbox('Destino',['Todos']+CENTROS+['Técnicos concretos'])
         elegidos=st.multiselect('Técnicos',sorted(TECNICOS),disabled=destino!='Técnicos concretos')
         c1,c2=st.columns(2); caduca=c1.date_input('Visible hasta',date.today()+timedelta(days=14)); importante=c2.checkbox('Marcar como importante')
+        objetivos=_destinatarios_aviso(destino,elegidos)
+        enviar_correo=st.checkbox('📧 Enviar también por email',value=False,help='El aviso se publicará siempre en la plataforma. Activa esta opción para enviarlo además al correo corporativo de los destinatarios.')
+        if enviar_correo:
+            con_correo=sum(1 for t in objetivos if correo_tecnico(t))
+            st.caption(f'📨 Destinatarios seleccionados: {len(objetivos)} técnico(s) · {con_correo} con correo disponible.')
         publicar=st.form_submit_button('📢 Publicar aviso',type='primary')
     if publicar:
         if not titulo.strip() or not mensaje.strip(): st.error('Indica título y mensaje.')
         elif destino=='Técnicos concretos' and not elegidos: st.error('Selecciona al menos un técnico.')
         else:
-            a={'id':_id_estable(titulo,mensaje,datetime.now().isoformat()),'titulo':titulo.strip(),'mensaje':mensaje.strip(),'destino':destino,'tecnicos':elegidos,'caduca':caduca.isoformat(),'importante':importante,'activo':True,'creado':datetime.now().isoformat(timespec='seconds'),'creado_por':st.session_state.usuario_actual}
-            if guardar_portal({RUTA_AVISOS_COORD:AVISOS_COORD+[a]},f'Aviso publicado: {titulo} · {destino}','Avisos'): st.rerun()
+            objetivos=_destinatarios_aviso(destino,elegidos)
+            a={'id':_id_estable(titulo,mensaje,datetime.now().isoformat()),'titulo':titulo.strip(),'mensaje':mensaje.strip(),'destino':destino,'tecnicos':elegidos,'caduca':caduca.isoformat(),'importante':importante,'activo':True,'creado':datetime.now().isoformat(timespec='seconds'),'creado_por':st.session_state.usuario_actual,'email_solicitado':bool(enviar_correo),'destinatarios_email':len(objetivos) if enviar_correo else 0}
+            accion=f'Aviso publicado: {titulo} · {destino}' + (f' · email solicitado a {len(objetivos)} técnico(s)' if enviar_correo else ' · solo plataforma')
+            if guardar_portal({RUTA_AVISOS_COORD:AVISOS_COORD+[a]},accion,'Avisos'):
+                st.success('✅ Aviso publicado correctamente en la plataforma.')
+                if enviar_correo:
+                    enviados,sin_correo,errores=_enviar_aviso_email(titulo.strip(),mensaje.strip(),importante,objetivos)
+                    if enviados: st.success(f'📧 {len(enviados)} correo(s) enviado(s) correctamente.')
+                    if sin_correo: st.warning('⚠️ Sin dirección de correo: ' + ', '.join(sin_correo))
+                    if errores:
+                        st.error(f'No se pudieron enviar {len(errores)} correo(s).')
+                        with st.expander('Ver detalle de errores'):
+                            for e in errores: st.write('• '+e)
+                st.info('Puedes recargar la página para ver el nuevo aviso en el histórico.')
     st.subheader('Avisos publicados')
     for a in reversed(AVISOS_COORD):
-        st.markdown(f'<div class="ops-card"><div class="title">{"⚠️ IMPORTANTE · " if a.get("importante") else ""}{escape(a.get("titulo",""))}</div><div style="font-size:13px;color:#334e5b">{escape(a.get("mensaje",""))}</div><div class="note">Destino: {escape(a.get("destino",""))} · Hasta {escape(a.get("caduca",""))}</div></div>',unsafe_allow_html=True)
+        canal=' · 📧 Email solicitado' if a.get('email_solicitado') else ' · Solo plataforma'
+        st.markdown(f'<div class="ops-card"><div class="title">{"⚠️ IMPORTANTE · " if a.get("importante") else ""}{escape(a.get("titulo",""))}</div><div style="font-size:13px;color:#334e5b">{escape(a.get("mensaje",""))}</div><div class="note">Destino: {escape(a.get("destino",""))} · Hasta {escape(a.get("caduca",""))}{canal}</div></div>',unsafe_allow_html=True)
         if a.get('activo',True) and st.button('Archivar',key='arch_'+str(a.get('id'))):
             nuevo=copy.deepcopy(AVISOS_COORD)
             for x in nuevo:
@@ -2330,8 +2380,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.1</div><div class="sub">Solicitudes ampliadas · consumo HE · cancelación con aprobación · estados visuales</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.2</div><div class="sub">Avisos de Coordinación · envío opcional por email · alcance segmentado · resultado de entrega</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.2','28/09/2026','Avisos también por email','Los avisos de Coordinación pueden publicarse solo en la plataforma o enviarse además por correo. Respeta el alcance Todos, CI o técnicos concretos, muestra cuántos destinatarios tienen correo disponible e informa del resultado de entrega sin bloquear la publicación del aviso.'),
       ('v16.1','28/09/2026','Solicitudes y cancelaciones','Solicitudes limitadas a Vacaciones, Vacaciones año anterior, HLD y consumo de HE. Estados visuales por color y nuevo flujo de cancelación: el técnico solicita cancelar una petición aprobada y Coordinación debe aprobarla antes de retirar la planificación y restituir el saldo.'),
       ('v16','28/09/2026','Portal del Técnico','Mi espacio personalizado, centro de notificaciones con leído/no leído, buzón de solicitudes con aprobación y alta automática en cuadrante, y avisos segmentados de Coordinación.'),
       ('v15.1','28/09/2026','Recuperación de acceso','Nueva opción ¿Has olvidado tu contraseña? en el login. Los usuarios registrados pueden solicitar el envío de sus credenciales a su propio correo corporativo, con respuesta neutra y limitación de solicitudes.'),
