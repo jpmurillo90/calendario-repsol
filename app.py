@@ -1893,65 +1893,96 @@ def html_seguimiento_global(anio, mes=None):
 
 
 def html_resumen_coordinacion(tipo="semanal", referencia=None):
-    ref=referencia or date.today()
-    if tipo=="semanal":
-        inicio=ref-timedelta(days=ref.weekday()); fin=inicio+timedelta(days=6); periodo=f"{inicio:%d/%m/%Y} – {fin:%d/%m/%Y}"
+    ref = referencia or date.today()
+    if tipo == "semanal":
+        inicio = ref - timedelta(days=ref.weekday())
+        fin = inicio + timedelta(days=6)
+        periodo = f"{inicio:%d/%m/%Y} – {fin:%d/%m/%Y}"
+        fechas = [inicio + timedelta(days=i) for i in range(7)]
     else:
-        inicio=date(ref.year,ref.month,1); fin=date(ref.year,ref.month,calendar.monthrange(ref.year,ref.month)[1]); periodo=f"{MESES[ref.month]} {ref.year}"
-    # Ausencias/marcas
-    aus=[]
-    for (a,t,m,d),val in REGISTROS.items():
-        try: f=date(int(a),int(m),int(d))
-        except Exception: continue
-        if inicio<=f<=fin and tipo_registro(val):
-            aus.append((f,t,TECNICOS.get(t,{}).get('ci',''),tipo_registro(val)))
-    # Guardias que cruzan el periodo
+        inicio = date(ref.year, ref.month, 1)
+        fin = date(ref.year, ref.month, calendar.monthrange(ref.year, ref.month)[1])
+        periodo = f"{MESES[ref.month]} {ref.year}"
+        fechas = [inicio + timedelta(days=i) for i in range((fin-inicio).days+1)]
+
+    visibles = [t for t,d in TECNICOS.items() if d.get('activo', True)]
     guards=[]
     for g in REGISTROS_GUARDIAS:
         gi=_parse_fecha_iso(g.get('inicio')); gf=_parse_fecha_iso(g.get('fin'))
-        if gi and gf and gi<=fin and gf>=inicio:
-            guards.append(g)
+        if gi and gf and gi<=fin and gf>=inicio: guards.append(g)
     prl=avisos_prl_actuales()
-    # seguimiento uses the period's month/year; weekly sum exact dates
+
     seg=[]
     for ci in CENTROS:
-        acc={"Parches":0,"AV":0,"BCK":0}
-        dias=0
-        f=inicio
-        while f<=fin:
+        acc={"Parches":0,"AV":0,"BCK":0}; dias=0
+        for f in fechas:
             rr=seg_registro(ci,f); tv=sum(rr["totales"].values())
             if tv: dias+=1
             for g in acc: acc[g]+=rr["totales"][g]
-            f+=timedelta(days=1)
         seg.append((ci,dias,acc,sum(acc.values())))
     total_seg=sum(x[3] for x in seg)
-    css="""body{font-family:Arial,sans-serif;background:#f5f8fa;color:#102a3a;margin:0;padding:28px}.hero{background:#0d5869;color:#fff;border-radius:16px;padding:26px 30px}.hero small{opacity:.75;font-weight:700;letter-spacing:.08em}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:#fff;border:1px solid #dbe4ea;border-radius:13px;padding:16px}.n{font-size:27px;font-weight:800;margin-top:6px}.muted{font-size:12px;color:#718692}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{background:#fff;border:1px solid #dbe4ea;border-radius:13px;padding:16px;margin:10px 0}table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #dbe4ea;padding:8px;text-align:left}th{background:#edf4f7}h2{margin-top:26px;color:#173542}"""
-    p=sum(x[2]["Parches"] for x in seg); av=sum(x[2]["AV"] for x in seg); b=sum(x[2]["BCK"] for x in seg)
-    out=[f'<!doctype html><html><head><meta charset="utf-8"><title>Resumen coordinación {escape(periodo)}</title><style>{css}</style></head><body>',
-         f'<div class="hero"><small>GESTIÓN TÉCNICOS CI · REPSOL</small><h1>Resumen de coordinación</h1><div>{escape(periodo)} · Todos los Complejos Industriales</div></div>',
-         f'<div class="kpis"><div class="k"><div class="muted">ACTIVIDAD CI</div><div class="n">{total_seg}</div></div><div class="k"><div class="muted">AUSENCIAS / MARCAS</div><div class="n">{len(aus)}</div></div><div class="k"><div class="muted">GUARDIAS</div><div class="n">{len(guards)}</div></div><div class="k"><div class="muted">PRL EN ATENCIÓN</div><div class="n">{len(prl)}</div></div></div>',
-         '<h2>Seguimiento operativo</h2><table><tr><th>CI</th><th>Parches</th><th>Antivirus</th><th>Backup</th><th>Total</th></tr>']
-    for ci,dias,d,total in seg: out.append(f'<tr><td>{escape(ci)}</td><td>{d["Parches"]}</td><td>{d["AV"]}</td><td>{d["BCK"]}</td><td><b>{total}</b></td></tr>')
-    out.append(f'<tr><th>Total</th><th>{p}</th><th>{av}</th><th>{b}</th><th>{total_seg}</th></tr></table>')
-    out.append('<h2>Ausencias, permisos y planificación</h2>')
-    if aus:
-        out.append('<table><tr><th>Fecha</th><th>CI</th><th>Técnico</th><th>Tipo</th></tr>')
-        for f,t,ci,tp in sorted(aus): out.append(f'<tr><td>{f:%d/%m/%Y}</td><td>{escape(ci)}</td><td>{escape(t)}</td><td>{escape(tp)}</td></tr>')
-        out.append('</table>')
-    else: out.append('<div class="card muted">Sin marcas registradas en el periodo.</div>')
-    out.append('<h2>Guardias</h2>')
+    marcas=sum(1 for f in fechas for t in visibles if tipo_registro(valor_registro(t,f)))
+
+    css="""body{font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#18313e;margin:0;padding:28px}main{max-width:1500px;margin:auto;background:white;padding:30px;border-radius:14px}.hero{background:#0d5869;color:#fff;border-radius:15px;padding:25px 29px}.hero small{opacity:.78;font-weight:700;letter-spacing:.09em}.hero h1{margin:7px 0 5px;font-size:28px}.muted{color:#647b88;font-size:12px}.metrics{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.metric{flex:1;min-width:150px;background:#edf6f8;border-top:4px solid #07566a;border-radius:10px;padding:15px}.metric strong{display:block;font-size:27px;margin-top:5px}.warn{background:#fff7e6;border-color:#b45309}.danger{background:#fef2f2;border-color:#b91c1c}h2{font-size:19px;margin-top:30px;border-bottom:2px solid #e2e8f0;padding-bottom:9px}.grid-wrap{overflow-x:auto}.grid{border-collapse:collapse;width:100%;white-space:nowrap;font-size:9px}.grid th{background:#123b49;color:white;padding:7px 4px;text-align:center}.grid td{border:1px solid #e2e8f0;padding:6px 4px;text-align:center;min-width:27px}.grid .name{text-align:left;min-width:155px;font-size:10px;font-weight:600}.subtle{font-size:9px;color:#607985;font-weight:400}.weekend{background:#e6e6e6!important;color:#667}.empty{background:#fff}.legend{margin:10px 0}.legend span{display:inline-block;padding:5px 8px;margin:3px;border-radius:5px;font-size:10px}.segcell{line-height:1.45;min-width:38px!important}.segcell b{display:block;color:#0d5869}.segzero{color:#a4b0b7}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.card{border:1px solid #dbe4ea;border-radius:11px;padding:13px;background:#fff}.card h3{margin:0 0 8px;color:#0d5869}.big{font-size:24px;font-weight:800}.pills span{display:inline-block;background:#edf4f7;border-radius:20px;padding:4px 8px;margin:3px 2px;font-size:10px}table.data{border-collapse:collapse;width:100%;font-size:11px}.data th{background:#123b49;color:#fff;text-align:left;padding:8px}.data td{border-bottom:1px solid #e2e8f0;padding:8px}.data tr:nth-child(even){background:#f8fafc}.notice{padding:12px;border-left:4px solid #b45309;background:#fffbeb;border-radius:5px}.ok{padding:12px;background:#f0f7f4;border-radius:7px}.guardbar{background:#e5f3f5;color:#0d5869;font-weight:700;border-radius:5px;padding:4px 6px}footer{margin-top:30px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#647b88}@page{size:A4 landscape;margin:8mm}@media print{body{padding:0;background:white}main{padding:0;max-width:none}.hero,.metric,.grid th,.grid td,.legend span{-webkit-print-color-adjust:exact;print-color-adjust:exact}.grid-wrap{overflow:visible}.grid{font-size:7px}.grid td,.grid th{padding:3px 2px}.grid .name{min-width:105px}.cards{grid-template-columns:repeat(5,1fr)}h2{break-after:avoid}.card,tr{break-inside:avoid}}"""
+
+    out=[f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Resumen coordinación · {escape(periodo)}</title><style>{css}</style></head><body><main>',
+         f'<div class="hero"><small>INDRA · INFRAESTRUCTURAS Y SISTEMAS · CI</small><h1>Resumen de coordinación</h1><div>{escape(periodo)} · Todos los Complejos Industriales</div><div class="muted" style="color:#d5e4e8;margin-top:7px">Emitido el {datetime.now():%d/%m/%Y %H:%M}</div></div>',
+         f'<div class="metrics"><div class="metric">Actividad CI<strong>{total_seg}</strong></div><div class="metric">Marcas planificación<strong>{marcas}</strong></div><div class="metric">Guardias del periodo<strong>{len(guards)}</strong></div><div class="metric {"warn" if prl else ""}">PRL en atención<strong>{len(prl)}</strong></div></div>',
+         '<h2>1. Cuadrante de planificación</h2><div class="grid-wrap"><table class="grid"><thead><tr><th class="name">Técnico / centro</th>']
+    dias_sem=['L','M','X','J','V','S','D']
+    for f in fechas: out.append(f'<th>{f.day}<br>{dias_sem[f.weekday()]}</th>')
+    out.append('</tr></thead><tbody>')
+    for t in visibles:
+        ci=TECNICOS.get(t,{}).get('ci',''); out.append(f'<tr><td class="name">{escape(t)}<br><span class="subtle">{escape(ci)}</span></td>')
+        for f in fechas:
+            tp=tipo_registro(valor_registro(t,f)); label=tp or ('SAB' if f.weekday()==5 else 'DOM' if f.weekday()==6 else '·')
+            color=LEYENDA.get(label,('', '#fff'))[1] if label!='·' else '#fff'
+            title=LEYENDA.get(label,('Sin marca',''))[0] if label!='·' else 'Sin marca'
+            out.append(f'<td style="background:{color}" title="{escape(title)}">{escape(label)}</td>')
+        out.append('</tr>')
+    out.append('</tbody></table></div><div class="legend">')
+    for k,(lab,col) in LEYENDA.items(): out.append(f'<span style="background:{col}">{k} · {escape(lab)}</span>')
+    out.append('</div>')
+
+    out.append('<h2>2. Seguimiento CI · calendario operativo</h2><div class="grid-wrap"><table class="grid"><thead><tr><th class="name">Complejo Industrial</th>')
+    for f in fechas: out.append(f'<th>{f.day}<br>{dias_sem[f.weekday()]}</th>')
+    out.append('<th>Total</th></tr></thead><tbody>')
+    for ci,dias,acc,total in seg:
+        out.append(f'<tr><td class="name">{escape(ci)}<br><span class="subtle">P {acc["Parches"]} · AV {acc["AV"]} · B {acc["BCK"]}</span></td>')
+        for f in fechas:
+            rr=seg_registro(ci,f); d=rr['totales']; tv=sum(d.values()); cls='segcell weekend' if f.weekday()>=5 else 'segcell'
+            if tv: cell=f'<b>{tv}</b><span class="subtle">P{d["Parches"]} A{d["AV"]} B{d["BCK"]}</span>'
+            else: cell='<span class="segzero">·</span>'
+            out.append(f'<td class="{cls}">{cell}</td>')
+        out.append(f'<td><b>{total}</b></td></tr>')
+    out.append('</tbody></table></div><p class="muted">Cada celda muestra el total del día y, debajo, Parches (P), Antivirus (A) y Backup (B).</p>')
+
+    out.append('<h2>3. Resumen por Complejo Industrial</h2><div class="cards">')
+    for ci,dias,d,total in seg:
+        ci_guards=[g for g in guards if g.get('centro')==ci]
+        ci_marcas=sum(1 for f in fechas for t in visibles if TECNICOS.get(t,{}).get('ci')==ci and tipo_registro(valor_registro(t,f)))
+        out.append(f'<div class="card"><h3>{escape(ci)}</h3><div class="big">{total}</div><div class="muted">operaciones · {dias} días con actividad</div><div class="pills"><span>P {d["Parches"]}</span><span>AV {d["AV"]}</span><span>B {d["BCK"]}</span><span>{ci_marcas} marcas</span><span>{len(ci_guards)} guardias</span></div></div>')
+    out.append('</div>')
+
+    out.append('<h2>4. Guardias</h2>')
     if guards:
-        out.append('<table><tr><th>CI</th><th>Técnico</th><th>Periodo</th></tr>')
-        for g in sorted(guards,key=lambda x:x.get("inicio","")): out.append(f'<tr><td>{escape(str(g.get("centro","")))}</td><td>{escape(str(g.get("tecnico","")))}</td><td>{escape(str(g.get("inicio","")))} → {escape(str(g.get("fin","")))}</td></tr>')
+        out.append('<table class="data"><tr><th>CI</th><th>Técnico</th><th>Periodo efectivo dentro del informe</th><th>Periodo registrado</th></tr>')
+        for g in sorted(guards,key=lambda x:(x.get('centro',''),x.get('inicio',''))):
+            gi=_parse_fecha_iso(g.get('inicio')); gf=_parse_fecha_iso(g.get('fin')); ei=max(gi,inicio); ef=min(gf,fin)
+            out.append(f'<tr><td>{escape(str(g.get("centro","")))}</td><td>{escape(str(g.get("tecnico","")))}</td><td><span class="guardbar">{ei:%d/%m} → {ef:%d/%m}</span></td><td>{gi:%d/%m/%Y} → {gf:%d/%m/%Y}</td></tr>')
         out.append('</table>')
-    else: out.append('<div class="card muted">Sin guardias registradas para el periodo.</div>')
-    out.append('<h2>PRL que requiere atención</h2>')
+    else: out.append('<div class="ok">Sin guardias registradas que crucen el periodo.</div>')
+
+    out.append('<h2>5. PRL que requiere atención</h2>')
     if prl:
-        out.append('<table><tr><th>CI</th><th>Técnico</th><th>Caducidad</th><th>Estado</th></tr>')
-        for x in prl: out.append(f'<tr><td>{escape(x["centro"])}</td><td>{escape(x["tecnico"])}</td><td>{x["fecha"].strftime("%d/%m/%Y") if x["fecha"] else "Sin fecha"}</td><td>{escape(texto_estado_prl(x["dias"]))}</td></tr>')
+        out.append('<table class="data"><tr><th>CI</th><th>Técnico</th><th>Caducidad</th><th>Estado</th></tr>')
+        for x in sorted(prl,key=lambda z:(z.get('fecha') or date.max,z.get('centro',''))):
+            out.append(f'<tr><td>{escape(x["centro"])}</td><td>{escape(x["tecnico"])}</td><td>{x["fecha"].strftime("%d/%m/%Y") if x["fecha"] else "Sin fecha"}</td><td>{escape(texto_estado_prl(x["dias"]))}</td></tr>')
         out.append('</table>')
-    else: out.append('<div class="card muted">Sin PRL que requiera atención en ≤60 días.</div>')
-    out.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
+    else: out.append('<div class="ok">Sin reconocimientos PRL que requieran atención en ≤60 días.</div>')
+
+    out.append('<h2>6. Leyenda y observaciones</h2><div class="notice">El cuadrante representa planificación registrada. El Seguimiento CI muestra actividad operativa diaria. Las guardias se incluyen cuando su periodo cruza alguna fecha del informe. PRL muestra los reconocimientos que requieren atención.</div>')
+    out.append(f'<footer>Uso interno · Gestión Técnicos CI · REPSOL · Generado {datetime.now():%d/%m/%Y %H:%M}</footer></main></body></html>')
     return ''.join(out)
 
 def render_versiones():
