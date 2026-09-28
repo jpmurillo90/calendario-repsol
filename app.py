@@ -1085,6 +1085,36 @@ def _resumen_saldo_solicitud(tecnico, tipo, desde, hasta, horas_dia=0.0, jornada
     disponible=round(saldo_actual-reservado,2); restante=round(disponible-solicitado,2)
     return {"saldo_actual":round(saldo_actual,2),"reservado":round(reservado,2),"disponible":disponible,"solicitado":round(solicitado,2),"restante":restante,"unidad":unidad,"valido":hasta>=desde and solicitado>0 and restante>=-1e-9}
 
+def _solapamientos_ci(tecnico, desde, hasta):
+    """Devuelve planificación de otros técnicos del mismo CI que puede afectar a la cobertura."""
+    if not tecnico or tecnico not in TECNICOS or not desde or not hasta or hasta < desde:
+        return []
+    ci=TECNICOS.get(tecnico,{}).get('ci','')
+    if not ci:
+        return []
+    # FEST/SAB/DOM son calendario, no ausencias individuales. El resto de marcas sí afectan a cobertura.
+    ignorar={'','SAB','DOM','FEST'}
+    conflictos=[]
+    compañeros=[n for n,d in TECNICOS.items() if n!=tecnico and d.get('ci')==ci]
+    for i in range((hasta-desde).days+1):
+        f=desde+timedelta(days=i)
+        for comp in compañeros:
+            tp=tipo_registro(valor_registro(comp,f))
+            if tp and tp not in ignorar:
+                conflictos.append({
+                    'fecha':f,'tecnico':comp,'tipo':tp,
+                    'descripcion':LEYENDA.get(tp,(tp,''))[0]
+                })
+    return conflictos
+
+def _tabla_solapamientos(conflictos):
+    dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+    return [{
+        'Fecha':f"{dias[x['fecha'].weekday()]} {x['fecha']:%d/%m/%Y}",
+        'Compañero':x['tecnico'],
+        'Planificación':x['descripcion']
+    } for x in conflictos]
+
 def render_solicitudes():
     st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, vacaciones del año anterior, HLD y consumo de HE con aprobación, trazabilidad y actualización automática del cuadrante.</div></div>',unsafe_allow_html=True)
     if ES_TECNICO:
@@ -1142,14 +1172,26 @@ def render_solicitudes():
         if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
         elif rs['solicitado']<=0: st.warning('El periodo seleccionado no contiene jornadas laborables computables.')
         elif rs['restante']<0: st.error(f"Saldo insuficiente. La solicitud supera en {abs(rs['restante']):g} {rs['unidad']} el saldo realmente disponible.")
+        conflictos=_solapamientos_ci(t,desde,hasta)
         comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.',key='sol_comentario')
         enviar=st.button('Enviar solicitud',type='primary',disabled=not rs['valido'],key='sol_enviar')
-        if enviar:
-            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas and not jornada_completa else 0,'jornada_completa':jornada_completa if aplica_horas else False,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
+        if enviar and conflictos:
+            st.session_state['sol_conflicto_pendiente']={'firma':f'{t}|{tipo}|{desde}|{hasta}','conflictos':conflictos}
+        firma_actual=f'{t}|{tipo}|{desde}|{hasta}'
+        pendiente_conf=st.session_state.get('sol_conflicto_pendiente',{})
+        confirmar_envio=False
+        if pendiente_conf.get('firma')==firma_actual and conflictos:
+            st.warning(f'⚠️ Solapamiento de cobertura detectado en {TECNICOS[t]["ci"]}. La solicitud coincide con planificación de otro técnico del CI.')
+            tabla(_tabla_solapamientos(conflictos))
+            revisado=st.checkbox('He revisado el solapamiento y deseo enviar la solicitud igualmente.',key='sol_confirma_solapamiento')
+            confirmar_envio=st.button('Confirmar y enviar solicitud',type='primary',disabled=not revisado,key='sol_enviar_confirmado')
+        if enviar and not conflictos or confirmar_envio:
+            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas and not jornada_completa else 0,'jornada_completa':jornada_completa if aplica_horas else False,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solapamiento_detectado':bool(conflictos),'solapamiento_confirmado_tecnico':bool(conflictos)}
             nuevo=SOLICITUDES+[sol]
             if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
                 destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
-                if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nConsumo: {rs["solicitado"]:g} {rs["unidad"]}\nSaldo restante si se aprueba: {rs["restante"]:g} {rs["unidad"]}\nComentario: {comentario or "—"}',destino)
+                if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nConsumo: {rs["solicitado"]:g} {rs["unidad"]}\nSaldo restante si se aprueba: {rs["restante"]:g} {rs["unidad"]}\nSolapamiento de cobertura: {"SÍ · revisado por el técnico" if conflictos else "No"}\nComentario: {comentario or "—"}',destino)
+                st.session_state.pop('sol_conflicto_pendiente',None)
                 st.rerun()
         st.subheader('Mis solicitudes')
         propias=[x for x in reversed(SOLICITUDES) if x.get('tecnico')==t and not x.get('solicitud_origen')]
@@ -1177,10 +1219,18 @@ def render_solicitudes():
     st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Pendientes de revisión <span class="ci-badge {"warn" if pendientes else "ok"}">{len(pendientes)}</span></div></div>',unsafe_allow_html=True)
     for sol in reversed(pendientes):
         es_cancel=bool(sol.get('solicitud_origen'))
+        ini_sol=_parse_fecha_iso(sol.get('desde')); fin_sol=_parse_fecha_iso(sol.get('hasta'))
+        conflictos_actuales=[] if es_cancel else _solapamientos_ci(sol.get('tecnico'),ini_sol,fin_sol)
         distintivo='<span class="ci-badge warn">CANCELACIÓN</span>' if es_cancel else '<span class="ci-badge info">NUEVA SOLICITUD</span>'
+        if conflictos_actuales: distintivo += ' <span class="ci-badge warn">⚠️ SOLAPAMIENTO</span>'
         st.markdown(f'<div class="ops-card"><div class="title">{escape(sol.get("tecnico",""))} · {escape(sol.get("ci",""))} {distintivo}</div><div style="font-size:15px;font-weight:800;color:#173542">{escape(sol.get("tipo",""))} · {escape(sol.get("desde",""))} → {escape(sol.get("hasta",""))}</div><div class="note">{escape(sol.get("comentario") or "Sin comentario")}</div></div>',unsafe_allow_html=True)
+        autoriza_solapamiento=True
+        if conflictos_actuales:
+            st.warning('⚠️ ATENCIÓN · Esta solicitud se solapa actualmente con planificación de otro técnico del mismo CI. Comprueba la cobertura antes de aprobar.')
+            tabla(_tabla_solapamientos(conflictos_actuales))
+            autoriza_solapamiento=st.checkbox('He revisado el solapamiento y autorizo la aprobación.',key='coord_solap_'+sol['id'])
         c1,c2=st.columns(2)
-        if c1.button('✅ Aprobar',key='ap_'+sol['id'],use_container_width=True):
+        if c1.button('✅ Aprobar',key='ap_'+sol['id'],use_container_width=True,disabled=bool(conflictos_actuales) and not autoriza_solapamiento):
             nuevo=copy.deepcopy(SOLICITUDES)
             if es_cancel:
                 propuesta,origen,msg=_cancelar_registros_solicitud(sol)
@@ -1196,9 +1246,10 @@ def render_solicitudes():
                 propuesta,msg=_crear_registros_solicitud(sol)
                 if propuesta is None: st.error(msg); continue
                 for x in nuevo:
-                    if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg})
+                    if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg,'solapamiento_al_aprobar':bool(conflictos_actuales),'solapamiento_confirmado_coordinacion':bool(conflictos_actuales)})
                 cambios={RUTA_SOLICITUDES:nuevo,RUTA_BDD:serializar_registros(propuesta)}
-                accion=f"Solicitud aprobada: {sol.get('tecnico')} · {sol.get('tipo')} · {msg}"
+                sufijo_solap=' · SOLAPAMIENTO revisado y autorizado por Coordinación' if conflictos_actuales else ''
+                accion=f"Solicitud aprobada: {sol.get('tecnico')} · {sol.get('tipo')} · {msg}{sufijo_solap}"
                 asunto=f"Solicitud aprobada · {sol.get('tipo')}"
                 cuerpo=f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido APROBADA.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}\n{msg}\n\nGestión Técnicos CI · REPSOL"
             if guardar_portal(cambios,accion,'Solicitudes'):
@@ -2454,8 +2505,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.5</div><div class="sub">Solicitudes HLD/HE · desglose diario del rango · jornada real por fecha</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.6</div><div class="sub">Solicitudes · control de solapamientos y cobertura por CI</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.6','28/09/2026','Control de solapamientos por CI','Antes de enviar una solicitud se comprueba la planificación de los compañeros del mismo CI. Si existe conflicto, el técnico debe confirmarlo expresamente. Coordinación vuelve a comprobarlo en tiempo real al aprobar, muestra el detalle y exige una segunda confirmación; la autorización queda auditada.'),
       ('v16.5','28/09/2026','Desglose diario HLD/HE','Las solicitudes por rango calculan cada jornada de forma individual, muestran un resumen previo fecha a fecha y consumen exactamente las horas reales de cada día, incluyendo viernes con jornada reducida.'),
       ('v16.4','28/09/2026','Jornada real precargada en HLD/HE','Al solicitar HLD o consumir HE, las horas por día se precargan con la jornada real máxima del técnico. El límite se adapta al periodo seleccionado y el técnico puede reducirlo para peticiones parciales.'),
       ('v16.3','28/09/2026','Saldo inteligente en solicitudes','El técnico ve en tiempo real el saldo del concepto seleccionado, lo reservado por solicitudes pendientes, el consumo de la nueva petición y el saldo restante. Se bloquean solicitudes que superen el saldo realmente disponible.'),
@@ -2840,3 +2892,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
