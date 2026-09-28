@@ -25,6 +25,9 @@ from html import escape
 from datetime import datetime, date, timedelta
 import pandas as pd
 import requests
+import smtplib
+import ssl
+from email.message import EmailMessage
 import streamlit as st
 
 st.set_page_config(page_title="Gestión de Técnicos CI", page_icon="📅", layout="wide")
@@ -271,6 +274,32 @@ def secreto(nombre, defecto=None):
         return st.secrets.get(nombre, defecto)
     except (FileNotFoundError, KeyError):
         return defecto
+
+def enviar_email(asunto, mensaje, destinatario=None):
+    """Envía un correo mediante Gmail SMTP usando una contraseña de aplicación."""
+    gmail_usuario = str(secreto("GMAIL_USUARIO", "")).strip()
+    gmail_password = str(secreto("GMAIL_APP_PASSWORD", "")).replace(" ", "").strip()
+    gmail_destino = str(destinatario or secreto("GMAIL_DESTINATARIO", "")).strip()
+
+    if not gmail_usuario or not gmail_password or not gmail_destino:
+        return False, "Falta configurar GMAIL_USUARIO, GMAIL_APP_PASSWORD o GMAIL_DESTINATARIO en los Secrets de Streamlit."
+
+    email = EmailMessage()
+    email["From"] = gmail_usuario
+    email["To"] = gmail_destino
+    email["Subject"] = asunto
+    email.set_content(mensaje)
+
+    try:
+        contexto = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=contexto, timeout=15) as servidor:
+            servidor.login(gmail_usuario, gmail_password)
+            servidor.send_message(email)
+        return True, f"Correo enviado correctamente a {gmail_destino}."
+    except smtplib.SMTPAuthenticationError:
+        return False, "Gmail ha rechazado la autenticación. Revisa la cuenta y la contraseña de aplicación configuradas en Secrets."
+    except (smtplib.SMTPException, OSError) as e:
+        return False, f"No se pudo enviar el correo: {e}"
 
 def verificar_password(password, usuario):
     """Hash: pbkdf2_sha256$600000$sal_hex$hash_hex; o password legado en secrets."""
@@ -908,7 +937,35 @@ def render_informes():
 def render_config():
     if not EDITOR:
         st.info('Configuración reservada a editores.'); return
-    opcion = st.radio('Ajustes',['Festivos','Horarios','HLD','Copias de seguridad'],horizontal=True)
+    opcion = st.radio('Ajustes',['Festivos','Horarios','HLD','Avisos por email','Copias de seguridad'],horizontal=True)
+    if opcion=='Avisos por email':
+        st.subheader('Avisos por email')
+        remitente = str(secreto('GMAIL_USUARIO', '')).strip()
+        destinatario = str(secreto('GMAIL_DESTINATARIO', '')).strip()
+        configurado = bool(remitente and secreto('GMAIL_APP_PASSWORD', '') and destinatario)
+
+        if configurado:
+            st.success('Gmail está configurado en los Secrets de Streamlit.')
+            st.write(f'**Remitente:** {remitente}')
+            st.write(f'**Destinatario:** {destinatario}')
+        else:
+            st.warning('Falta configurar Gmail en los Secrets de Streamlit.')
+
+        st.caption('Esta prueba solo verifica el envío. Los avisos programados automáticos se configurarán después mediante una ejecución programada.')
+        if st.button('Enviar correo de prueba', type='primary', disabled=not configurado):
+            ok, resultado = enviar_email(
+                'Prueba · Gestión de Técnicos CI',
+                'Hola,\n\n'
+                'Este es un correo de prueba enviado desde la aplicación Gestión de Técnicos CI.\n\n'
+                'La configuración de avisos por Gmail funciona correctamente.\n\n'
+                'Gestión de Técnicos CI · Indra / RPECII'
+            )
+            if ok:
+                st.success(resultado)
+            else:
+                st.error(resultado)
+        return
+
     if opcion=='Copias de seguridad':
         datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
@@ -962,3 +1019,4 @@ def render_config():
  'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+
