@@ -320,6 +320,13 @@ button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!
 [data-testid="stTabs"] [data-baseweb="tab-list"]{gap:6px;background:#f5f8fa;padding:5px;border-radius:11px;border:1px solid #e4ebef;}
 [data-testid="stTabs"] [data-baseweb="tab"]{height:38px;border-radius:8px;padding:0 14px;font-weight:650;}
 [data-testid="stTabs"] [aria-selected="true"]{background:#fff;box-shadow:0 2px 7px rgba(15,43,56,.08);}
+
+/* v12.2 Ficha profesional */
+.tech-hero{background:linear-gradient(135deg,#123b49 0%,#07566a 100%);color:#fff;border-radius:16px;padding:20px 22px;margin:6px 0 18px;box-shadow:0 8px 22px rgba(15,43,56,.12)}
+.tech-hero .name{font-size:22px;font-weight:800}.tech-hero .meta{font-size:12px;opacity:.82;margin-top:4px}
+.info-card{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:16px 17px;box-shadow:0 4px 14px rgba(15,43,56,.035);min-height:128px;margin-bottom:10px}.info-card .title,.resource-card .title{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#82939e;margin-bottom:11px}
+.info-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f0f3f5;font-size:12px}.info-row:last-child{border-bottom:0}.info-row span{color:#718493}.info-row b{color:#173542;text-align:right;font-weight:700;overflow-wrap:anywhere}
+.resource-card{background:#fff;border:1px solid #dce6eb;border-left:4px solid #087c94;border-radius:14px;padding:17px 18px;box-shadow:0 4px 14px rgba(15,43,56,.035);min-height:112px}.resource-name{font-size:16px;font-weight:800;color:#173542}.resource-meta{font-size:12px;color:#607584;margin-top:5px}
 @media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}.ci-page-intro{display:block;}}
 </style>''', unsafe_allow_html=True)
 
@@ -1087,84 +1094,62 @@ def render_cuadrante():
 
 def render_tecnicos():
     t = st.selectbox('Buscar técnico',visibles)
-    st.subheader(t)
-    st.caption(TECNICOS[t]['ci'])
+    perfil = PERFILES_TECNICOS.get(t, {})
+    centro_t = TECNICOS[t]['ci']
+    matricula = perfil.get('matricula','')
+    veh = VEHICULOS.get(matricula,{}) if matricula else {}
+    estado,f,d = estado_prl(t)
+    badge_class = 'ok' if estado == 'Vigente' else ('danger' if estado == 'Caducado' else 'warn')
+    st.markdown(f'''<div class="tech-hero"><div class="name">{escape(t)}</div><div class="meta">CI {escape(centro_t)} &nbsp;·&nbsp; Ficha operativa del técnico</div></div>''',unsafe_allow_html=True)
     usados,pendientes = saldos(t,dd_anio)
     for col,k in zip(st.columns(4),['V','VPA','HLD','HE']):
         unidad = 'días' if k in ('V','VPA') else 'h'
         col.metric(f'{k} disponibles',f'{pendientes[k]:g} {unidad}')
         col.caption(f'Consumidos: {usados[k]:g} {unidad}')
-
-    perfil = PERFILES_TECNICOS.get(t, {})
-    st.markdown('<div class="section-kicker">FICHA OPERATIVA</div>',unsafe_allow_html=True)
-    st.subheader('Datos corporativos y contacto')
-    c1,c2,c3 = st.columns(3)
-    c1.markdown(f"**Correo Minsait**  \n{perfil.get('correo','—') or '—'}")
-    c1.markdown(f"**Teléfono**  \n{perfil.get('telefono','—') or '—'}")
-    c2.markdown(f"**Usuario REPSOL**  \n{perfil.get('usuario_repsol','—') or '—'}")
-    c2.markdown(f"**Mail REPSOL**  \n{perfil.get('mail_repsol','—') or '—'}")
-    c3.markdown(f"**Telf. fijo**  \n{perfil.get('telf_fijo','—') or '—'}")
-    c3.markdown(f"**ATEX / PLK SIM ATEX**  \n{perfil.get('atex','—') or '—'} · {perfil.get('plk_sim_atex','—') or '—'}")
+    st.markdown('<div class="ci-section-label">Información operativa</div>',unsafe_allow_html=True)
+    c1,c2,c3=st.columns(3)
+    cards=[('Contacto',[('Correo Minsait',perfil.get('correo','')),('Teléfono',perfil.get('telefono','')),('Telf. fijo',perfil.get('telf_fijo',''))]),('Acceso REPSOL',[('Usuario',perfil.get('usuario_repsol','')),('Mail',perfil.get('mail_repsol','')),('CI',centro_t)]),('Comunicaciones ATEX',[('ATEX',perfil.get('atex','')),('PLK SIM ATEX',perfil.get('plk_sim_atex','')),('Vehículo',matricula or 'Sin asignar')])]
+    for col,(titulo,filas) in zip((c1,c2,c3),cards):
+        html='<div class="info-card"><div class="title">'+escape(titulo)+'</div>'+''.join('<div class="info-row"><span>'+escape(a)+'</span><b>'+escape(str(b or '—'))+'</b></div>' for a,b in filas)+'</div>'
+        col.markdown(html,unsafe_allow_html=True)
     if EDITOR:
-        with st.expander('✏️ Editar datos corporativos'):
+        with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
-                a,b = st.columns(2)
-                correo=a.text_input('Correo Minsait',value=perfil.get('correo',''))
-                telefono=b.text_input('Teléfono',value=perfil.get('telefono',''))
-                usuario=a.text_input('Usuario REPSOL',value=perfil.get('usuario_repsol',''))
-                mail=b.text_input('Mail REPSOL',value=perfil.get('mail_repsol',''))
-                fijo=a.text_input('Telf. fijo',value=perfil.get('telf_fijo',''))
-                atex=b.text_input('ATEX',value=perfil.get('atex',''))
+                a,b=st.columns(2)
+                correo=a.text_input('Correo Minsait',value=perfil.get('correo','')); telefono=b.text_input('Teléfono',value=perfil.get('telefono',''))
+                usuario=a.text_input('Usuario REPSOL',value=perfil.get('usuario_repsol','')); mail=b.text_input('Mail REPSOL',value=perfil.get('mail_repsol',''))
+                fijo=a.text_input('Telf. fijo',value=perfil.get('telf_fijo','')); atex=b.text_input('ATEX',value=perfil.get('atex',''))
                 plk=a.text_input('PLK SIM ATEX',value=perfil.get('plk_sim_atex',''))
-                matricula=b.selectbox('Vehículo asignado',['']+sorted(VEHICULOS),index=(['']+sorted(VEHICULOS)).index(perfil.get('matricula','')) if perfil.get('matricula','') in VEHICULOS else 0,format_func=lambda x: 'Sin vehículo' if not x else f"{x} · {VEHICULOS.get(x,{}).get('modelo','')}")
-                guardar_perfil=st.form_submit_button('Guardar datos corporativos',type='primary')
+                opciones=['']+sorted(VEHICULOS); matricula_edit=b.selectbox('Vehículo asignado',opciones,index=opciones.index(matricula) if matricula in opciones else 0,format_func=lambda x:'Sin vehículo' if not x else f"{x} · {VEHICULOS.get(x,{}).get('modelo','')}")
+                guardar_perfil=st.form_submit_button('Guardar cambios',type='primary')
             if guardar_perfil:
-                nuevo=copy.deepcopy(PERFILES_TECNICOS)
-                nuevo[t]={'correo':correo.strip(),'telefono':telefono.strip(),'usuario_repsol':usuario.strip(),'mail_repsol':mail.strip(),'telf_fijo':fijo.strip(),'atex':atex.strip(),'plk_sim_atex':plk.strip(),'matricula':matricula}
+                nuevo=copy.deepcopy(PERFILES_TECNICOS); nuevo[t]={'correo':correo.strip(),'telefono':telefono.strip(),'usuario_repsol':usuario.strip(),'mail_repsol':mail.strip(),'telf_fijo':fijo.strip(),'atex':atex.strip(),'plk_sim_atex':plk.strip(),'matricula':matricula_edit}
                 if guardar_cambios({RUTA_PERFILES:nuevo},f'Perfil corporativo: {t}'): st.rerun()
-
-    st.subheader('Vehículo asignado')
-    matricula=perfil.get('matricula','')
-    veh=VEHICULOS.get(matricula,{}) if matricula else {}
-    if matricula:
-        v1,v2=st.columns([2,1])
-        v1.markdown(f"**🚐 {veh.get('modelo','Vehículo')}**  \nMatrícula: **{matricula}**")
+    st.markdown('<div class="ci-section-label">Recursos y habilitaciones</div>',unsafe_allow_html=True)
+    vcol,pcol=st.columns(2)
+    with vcol:
+        tarjeta=str(veh.get('tarjeta','')) if veh else ''; masked=('•••• '+tarjeta[-4:]) if tarjeta else 'Sin tarjeta registrada'
+        if matricula: st.markdown(f'''<div class="resource-card"><div class="title">🚐 Vehículo asignado</div><div class="resource-name">{escape(veh.get('modelo','Vehículo'))}</div><div class="resource-meta">Matrícula <b>{escape(matricula)}</b> &nbsp;·&nbsp; Tarjeta {escape(masked) if EDITOR else 'restringida'}</div></div>''',unsafe_allow_html=True)
+        else: st.markdown('<div class="resource-card"><div class="title">🚐 Vehículo asignado</div><div class="resource-name">Sin vehículo</div><div class="resource-meta">No existe una matrícula asociada.</div></div>',unsafe_allow_html=True)
+        if EDITOR and matricula:
+            with st.expander('🔐 Credenciales del vehículo'):
+                st.warning('Información restringida. No compartas estos datos fuera de los canales autorizados.'); st.code(f"Tarjeta: {tarjeta or 'Sin datos'}\nPIN: {veh.get('pin','') or 'Sin datos'}",language=None)
+    with pcol:
+        cad_txt=f.strftime('%d/%m/%Y') if f else 'Sin información'
+        st.markdown(f'''<div class="resource-card"><div class="title">🩺 Reconocimiento / PRL</div><div style="margin:7px 0"><span class="ci-badge {badge_class}">{escape(estado.upper())}</span></div><div class="resource-meta">Caducidad <b>{escape(cad_txt)}</b></div></div>''',unsafe_allow_html=True)
+        datos=REGISTROS_PRL.get(t,{})
         if EDITOR:
-            tarjeta=str(veh.get('tarjeta',''))
-            enmascarada=('•••• '+tarjeta[-5:]) if tarjeta else 'Sin tarjeta registrada'
-            v2.markdown(f"**Tarjeta combustible**  \n{enmascarada}")
-            with st.expander('🔐 Ver credenciales del vehículo'):
-                st.warning('Información restringida. No compartas estos datos fuera de los canales autorizados.')
-                st.code(f"Tarjeta: {tarjeta or 'Sin datos'}\nPIN: {veh.get('pin','') or 'Sin datos'}",language=None)
-        else:
-            v2.caption('Credenciales de pago restringidas a Editor.')
-    else:
-        st.info('Este técnico no tiene vehículo asignado.')
-
-    estado,f,d = estado_prl(t)
-    st.subheader('Reconocimiento y acceso CI')
-    st.write(f'Estado: **{estado}** · Caducidad: **{f or "Sin información"}**')
-    datos = REGISTROS_PRL.get(t,{})
-    if EDITOR:
-        with st.expander('Editar datos de acceso'):
-            with st.form(f'prl_{t}'):
-                nip = st.text_input('NIP',value=datos.get('nip',''))
-                dni = st.text_input('DNI',value=datos.get('dni',''))
-                cad = st.date_input('Caducidad',value=f or date.today())
-                obs = st.text_input('Observaciones',value=datos.get('obs',''))
-                sin_fecha = st.checkbox('Fecha desconocida',value=f is None)
-                guardar = st.form_submit_button('Guardar reconocimiento',type='primary')
-            if guardar:
-                nuevo = copy.deepcopy(REGISTROS_PRL)
-                nuevo[t]={'nip':nip,'dni':dni,'fecha':None if sin_fecha else cad.isoformat(),'obs':obs}
-                if guardar_cambios({RUTA_PRL:nuevo},f'Actualización PRL: {t}'): st.rerun()
-    eventos = []
+            with st.expander('✏️ Editar reconocimiento y acceso'):
+                with st.form(f'prl_{t}'):
+                    nip=st.text_input('NIP',value=datos.get('nip','')); dni=st.text_input('DNI',value=datos.get('dni','')); cad=st.date_input('Caducidad',value=f or date.today()); obs=st.text_input('Observaciones',value=datos.get('obs','')); sin_fecha=st.checkbox('Fecha desconocida',value=f is None); guardar=st.form_submit_button('Guardar reconocimiento',type='primary')
+                if guardar:
+                    nuevo=copy.deepcopy(REGISTROS_PRL); nuevo[t]={'nip':nip,'dni':dni,'fecha':None if sin_fecha else cad.isoformat(),'obs':obs}
+                    if guardar_cambios({RUTA_PRL:nuevo},f'Actualización PRL: {t}'): st.rerun()
+    eventos=[]
     for (a,n,m,dia),val in REGISTROS.items():
         if n==t and a==dd_anio:
-            fecha = date(a,int(m),int(dia))
-            eventos.append({'Fecha':fecha,'Tipo':LEYENDA.get(tipo_registro(val),(tipo_registro(val),''))[0]})
-    st.subheader('Próximas ausencias / permisos')
-    tabla(sorted([x for x in eventos if x['Fecha']>=date.today()],key=lambda x:x['Fecha']))
+            fecha=date(a,int(m),int(dia)); eventos.append({'Fecha':fecha,'Tipo':LEYENDA.get(tipo_registro(val),(tipo_registro(val),''))[0]})
+    st.markdown('<div class="ci-section-label">Planificación</div>',unsafe_allow_html=True); st.subheader('Próximas ausencias / permisos'); tabla(sorted([x for x in eventos if x['Fecha']>=date.today()],key=lambda x:x['Fecha']))
     with st.expander('Histórico del año'): tabla(sorted(eventos,key=lambda x:x['Fecha'],reverse=True))
 
 
@@ -1663,9 +1648,20 @@ def render_config():
         tabla(filas)
         st.divider()
         mats=sorted(VEHICULOS)
-        modo=st.radio('Operación',['Editar vehículo','Añadir vehículo'],horizontal=True,key='modo_vehiculo')
-        elegido=st.selectbox('Vehículo',mats,key='vehiculo_editar') if modo=='Editar vehículo' and mats else ''
+        modo=st.radio('Operación',['Editar vehículo','Añadir vehículo','Eliminar vehículo'],horizontal=True,key='modo_vehiculo')
+        elegido=st.selectbox('Vehículo',mats,key='vehiculo_editar') if modo in ('Editar vehículo','Eliminar vehículo') and mats else ''
         actual=VEHICULOS.get(elegido,{})
+        if modo=='Eliminar vehículo':
+            if not mats: st.info('No hay vehículos registrados.'); return
+            asignados=[t for t,p in PERFILES_TECNICOS.items() if p.get('matricula')==elegido]
+            st.warning(f"Vas a eliminar {elegido} · {actual.get('modelo','Vehículo')}.")
+            if asignados: st.info('Actualmente asignado a: '+', '.join(asignados)+'. Al eliminarlo se desasignará automáticamente de estas fichas.')
+            confirmar=st.checkbox('Confirmo que quiero eliminar este vehículo',key='confirmar_borrado_vehiculo')
+            if st.button('🗑️ Eliminar vehículo',type='primary',disabled=not confirmar,use_container_width=True):
+                nuevos_vehiculos=copy.deepcopy(VEHICULOS); nuevos_vehiculos.pop(elegido,None); nuevos_perfiles=copy.deepcopy(PERFILES_TECNICOS)
+                for nombre in asignados: nuevos_perfiles.setdefault(nombre,{})['matricula']=''
+                if guardar_cambios({RUTA_VEHICULOS:nuevos_vehiculos,RUTA_PERFILES:nuevos_perfiles},f'Eliminar vehículo: {elegido}'): st.rerun()
+            return
         with st.form('gestion_vehiculo'):
             matricula=st.text_input('Matrícula',value=elegido,disabled=bool(elegido)).strip().upper().replace(' ','')
             modelo=st.text_input('Modelo',value=actual.get('modelo',''))
@@ -1791,3 +1787,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Informes':render_informes,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión de Técnicos CI · Juan Pedro Murillo Huete · Indra / RPECII')
+
