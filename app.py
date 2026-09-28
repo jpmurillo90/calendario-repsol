@@ -1023,7 +1023,7 @@ def _crear_registros_solicitud(sol):
         if existente:
             return None,f'El {f:%d/%m/%Y} ya tiene planificación ({LEYENDA.get(existente,(existente,""))[0]}).'
         if codigo in ('HLD','HE'):
-            horas=float(sol.get('horas_dia') or jornada)
+            horas=jornada if sol.get('jornada_completa', False) else float(sol.get('horas_dia') or jornada)
             if horas<=0 or horas>jornada:
                 return None,f'{codigo} inválidas el {f:%d/%m}: {horas:g} h sobre jornada {jornada:g} h.'
             propuesta[k]={'tipo':codigo,'horas_gastadas':horas,'anio':f.year,'tec':t}
@@ -1034,7 +1034,7 @@ def _crear_registros_solicitud(sol):
     if any(saldo[x]<-1e-9 for x in claves):
         return None,'La aprobación superaría el saldo disponible del técnico.'
     unidad='hora(s)' if codigo in ('HLD','HE') else 'día(s) laborable(s)'
-    cantidad=sum(float(sol.get('horas_dia') or obtener_horas_jornada_real(t,f.year,f.month,f.day)) for f in fechas) if codigo in ('HLD','HE') else len(fechas)
+    cantidad=sum((float(obtener_horas_jornada_real(t,f.year,f.month,f.day)) if sol.get('jornada_completa', False) else float(sol.get('horas_dia') or obtener_horas_jornada_real(t,f.year,f.month,f.day))) for f in fechas) if codigo in ('HLD','HE') else len(fechas)
     return propuesta,f'{cantidad:g} {unidad} incorporados al cuadrante.'
 
 def _cancelar_registros_solicitud(sol_cancelacion):
@@ -1057,7 +1057,7 @@ def _cancelar_registros_solicitud(sol_cancelacion):
 def _estado_solicitud_visual(estado):
     return {'Aprobada':'🟢 Aprobada','Pendiente':'🟡 Pendiente','Rechazada':'🔴 Rechazada','Cancelación pendiente':'🟠 Cancelación pendiente','Cancelada':'⚫ Cancelada'}.get(estado,estado or '—')
 
-def _resumen_saldo_solicitud(tecnico, tipo, desde, hasta, horas_dia=0.0):
+def _resumen_saldo_solicitud(tecnico, tipo, desde, hasta, horas_dia=0.0, jornada_completa=False):
     mapa = {"Vacaciones":"V", "Vacaciones año anterior":"VPA", "HLD":"HLD", "Consumir HE":"HE"}
     codigo = mapa[tipo]; anio = desde.year
     _, saldo = saldos(tecnico, anio)
@@ -1071,13 +1071,15 @@ def _resumen_saldo_solicitud(tecnico, tipo, desde, hasta, horas_dia=0.0):
         fs=[f for f in fs if obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)>0]
         if codigo in ("HLD","HE"):
             h=float(sol.get("horas_dia") or 0)
+            if sol.get("jornada_completa", False):
+                return sum(float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) for f in fs)
             return sum(h if h>0 else float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) for f in fs)
         return float(len(fs))
     reservado=sum(consumo_sol(x) for x in SOLICITUDES if x.get("tecnico")==tecnico and x.get("estado")=="Pendiente" and not x.get("solicitud_origen") and mapa.get(x.get("tipo"))==codigo)
     fs=[] if hasta<desde else [desde+timedelta(days=i) for i in range((hasta-desde).days+1)]
     fs=[f for f in fs if f.year==anio and obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)>0]
     if codigo in ("HLD","HE"):
-        solicitado=sum(float(horas_dia) if float(horas_dia)>0 else float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) for f in fs); unidad="h"
+        solicitado=sum(float(obtener_horas_jornada_real(tecnico,f.year,f.month,f.day)) if jornada_completa else float(horas_dia) for f in fs); unidad="h"
     else:
         solicitado=float(len(fs)); unidad="días"
     disponible=round(saldo_actual-reservado,2); restante=round(disponible-solicitado,2)
@@ -1090,8 +1092,51 @@ def render_solicitudes():
         tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'],key='sol_tipo')
         c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today(),key='sol_desde'); hasta=c2.date_input('Hasta',date.today(),key='sol_hasta')
         aplica_horas=tipo in ('HLD','Consumir HE')
-        horas=st.number_input('Horas por día (solo HLD / HE; 0 = jornada completa)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=not aplica_horas,key='sol_horas')
-        rs=_resumen_saldo_solicitud(t,tipo,desde,hasta,horas if aplica_horas else 0)
+        fechas_periodo=[]
+        if hasta>=desde:
+            for i in range((hasta-desde).days+1):
+                f=desde+timedelta(days=i)
+                j=float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
+                if j>0: fechas_periodo.append((f,j))
+        jornada_completa=False
+        horas=0.0
+        if aplica_horas:
+            jornada_completa=st.checkbox(
+                'Solicitar jornada completa', value=True,
+                help='Calcula automáticamente las horas reales de cada día. Si el viernes tiene menos jornada, consumirá menos horas.'
+            )
+            if jornada_completa:
+                st.caption('Se aplicará la jornada real de cada fecha del rango. Puedes revisar el desglose antes de enviar.')
+            elif fechas_periodo:
+                limite=min(j for _,j in fechas_periodo)
+                valor_defecto=min(limite, 1.0)
+                horas=st.number_input(
+                    f'Horas por día · máximo común del periodo: {limite:g} h',
+                    min_value=0.5, max_value=float(limite), value=float(valor_defecto), step=0.5,
+                    key=f'sol_horas_parcial_{tipo}_{desde.isoformat()}_{hasta.isoformat()}'
+                )
+            else:
+                st.info('El periodo seleccionado no contiene jornadas laborables computables.')
+        else:
+            st.number_input('Horas por día (solo HLD / HE)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=True,key=f'sol_horas_off_{tipo}_{desde.isoformat()}_{hasta.isoformat()}')
+
+        if aplica_horas and fechas_periodo:
+            st.markdown('#### Desglose del periodo')
+            dias_semana=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+            filas_desglose=[]
+            total_periodo=0.0
+            for f,jornada in fechas_periodo:
+                consumo=jornada if jornada_completa else min(float(horas),jornada)
+                total_periodo+=consumo
+                filas_desglose.append({
+                    'Fecha':f"{dias_semana[f.weekday()]} {f:%d/%m/%Y}",
+                    'Jornada prevista':f"{jornada:g} h",
+                    'Horas solicitadas':f"{consumo:g} h"
+                })
+            tabla(filas_desglose)
+            st.markdown(f"**Total del periodo: {total_periodo:g} h**")
+
+        rs=_resumen_saldo_solicitud(t,tipo,desde,hasta,horas if aplica_horas else 0,jornada_completa if aplica_horas else False)
         titulo={'Vacaciones':'Vacaciones','Vacaciones año anterior':'Vacaciones año anterior','HLD':'HLD','Consumir HE':'Horas extra'}[tipo]
         st.markdown(f"""<div class='balance-head' style='margin:8px 0 14px'><h3>Saldo disponible · {escape(titulo)}</h3><p>Saldo anual actualizado y solicitudes pendientes ya reservadas.</p></div><div class='seg-grid'><div class='seg-kpi'><div class='label'>SALDO ACTUAL</div><div class='value'>{rs['saldo_actual']:g} {rs['unidad']}</div><div class='sub'>Saldo consolidado</div></div><div class='seg-kpi'><div class='label'>PENDIENTE DE APROBACIÓN</div><div class='value'>{rs['reservado']:g} {rs['unidad']}</div><div class='sub'>Ya reservado</div></div><div class='seg-kpi total'><div class='label'>DISPONIBLE PARA SOLICITAR</div><div class='value'>{rs['disponible']:g} {rs['unidad']}</div><div class='sub'>Saldo utilizable ahora</div></div><div class='seg-kpi'><div class='label'>ESTA SOLICITUD</div><div class='value'>{rs['solicitado']:g} {rs['unidad']}</div><div class='sub'>Consumo calculado</div></div><div class='seg-kpi'><div class='label'>SALDO RESTANTE</div><div class='value'>{rs['restante']:g} {rs['unidad']}</div><div class='sub'>Si se aprueba</div></div></div>""",unsafe_allow_html=True)
         if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
@@ -1100,7 +1145,7 @@ def render_solicitudes():
         comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.',key='sol_comentario')
         enviar=st.button('Enviar solicitud',type='primary',disabled=not rs['valido'],key='sol_enviar')
         if enviar:
-            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
+            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas and not jornada_completa else 0,'jornada_completa':jornada_completa if aplica_horas else False,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
             nuevo=SOLICITUDES+[sol]
             if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
                 destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
@@ -2409,8 +2454,10 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.3</div><div class="sub">Solicitudes inteligentes · saldo real · reservas pendientes · consumo y saldo restante en tiempo real</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.5</div><div class="sub">Solicitudes HLD/HE · desglose diario del rango · jornada real por fecha</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.5','28/09/2026','Desglose diario HLD/HE','Las solicitudes por rango calculan cada jornada de forma individual, muestran un resumen previo fecha a fecha y consumen exactamente las horas reales de cada día, incluyendo viernes con jornada reducida.'),
+      ('v16.4','28/09/2026','Jornada real precargada en HLD/HE','Al solicitar HLD o consumir HE, las horas por día se precargan con la jornada real máxima del técnico. El límite se adapta al periodo seleccionado y el técnico puede reducirlo para peticiones parciales.'),
       ('v16.3','28/09/2026','Saldo inteligente en solicitudes','El técnico ve en tiempo real el saldo del concepto seleccionado, lo reservado por solicitudes pendientes, el consumo de la nueva petición y el saldo restante. Se bloquean solicitudes que superen el saldo realmente disponible.'),
       ('v16.2','28/09/2026','Avisos también por email','Los avisos de Coordinación pueden publicarse solo en la plataforma o enviarse además por correo. Respeta el alcance Todos, CI o técnicos concretos, muestra cuántos destinatarios tienen correo disponible e informa del resultado de entrega sin bloquear la publicación del aviso.'),
       ('v16.1','28/09/2026','Solicitudes y cancelaciones','Solicitudes limitadas a Vacaciones, Vacaciones año anterior, HLD y consumo de HE. Estados visuales por color y nuevo flujo de cancelación: el técnico solicita cancelar una petición aprobada y Coordinación debe aprobarla antes de retirar la planificación y restituir el saldo.'),
@@ -2793,4 +2840,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
