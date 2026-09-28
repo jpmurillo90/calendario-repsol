@@ -561,6 +561,50 @@ if not st.session_state.get('autenticado'):
                     st.session_state.bloqueado_hasta = time.time() + 60
                     st.session_state.intentos = 0
                 st.error('Credenciales no válidas.')
+
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        with st.expander('¿Has olvidado tu contraseña?'):
+            st.caption('Introduce tu correo corporativo. Si corresponde a un usuario registrado, recibirás tus credenciales de acceso por email.')
+            with st.form('recuperar_credenciales', clear_on_submit=True):
+                correo_recuperacion = st.text_input('Correo corporativo', placeholder='usuario@minsait.com').strip().lower()
+                recuperar = st.form_submit_button('Enviar credenciales', use_container_width=True)
+            if recuperar:
+                ahora = time.time()
+                ultimo = float(st.session_state.get('ultima_recuperacion_credenciales', 0) or 0)
+                # Respuesta deliberadamente neutra para no revelar qué usuarios existen.
+                mensaje_neutro = 'Si el correo corresponde a un usuario registrado, recibirás tus datos de acceso en unos instantes.'
+                if ahora - ultimo < 60:
+                    st.info('Por seguridad, espera un minuto antes de solicitar otro envío.')
+                else:
+                    st.session_state.ultima_recuperacion_credenciales = ahora
+                    cuenta = None
+                    usuario_id = ''
+                    for uid, datos_u in usuarios.items():
+                        if str(uid).strip().lower() == correo_recuperacion:
+                            cuenta, usuario_id = datos_u, str(uid).strip()
+                            break
+                    if cuenta:
+                        clave = str(cuenta.get('password', ''))
+                        # Solo las claves almacenadas de forma recuperable pueden enviarse.
+                        # Si en el futuro se migra una cuenta a hash, se deberá usar restablecimiento.
+                        if clave and not clave.startswith(('pbkdf2_sha256$', 'sha256$')):
+                            nombre_u = str(cuenta.get('nombre', usuario_id)).strip() or usuario_id
+                            cuerpo = f'''Hola {nombre_u},
+
+Se ha solicitado la recuperación de tus credenciales de acceso a Gestión Técnicos CI · REPSOL.
+
+Usuario: {usuario_id}
+Contraseña: {clave}
+
+Por motivos de seguridad, no compartas estas credenciales.
+
+Si no has solicitado esta recuperación, puedes ignorar este mensaje.
+
+Gestión Técnicos CI · REPSOL
+Indra Group / RPECII'''
+                            # Nunca se muestra al navegador el resultado SMTP específico del destinatario.
+                            enviar_email('Recuperación de acceso · Gestión Técnicos CI · REPSOL', cuerpo, destinatario=usuario_id)
+                    st.success(mensaje_neutro)
     st.stop()
 
 EDITOR = st.session_state.rol_actual == 'Editor'
@@ -1988,8 +2032,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v15</div><div class="sub">Multiusuario técnico · auditoría detallada · resumen de coordinación</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v15.1</div><div class="sub">Recuperación de acceso por email · multiusuario técnico · coordinación</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v15.1','28/09/2026','Recuperación de acceso','Nueva opción ¿Has olvidado tu contraseña? en el login. Los usuarios registrados pueden solicitar el envío de sus credenciales a su propio correo corporativo, con respuesta neutra y limitación de solicitudes.'),
       ('v15','28/09/2026','Multiusuario y coordinación','Permisos restringidos por rol Técnico, guardias propias, Seguimiento CI por centro, auditoría valor anterior → nuevo y resumen de coordinación manual/automático.'),
       ('v14.2','28/09/2026','Seguimiento CI avanzado','Informe global mensual/anual de todos los CI, análisis visual RS/RC/RCorp, KPIs renovados y nueva sección Versiones.'),
       ('v14.1','28/09/2026','Histórico Excel + multi-año','Lectura del histórico 2026, convivencia con registros nuevos y soporte de ejercicios futuros en un único JSON.'),
@@ -2367,3 +2412,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
