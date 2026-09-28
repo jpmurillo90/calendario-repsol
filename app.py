@@ -508,33 +508,15 @@ if not st.session_state.get('autenticado'):
     div[data-testid="stForm"]{border:1px solid #dce6eb!important;border-radius:16px!important;padding:22px!important;background:#fff!important;box-shadow:0 7px 22px rgba(15,43,56,.045)}
     @media(max-width:850px){.login-shell{display:block;margin-top:1vh}.login-brand{min-height:auto;padding:32px 28px}.login-title{font-size:28px}}
     </style>''', unsafe_allow_html=True)
-    st.markdown('''<div class="login-shell"><section class="login-brand"><div><div class="login-kicker">Operación · Infraestructuras y Sistemas</div><div class="login-title">Gestión Técnicos CI · REPSOL</div><div class="login-copy">Plataforma de planificación y gestión operativa de los Complejos Industriales Repsol</div><div class="login-meta"><span class="login-pill">Planificación CI</span><span class="login-pill">Guardias 12x7</span><span class="login-pill">PRL y recursos</span><span class="login-pill">Informes operativos</span></div></div><div class="login-foot">Uso interno · Indra Group / RPECII</div></section><section style="padding:45px 42px 20px"><div class="login-form-head"><b>Acceso a la plataforma</b><span>Identifícate con tus credenciales autorizadas.</span></div></section></div>''', unsafe_allow_html=True)
-    if not usuarios:
-        st.warning('Configura los usuarios en .streamlit/secrets.toml. Se han eliminado las contraseñas de respaldo del código.')
-        st.code('[usuarios.coordinador]\nnombre = "Coordinador"\nrol = "Editor"\npassword = "SUSTITUIR_POR_UNA_CLAVE_LARGA_Y_UNICA"', language='toml')
-        st.stop()
-    _, centro_login, _ = st.columns([1.18, 1.64, 1.18])
-    with centro_login:
-        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-        with st.form('login'):
-            user = st.text_input('Usuario')
-            password = st.text_input('Contraseña', type='password')
-            entrar = st.form_submit_button('Entrar', type='primary', use_container_width=True)
-        if entrar:
-            if time.time() < st.session_state.get('bloqueado_hasta', 0):
-                st.error('Espera un minuto antes de volver a intentarlo.')
-            elif user in usuarios and verificar_password(password, usuarios[user]):
-                st.session_state.update(autenticado=True, usuario_actual=usuarios[user].get('nombre', user),
-                                        rol_actual=usuarios[user].get('rol', 'Lector'), usuario_id=user, intentos=0)
-                st.rerun()
-            else:
-                st.session_state.intentos = st.session_state.get('intentos', 0) + 1
-                if st.session_state.intentos >= 5:
-                    st.session_state.bloqueado_hasta = time.time() + 60
-                    st.session_state.intentos = 0
-                st.error('Credenciales no válidas.')
-    st.stop()
-
+    login_left, login_right = st.columns([1.08, .92], gap=None)
+    with login_left:
+        st.markdown('''<div class="login-brand" style="border-radius:22px 0 0 22px;min-height:430px"><div><div class="login-kicker">Operación · Infraestructuras y Sistemas</div><div class="login-title">Gestión Técnicos CI · REPSOL</div><div class="login-copy">Plataforma de planificación y gestión operativa de los Complejos Industriales Repsol</div><div class="login-meta"><span class="login-pill">Planificación CI</span><span class="login-pill">Guardias 12x7</span><span class="login-pill">PRL y recursos</span><span class="login-pill">Informes operativos</span></div></div><div class="login-foot">Uso interno · Indra Group / RPECII</div></div>''', unsafe_allow_html=True)
+    with login_right:
+        st.markdown('''<div style="background:#fff;border:1px solid #dce6eb;border-left:0;border-radius:0 22px 22px 0;padding:38px 40px 8px;min-height:430px;box-shadow:0 18px 55px rgba(15,43,56,.08)"><div class="login-form-head"><b>Acceso a la plataforma</b><span>Identifícate con tus credenciales autorizadas.</span></div>''', unsafe_allow_html=True)
+        if not usuarios:
+            st.warning('Configura los usuarios en .streamlit/secrets.toml. Se han eliminado las contraseñas de respaldo del código.')
+            st.code('[usuarios.coordinador]\nnombre = "Coordinador"\nrol = "Editor"\npassword = "SUSTITUIR_POR_UNA_CLAVE_LARGA_Y_UNICA"', language='toml')
+            st.stop()
 EDITOR = st.session_state.rol_actual == 'Editor'
 # El límite de intentos es por sesión; el despliegue debe restringirse a la organización.
 
@@ -784,7 +766,7 @@ def render_inicio():
     st.markdown('''<style>
     .home-box {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;
       background:var(--surface);color:var(--ink);border:1px solid #dbe3ea;
-      border-top:4px solid var(--accent);border-radius:14px;padding:18px 19px;margin:8px 0 16px;box-shadow:0 5px 16px rgba(15,43,56,.04);}
+      border-top:4px solid var(--accent);border-radius:14px;padding:16px 17px;margin:7px 0 12px;box-shadow:0 5px 16px rgba(15,43,56,.04);}
     .home-box.success,.home-badge.success {--accent:#15803d;--surface:#f0fdf4;--ink:#166534;}
     .home-box.warning,.home-badge.warning {--accent:#b45309;--surface:#fffbeb;--ink:#92400e;}
     .home-box.danger,.home-badge.danger {--accent:#b91c1c;--surface:#fef2f2;--ink:#991b1b;}
@@ -804,6 +786,7 @@ def render_inicio():
     .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
+    st.markdown(f'<div class="ops-hero"><div class="k">Panel de situación · Complejos Industriales Repsol</div><div class="t">Visión operativa de los CI</div><div class="n">Disponibilidad, guardias, cobertura y PRL · Ámbito: {escape(centro)}</div></div>', unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -836,50 +819,53 @@ def render_inicio():
     st.caption('Disponibilidad prevista, no fichajes. PRL se evalúa a fecha de hoy. Cobertura alerta cuando un centro laborable queda sin personal disponible; no hay mínimos de dotación configurados.')
     if sin_cobertura:
         st.error('SIN COBERTURA PREVISTA: '+', '.join(sin_cobertura)+'. Revisa la asignación de personal.')
-    st.subheader('Situación por centro')
-    for i in range(0,len(centros),3):
-        for col,c in zip(st.columns(3),centros[i:i+3]):
-            miembros = [t for t in visibles if TECNICOS[t]['ci']==c]
-            no_laborable = all(estados[t][0]=='No laborable' for t in miembros)
-            hay_ausencias = any(t in ausentes for t in miembros)
-            color,etiqueta = ('neutral','NO LABORABLE') if no_laborable else ('danger','SIN COBERTURA') if c in sin_cobertura else ('warning','COBERTURA CON AUSENCIAS') if hay_ausencias else ('success','EQUIPO DISPONIBLE')
-            # Guardia del CI para la fecha de planificación seleccionada.
-            # Los registros contiguos/solapados del mismo técnico se tratan como un único periodo real.
-            guardia_actual = []
-            proximas_guardias = []
-            for tg in [x for x,v in TECNICOS.items() if v.get('activo', True) and v.get('ci') == c]:
-                for ini_g, fin_g in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
-                    if ini_g <= fecha <= fin_g:
-                        guardia_actual.append((tg, ini_g, fin_g))
-                    elif ini_g > fecha:
-                        proximas_guardias.append((ini_g, fin_g, tg))
-            guardia_actual.sort(key=lambda x: (x[1], x[0]))
-            proximas_guardias.sort(key=lambda x: (x[0], x[2]))
-            if guardia_actual:
-                tg, ini_g, fin_g = guardia_actual[0]
-                guardia_html = (
-                    f'<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div>'
-                    f'<strong>{escape(tg)}</strong><div>{ini_g:%d/%m/%Y} → {fin_g:%d/%m/%Y}</div>'
-                )
-                if proximas_guardias:
-                    p_ini, p_fin, p_t = proximas_guardias[0]
-                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
-                guardia_html += '</div>'
-            else:
-                guardia_html = '<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div><strong>Sin guardia asignada</strong>'
-                if proximas_guardias:
-                    p_ini, p_fin, p_t = proximas_guardias[0]
-                    guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
-                guardia_html += '</div>'
-            detalle = guardia_html
-            for t in miembros:
-                estado,horas = estados[t]
-                tipo = tipo_registro(valor_registro(t,fecha))
-                motivo = LEYENDA.get(tipo,(tipo,''))[0] if tipo else estado
-                tono = 'neutral' if estado=='No laborable' else 'warning' if estado in ('Ausente','Parcial') else 'info' if estado=='Formación' else 'success'
-                if estado=='No laborable': motivo = 'No laborable' + (f' · {motivo}' if tipo else '')
-                detalle += f'<div class="home-person"><strong>{escape(t)}</strong><span class="home-badge {tono}">{escape(motivo)}</span><div class="home-note">{horas:g} h disponibles previstas' + (' · Ausencia parcial' if estado=='Parcial' else '') + '</div></div>'
-            col.markdown(f'<div class="home-box {color}"><h3>{escape(c)}</h3><span class="home-badge {color}">{etiqueta}</span>{detalle}</div>',unsafe_allow_html=True)
+    st.markdown('<div class="ci-section-label">Cobertura y guardias</div>', unsafe_allow_html=True)
+    st.subheader('Situación por CI')
+    st.caption('Vista compacta por complejo industrial. Las tarjetas se distribuyen en dos columnas para aprovechar mejor el espacio y evitar huecos entre centros.')
+    columnas_ci = st.columns(2, gap='medium')
+    for idx,c in enumerate(centros):
+        col = columnas_ci[idx % 2]
+        miembros = [t for t in visibles if TECNICOS[t]['ci']==c]
+        no_laborable = all(estados[t][0]=='No laborable' for t in miembros)
+        hay_ausencias = any(t in ausentes for t in miembros)
+        color,etiqueta = ('neutral','NO LABORABLE') if no_laborable else ('danger','SIN COBERTURA') if c in sin_cobertura else ('warning','COBERTURA CON AUSENCIAS') if hay_ausencias else ('success','EQUIPO DISPONIBLE')
+        # Guardia del CI para la fecha de planificación seleccionada.
+        # Los registros contiguos/solapados del mismo técnico se tratan como un único periodo real.
+        guardia_actual = []
+        proximas_guardias = []
+        for tg in [x for x,v in TECNICOS.items() if v.get('activo', True) and v.get('ci') == c]:
+            for ini_g, fin_g in periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tg):
+                if ini_g <= fecha <= fin_g:
+                    guardia_actual.append((tg, ini_g, fin_g))
+                elif ini_g > fecha:
+                    proximas_guardias.append((ini_g, fin_g, tg))
+        guardia_actual.sort(key=lambda x: (x[1], x[0]))
+        proximas_guardias.sort(key=lambda x: (x[0], x[2]))
+        if guardia_actual:
+            tg, ini_g, fin_g = guardia_actual[0]
+            guardia_html = (
+                f'<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div>'
+                f'<strong>{escape(tg)}</strong><div>{ini_g:%d/%m/%Y} → {fin_g:%d/%m/%Y}</div>'
+            )
+            if proximas_guardias:
+                p_ini, p_fin, p_t = proximas_guardias[0]
+                guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+            guardia_html += '</div>'
+        else:
+            guardia_html = '<div class="home-guard"><div class="home-guard-title">🛡️ Guardia actual</div><strong>Sin guardia asignada</strong>'
+            if proximas_guardias:
+                p_ini, p_fin, p_t = proximas_guardias[0]
+                guardia_html += f'<div class="home-guard-next">Próxima: <b>{escape(p_t)}</b> · {p_ini:%d/%m/%Y} → {p_fin:%d/%m/%Y}</div>'
+            guardia_html += '</div>'
+        detalle = guardia_html
+        for t in miembros:
+            estado,horas = estados[t]
+            tipo = tipo_registro(valor_registro(t,fecha))
+            motivo = LEYENDA.get(tipo,(tipo,''))[0] if tipo else estado
+            tono = 'neutral' if estado=='No laborable' else 'warning' if estado in ('Ausente','Parcial') else 'info' if estado=='Formación' else 'success'
+            if estado=='No laborable': motivo = 'No laborable' + (f' · {motivo}' if tipo else '')
+            detalle += f'<div class="home-person"><strong>{escape(t)}</strong><span class="home-badge {tono}">{escape(motivo)}</span><div class="home-note">{horas:g} h disponibles previstas' + (' · Ausencia parcial' if estado=='Parcial' else '') + '</div></div>'
+        col.markdown(f'<div class="home-box {color}"><h3>{escape(c)}</h3><span class="home-badge {color}">{etiqueta}</span>{detalle}</div>',unsafe_allow_html=True)
     st.subheader('Reconocimientos PRL · acciones pendientes')
     st.caption(f'Estado a fecha de hoy ({date.today():%d/%m/%Y}), independiente de la fecha de planificación seleccionada.')
     ordenados = sorted(avisos,key=lambda t:(aviso_prl_visual(t)[0],estado_prl(t)[2] if estado_prl(t)[2] is not None else 99999,t))
