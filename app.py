@@ -1021,32 +1021,67 @@ def render_informes():
     opcion = st.radio('Informe',['Balance','PRL','Solapamientos','Auditoría'],horizontal=True)
     filas = []
     if opcion=='Balance':
+        st.markdown('''<style>
+        .balance-head{margin:8px 0 18px}.balance-head h3{margin:0 0 4px;color:#12313d;font-size:20px}
+        .balance-head p{margin:0;color:#718493;font-size:13px}
+        .balance-kpi{background:#fff;border:1px solid #dfe7ed;border-radius:14px;padding:16px 18px;box-shadow:0 5px 16px rgba(18,49,61,.045);min-height:104px}
+        .balance-kpi .k-label{font-size:12px;font-weight:700;color:#607584;text-transform:uppercase;letter-spacing:.035em}
+        .balance-kpi .k-value{font-size:28px;font-weight:800;color:#12313d;line-height:1.15;margin:6px 0 3px}
+        .balance-kpi .k-note{font-size:12px;color:#8293a0}
+        .balance-legend{margin:12px 0 16px;color:#718493;font-size:12px}
+        </style>''', unsafe_allow_html=True)
         for t in visibles:
-            usados,pendientes = saldos(t,dd_anio)
-            fila = {'Técnico':t,'Centro':TECNICOS[t]['ci']}
-            for k in usados:
-                unidad = 'días' if k in ('V','VPA') else 'h'
-                fila[f'{k} consumido ({unidad})']=usados[k]
-                fila[f'{k} pendiente ({unidad})']=pendientes[k]
-            filas.append(fila)
+            usados, pendientes = saldos(t, dd_anio)
+            totales = {k: round(usados[k] + pendientes[k], 2) for k in usados}
+            acciones = []
+            if pendientes['VPA'] > 0: acciones.append('Planificar VPA pendientes')
+            if pendientes['V'] >= 20: acciones.append('Planificar vacaciones pendientes')
+            if pendientes['HLD'] >= 40: acciones.append('Planificar HLD pendientes')
+            accion = ' · '.join(acciones) if acciones else 'Sin acción'
+            filas.append({'Centro':TECNICOS[t]['ci'],'Técnico':t,
+                'V Total':totales['V'],'V Consumidas':usados['V'],'V Pendientes':pendientes['V'],
+                'VPA Total':totales['VPA'],'VPA Consumidas':usados['VPA'],'VPA Pendientes':pendientes['VPA'],
+                'HLD Total (h)':totales['HLD'],'HLD Consumidas (h)':usados['HLD'],'HLD Pendientes (h)':pendientes['HLD'],
+                'HE Total (h)':totales['HE'],'HE Consumidas (h)':usados['HE'],'HE Pendientes (h)':pendientes['HE'],
+                'Acción recomendada':accion})
+        st.markdown(f'<div class="balance-head"><h3>Resumen anual de saldos · {dd_anio}</h3><p>Totales asignados, consumo, saldo pendiente y necesidades de planificación del equipo seleccionado.</p></div>',unsafe_allow_html=True)
+        if filas:
+            total_v=sum(x['V Total'] for x in filas); consum_v=sum(x['V Consumidas'] for x in filas)
+            pend_hld=sum(x['HLD Pendientes (h)'] for x in filas); pend_he=sum(x['HE Pendientes (h)'] for x in filas)
+            con_accion=sum(x['Acción recomendada']!='Sin acción' for x in filas)
+            kpis=[('Vacaciones consumidas',f'{consum_v:g} / {total_v:g}','días-persona'),('HLD pendientes',f'{pend_hld:g} h','saldo conjunto del equipo'),('HE pendientes',f'{pend_he:g} h','horas compensadas disponibles'),('Requieren planificación',str(con_accion),f'de {len(filas)} técnicos')]
+            for col,(label,value,note) in zip(st.columns(4),kpis):
+                col.markdown(f'<div class="balance-kpi"><div class="k-label">{escape(label)}</div><div class="k-value">{escape(value)}</div><div class="k-note">{escape(note)}</div></div>',unsafe_allow_html=True)
+            st.markdown('<div class="balance-legend">Los resaltados ayudan a localizar saldos pendientes. La acción recomendada es una ayuda visual y no modifica ningún registro.</div>',unsafe_allow_html=True)
+            df_balance=pd.DataFrame(filas)
+            def estilo_balance(row):
+                estilos=['']*len(row); columnas=list(row.index)
+                def marcar(col,cond,color):
+                    if col in columnas and cond: estilos[columnas.index(col)]=f'background-color:{color};font-weight:700'
+                marcar('V Pendientes',row['V Pendientes']>=20,'#fff8c5')
+                marcar('VPA Pendientes',row['VPA Pendientes']>0,'#fff8c5')
+                marcar('HLD Pendientes (h)',row['HLD Pendientes (h)']>=40,'#fff8c5')
+                if row['Acción recomendada']!='Sin acción': estilos[columnas.index('Acción recomendada')]='background-color:#fff8c5;font-weight:700;color:#6b5200'
+                else: estilos[columnas.index('Acción recomendada')]='color:#527064'
+                return estilos
+            st.dataframe(df_balance.style.apply(estilo_balance,axis=1).format(precision=2,na_rep=''),use_container_width=True,hide_index=True,height=min(520,38*len(filas)+42))
+        else: st.info('No hay técnicos para la selección actual.')
     elif opcion=='PRL':
-        filas = [{'Técnico':t,'Centro':TECNICOS[t]['ci'],'Estado':estado_prl(t)[0],'Caducidad':estado_prl(t)[1]} for t in visibles]
+        filas=[{'Técnico':t,'Centro':TECNICOS[t]['ci'],'Estado':estado_prl(t)[0],'Caducidad':estado_prl(t)[1]} for t in visibles]
+        tabla(filas)
     elif opcion=='Solapamientos':
-        por_dia = {}
+        por_dia={}
         for (a,t,m,d),v in REGISTROS.items():
-            if a==dd_anio and t in visibles and tipo_registro(v):
-                por_dia.setdefault((date(a,int(m),int(d)),TECNICOS[t]['ci']),[]).append(t)
-        filas = [{'Fecha':f,'Centro':c,'Técnicos':', '.join(ts)} for (f,c),ts in sorted(por_dia.items()) if len(ts)>1]
-        st.caption('Coincidencia de marcas, no necesariamente ausencia completa. Revisar cobertura antes de actuar.')
+            if a==dd_anio and t in visibles and tipo_registro(v): por_dia.setdefault((date(a,int(m),int(d)),TECNICOS[t]['ci']),[]).append(t)
+        filas=[{'Fecha':f,'Centro':c,'Técnicos':', '.join(ts)} for (f,c),ts in sorted(por_dia.items()) if len(ts)>1]
+        st.caption('Coincidencia de marcas, no necesariamente ausencia completa. Revisar cobertura antes de actuar.'); tabla(filas)
     else:
         if not EDITOR: st.info('Auditoría reservada a editores.'); return
-        filas = [x for x in reversed(AUDITORIA) if x.get('fecha','').startswith(str(dd_anio))]
-        st.caption('Auditoría global del año, sin filtro de centro. Persistida desde esta versión; el histórico de sesiones anteriores no estaba guardado.')
-    tabla(filas)
+        filas=[x for x in reversed(AUDITORIA) if x.get('fecha','').startswith(str(dd_anio))]
+        st.caption('Auditoría global del año, sin filtro de centro. Persistida desde esta versión; el histórico de sesiones anteriores no estaba guardado.'); tabla(filas)
     if filas:
-        df = pd.DataFrame(filas)
-        # Evitar fórmulas al abrir CSV en hojas de cálculo.
-        seguro = df.map(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v) if hasattr(df,'map') else df.applymap(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v)
+        df=pd.DataFrame(filas)
+        seguro=df.map(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v) if hasattr(df,'map') else df.applymap(lambda v: "'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v)
         st.download_button('Descargar CSV',seguro.to_csv(index=False,sep=';').encode('utf-8-sig'),file_name=f'{opcion}_{dd_anio}.csv',mime='text/csv')
 
 def render_config():
