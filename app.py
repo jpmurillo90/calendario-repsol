@@ -734,9 +734,12 @@ st.sidebar.title('Técnicos CI')
 
 st.markdown(r'''<style>
 .section-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.12em;color:#68808c;margin:20px 0 10px}.seg-card{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:15px 17px;box-shadow:0 7px 20px rgba(15,50,65,.035);min-height:145px}.seg-title{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#0d5869;margin-bottom:8px}.seg-row{display:flex;justify-content:space-between;border-top:1px solid #edf2f4;padding:7px 0;font-size:.84rem}.seg-row span{color:#718692}.seg-row.total{font-weight:800}.seg-week{text-align:center;font-weight:800;color:#607985;padding:8px}.seg-day{position:relative;min-height:92px;background:#f8fafb;border:1px solid #e0e8ec;border-radius:12px;padding:9px 10px;margin-bottom:6px}.seg-day.active{background:#f0fafb;border-color:#86bec9;box-shadow:0 4px 12px rgba(13,88,105,.05)}.seg-num{font-weight:800;color:#102a3a}.seg-origin{position:absolute;right:7px;top:7px;font-size:.56rem;font-weight:800;color:#0d5869;background:#dff1f4;border-radius:20px;padding:2px 6px}.seg-values{font-size:.68rem;margin-top:12px;color:#3d5967}.seg-total{font-size:.62rem;color:#80939d;margin-top:7px}
+
+.seg-kpi{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:17px 18px;box-shadow:0 7px 20px rgba(15,50,65,.045);min-height:116px}.seg-kpi .label{font-size:.76rem;color:#607985}.seg-kpi .value{font-size:2rem;line-height:1.1;font-weight:800;color:#102a3a;margin:8px 0}.seg-kpi .sub{font-size:.72rem;color:#8a9aa3}.seg-kpi.total{border-top:4px solid #0d5869}.seg-kpi.p{border-top:4px solid #1b7f8f}.seg-kpi.av{border-top:4px solid #4a7894}.seg-kpi.b{border-top:4px solid #64748b}
+.seg-analysis{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:16px 18px;box-shadow:0 7px 20px rgba(15,50,65,.035)}.seg-analysis-title{font-weight:800;color:#102a3a;margin-bottom:3px}.seg-analysis-sub{font-size:.72rem;color:#80939d;margin-bottom:12px}.seg-donut-wrap{display:flex;align-items:center;gap:18px}.seg-donut{width:116px;height:116px;border-radius:50%;position:relative;flex:0 0 auto}.seg-donut:after{content:'';position:absolute;inset:24px;background:#fff;border-radius:50%}.seg-donut-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;font-weight:800;color:#102a3a}.seg-legend{font-size:.75rem;line-height:1.8}.seg-dot2{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.version-card{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:18px 20px;margin:10px 0;box-shadow:0 7px 20px rgba(15,50,65,.035)}.version-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.version-name{font-size:1.05rem;font-weight:800;color:#102a3a}.version-date{font-size:.72rem;color:#80939d}.version-tag{display:inline-block;background:#e5f3f5;color:#0d5869;border-radius:20px;padding:4px 9px;font-size:.65rem;font-weight:800;margin-top:7px}.version-body{color:#536c79;font-size:.84rem;margin-top:10px;line-height:1.65}.global-ci{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:14px 16px;min-height:120px}.global-ci .name{font-weight:800;color:#0d5869}.global-ci .big{font-size:1.55rem;font-weight:800;color:#102a3a;margin:6px 0}.global-ci .mini{font-size:.72rem;color:#708590}
 </style>''', unsafe_allow_html=True)
 
-NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','⚙️ Configuración':'Configuración'}
+NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
 st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
 pagina = NAV_LABELS[pagina_label]
@@ -1720,12 +1723,13 @@ def render_seguimiento_ci():
     diarios,dias=seg_totales_diarios(ci,anio,mes); total=sum(diarios.values())
     st.markdown(f'<div class="section-eyebrow">RESUMEN · {MESES[mes].upper()} {anio} · {escape(ci).upper()}</div>',unsafe_allow_html=True)
     ks=st.columns(4)
-    for col,label,val,sub in zip(ks,["Total máquinas","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
-        with col: st.markdown(f'<div class="ci-kpi"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
+    clases=["total","p","av","b"]
+    for col,clase,label,val,sub in zip(ks,clases,["Total máquinas","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
+        with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
     redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
     for col,red in zip(cols,("RS","RC","RCorp")):
         with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
-    tab_cal,tab_reg,tab_inf=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","📄 Informe HTML"])
+    tab_cal,tab_reg,tab_ana,tab_inf,tab_global=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","📈 Análisis","📄 Informe CI","🌐 Informe global"])
     with tab_cal:
         heads=st.columns(7)
         for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div class="seg-week">{w}</div>',unsafe_allow_html=True)
@@ -1754,13 +1758,84 @@ def render_seguimiento_ci():
             if ok:
                 nuevo=seg_guardar_dia(ci,fecha,vals,obs)
                 if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci): st.rerun()
+    with tab_ana:
+        st.markdown('<div class="section-eyebrow">DISTRIBUCIÓN POR RED</div>',unsafe_allow_html=True)
+        st.caption("Porcentaje de actividad de cada grupo repartido entre RS, RC y RCorp para el periodo seleccionado.")
+        acols=st.columns(3)
+        chart_colors={"RS":"#0d5869","RC":"#4a7894","RCorp":"#9bb7c5"}
+        for col,(g,label) in zip(acols,[("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]):
+            vals={r:redes[g][r] for r in ("RS","RC","RCorp")}; tot=sum(vals.values())
+            pct={r:(vals[r]*100/tot if tot else 0) for r in vals}
+            a=pct["RS"]; b=a+pct["RC"]
+            grad=f'conic-gradient({chart_colors["RS"]} 0 {a:.2f}%, {chart_colors["RC"]} {a:.2f}% {b:.2f}%, {chart_colors["RCorp"]} {b:.2f}% 100%)' if tot else '#edf2f4'
+            legend=''.join([f'<div><span class="seg-dot2" style="background:{chart_colors[r]}"></span>{r}: <b>{vals[r]}</b> · {pct[r]:.1f}%</div>' for r in ("RS","RC","RCorp")])
+            with col: st.markdown(f'<div class="seg-analysis"><div class="seg-analysis-title">{label}</div><div class="seg-analysis-sub">{MESES[mes]} {anio} · {ci}</div><div class="seg-donut-wrap"><div class="seg-donut" style="background:{grad}"><div class="seg-donut-center">{tot}</div></div><div class="seg-legend">{legend}</div></div></div>',unsafe_allow_html=True)
     with tab_inf:
-        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True); imes=mes if modo=="Mes seleccionado" else None
+        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_ci"); imes=mes if modo=="Mes seleccionado" else None
         dsum,dias_i=seg_totales_diarios(ci,anio,imes); rsum=seg_totales_redes(ci,anio,imes)
         df=pd.DataFrame([{"Grupo":"Parches",**rsum["Parches"],"Total actividad":dsum["Parches"]},{"Grupo":"Antivirus",**rsum["AV"],"Total actividad":dsum["AV"]},{"Grupo":"Backup",**rsum["BCK"],"Total actividad":dsum["BCK"]}]); st.dataframe(df,use_container_width=True,hide_index=True)
         st.caption("Histórico Excel 2026: el reparto por red es mensual; el total de actividad procede del calendario diario.")
         html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
         st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
+    with tab_global:
+        st.markdown('<div class="section-eyebrow">INFORME CONSOLIDADO · TODOS LOS CI</div>',unsafe_allow_html=True)
+        modo_g=st.radio("Periodo global",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_global"); gmes=mes if modo_g=="Mes seleccionado" else None
+        resumen=[]
+        for cix in CENTROS:
+            gd,gdays=seg_totales_diarios(cix,anio,gmes); resumen.append((cix,gdays,gd,sum(gd.values())))
+        gtotal=sum(x[3] for x in resumen); gp=sum(x[2]["Parches"] for x in resumen); gav=sum(x[2]["AV"] for x in resumen); gb=sum(x[2]["BCK"] for x in resumen)
+        kk=st.columns(4)
+        for col,clase,label,val in zip(kk,["total","p","av","b"],["Total todos los CI","Parches","Antivirus","Backup"],[gtotal,gp,gav,gb]):
+            with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{MESES[gmes] if gmes else "Año completo"} · {anio}</div></div>',unsafe_allow_html=True)
+        gc=st.columns(3)
+        for i,(cix,gdays,gd,gt) in enumerate(resumen):
+            with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
+        ghtml=html_seguimiento_global(anio,gmes); gsuf=f"{anio}_{gmes:02d}" if gmes else str(anio)
+        st.download_button("⬇️ Descargar informe global HTML",ghtml.encode("utf-8"),file_name=f"Seguimiento_CI_TODOS_{gsuf}.html",mime="text/html",type="primary",use_container_width=True)
+
+def html_seguimiento_global(anio, mes=None):
+    periodo=f"{MESES[mes]} {anio}" if mes else f"Año {anio}"
+    filas=[]; total_global=0
+    for ci in CENTROS:
+        d,dias=seg_totales_diarios(ci,anio,mes); r=seg_totales_redes(ci,anio,mes); total=sum(d.values()); total_global+=total
+        filas.append((ci,dias,d,r,total))
+    css="""body{font-family:Arial,sans-serif;color:#102a3a;margin:28px;background:#f5f8fa}.hero{background:#0d5869;color:white;padding:26px 30px;border-radius:15px}.hero small{opacity:.8;font-weight:700;letter-spacing:.08em}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:white;border:1px solid #dbe4ea;border-radius:12px;padding:16px}.n{font-size:28px;font-weight:800}.muted{color:#718692;font-size:12px}.cis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.ci{background:#fff;border:1px solid #dbe4ea;border-radius:12px;padding:14px}.ci h3{margin:0;color:#0d5869}.big{font-size:24px;font-weight:800;margin:6px 0}table{width:100%;border-collapse:collapse;background:white;margin:12px 0 25px}th,td{border:1px solid #dbe4ea;padding:8px;text-align:center}th{background:#edf4f7}.section{page-break-inside:avoid;margin-top:25px}.donuts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.dc{background:white;border:1px solid #dbe4ea;border-radius:12px;padding:14px}.bar{height:12px;border-radius:8px;overflow:hidden;display:flex;margin:10px 0}.rs{background:#0d5869}.rc{background:#4a7894}.corp{background:#9bb7c5}"""
+    gp=sum(x[2]["Parches"] for x in filas); ga=sum(x[2]["AV"] for x in filas); gb=sum(x[2]["BCK"] for x in filas)
+    out=[f'<!doctype html><html><head><meta charset="utf-8"><title>Informe global Seguimiento CI {periodo}</title><style>{css}</style></head><body>',f'<div class="hero"><small>GESTIÓN TÉCNICOS CI · REPSOL</small><h1>Informe global de seguimiento operativo</h1><div>{periodo} · Todos los Complejos Industriales</div></div>',f'<div class="kpis"><div class="k"><div class="muted">TOTAL MÁQUINAS</div><div class="n">{total_global}</div></div><div class="k"><div class="muted">PARCHES</div><div class="n">{gp}</div></div><div class="k"><div class="muted">ANTIVIRUS</div><div class="n">{ga}</div></div><div class="k"><div class="muted">BACKUP</div><div class="n">{gb}</div></div></div><h2>Resumen por Complejo Industrial</h2><div class="cis">']
+    for ci,dias,d,r,total in filas: out.append(f'<div class="ci"><h3>{escape(ci)}</h3><div class="big">{total}</div><div class="muted">{dias} días con actividad</div><p>P {d["Parches"]} · AV {d["AV"]} · B {d["BCK"]}</p></div>')
+    out.append('</div><h2>Comparativa</h2><table><tr><th>CI</th><th>Parches</th><th>Antivirus</th><th>Backup</th><th>Total</th></tr>')
+    for ci,dias,d,r,total in filas: out.append(f'<tr><td>{escape(ci)}</td><td>{d["Parches"]}</td><td>{d["AV"]}</td><td>{d["BCK"]}</td><td><b>{total}</b></td></tr>')
+    out.append(f'<tr><th>TOTAL</th><th>{gp}</th><th>{ga}</th><th>{gb}</th><th>{total_global}</th></tr></table>')
+    for ci,dias,d,r,total in filas:
+        out.append(f'<div class="section"><h2>{escape(ci)}</h2><p class="muted">{periodo} · {dias} días con actividad · Total {total}</p><table><tr><th>Grupo</th><th>RS</th><th>RC</th><th>RCorp</th><th>Actividad</th></tr>')
+        for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: out.append(f'<tr><td>{label}</td><td>{r[g]["RS"]}</td><td>{r[g]["RC"]}</td><td>{r[g]["RCorp"]}</td><td><b>{d[g]}</b></td></tr>')
+        out.append('</table><div class="donuts">')
+        for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+            tv=sum(r[g].values()); prs=[(r[g][x]*100/tv if tv else 0) for x in ("RS","RC","RCorp")]
+            out.append(f'<div class="dc"><b>{label}</b><div class="bar"><span class="rs" style="width:{prs[0]:.2f}%"></span><span class="rc" style="width:{prs[1]:.2f}%"></span><span class="corp" style="width:{prs[2]:.2f}%"></span></div><div class="muted">RS {prs[0]:.1f}% · RC {prs[1]:.1f}% · RCorp {prs[2]:.1f}%</div></div>')
+        out.append('</div></div>')
+    out.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
+    return ''.join(out)
+
+def render_versiones():
+    st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v14.2</div><div class="sub">Seguimiento CI · informes globales · análisis por red · histórico de versiones</div></div>',unsafe_allow_html=True)
+    versiones=[
+      ('v14.2','28/09/2026','Seguimiento CI avanzado','Informe global mensual/anual de todos los CI, análisis visual RS/RC/RCorp, KPIs renovados y nueva sección Versiones.'),
+      ('v14.1','28/09/2026','Histórico Excel + multi-año','Lectura del histórico 2026, convivencia con registros nuevos y soporte de ejercicios futuros en un único JSON.'),
+      ('v14','28/09/2026','Seguimiento operativo CI','Nuevo módulo diario de Parches, Antivirus y Backup por RS, RC y RCorp, calendario e informes HTML.'),
+      ('v13.1','28/09/2026','Inicio y acceso corporativo','Login integrado, identidad visual corporativa y reorganización de Situación por CI.'),
+      ('v13','28/09/2026','Unificación visual','Extensión del lenguaje visual de Técnicos a las principales áreas de la aplicación.'),
+      ('v12.4','28/09/2026','Notificaciones automáticas','Avisos por email al técnico al registrar o modificar vacaciones, permisos y ausencias; control global desde Configuración.'),
+      ('v12','28/09/2026','Ficha operativa del técnico','Datos corporativos, acceso REPSOL, ATEX, vehículos, edición y gestión centralizada de recursos.'),
+      ('v11','Septiembre 2026','Interfaz profesional','Dashboard, tarjetas operativas, navegación agrupada, estados y mejoras de informes.'),
+      ('v10','Septiembre 2026','Jornadas y ausencias','Cálculo de horas reales por día para HLD/HE y registro de jornada completa o parcial.'),
+      ('v9','Septiembre 2026','Guardias en Inicio','Guardia actual y próxima guardia incorporadas a las tarjetas de cada Complejo Industrial.'),
+      ('v8','Septiembre 2026','Guardias 12x7','Periodos reales de guardia, activaciones, compensación e informes específicos.'),
+    ]
+    for ver,fecha,titulo,body in versiones:
+        st.markdown(f'<div class="version-card"><div class="version-top"><div><div class="version-name">{ver} · {titulo}</div><span class="version-tag">RELEASE</span></div><div class="version-date">{fecha}</div></div><div class="version-body">{body}</div></div>',unsafe_allow_html=True)
 
 def render_informes():
     st.markdown('<div class="ops-hero"><div class="k">Análisis y trazabilidad</div><div class="t">Centro de informes</div><div class="n">Consulta saldos, guardias, PRL, coincidencias y auditoría desde un único punto.</div></div>',unsafe_allow_html=True)
@@ -2094,6 +2169,6 @@ def render_config():
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
 {'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
- 'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Configuración':render_config}[pagina]()
+ 'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
