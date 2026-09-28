@@ -730,7 +730,10 @@ if 'aviso_local' in st.session_state:
     st.warning(st.session_state.pop('aviso_local'))
 if 'aviso_email_planificacion' in st.session_state:
     nivel, mensaje = st.session_state.pop('aviso_email_planificacion')
-    st.success('📧 ' + mensaje) if nivel == 'success' else st.warning('📧 ' + mensaje)
+    if nivel == 'success':
+        st.success('📧 ' + mensaje)
+    else:
+        st.warning('📧 ' + mensaje)
 st.title(pagina)
 st.markdown(f'<div class="ci-page-intro"><div><div class="eyebrow">Gestión operativa CI</div><div class="context">{escape(centro)} · Ejercicio {dd_anio}</div></div><span class="ci-badge info">{escape(st.session_state.rol_actual)}</span></div>', unsafe_allow_html=True)
 st.markdown(
@@ -1778,12 +1781,18 @@ def render_config():
                     'La configuración de avisos por Gmail funciona correctamente.\n\n'
                     'Gestión de Técnicos CI · Indra / RPECII'
                 )
-                st.success(resultado) if ok else st.error(resultado)
+                if ok:
+                    st.success(resultado)
+                else:
+                    st.error(resultado)
         with col_prl:
             st.caption('Fuerza ahora un resumen con todos los PRL caducados, sin fecha o que vencen en ≤60 días.')
             if st.button('⚠️ Enviar avisos PRL ahora', type='primary', disabled=not configurado, use_container_width=True):
                 ok, resultado = enviar_resumen_prl_manual()
-                st.success(resultado) if ok else st.warning(resultado)
+                if ok:
+                    st.success(resultado)
+                else:
+                    st.warning(resultado)
 
         st.divider()
         st.markdown('#### Próximos avisos automáticos')
