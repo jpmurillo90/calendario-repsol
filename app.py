@@ -51,7 +51,11 @@ RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
 RUTA_CONFIG_NOTIFICACIONES = "config_notificaciones_repsol.json"
 RUTA_SEGUIMIENTO_CI = "seguimiento_ci_repsol.json"
-CONFIG_NOTIFICACIONES_DEFAULT = {"notificar_tecnicos": True}
+CONFIG_NOTIFICACIONES_DEFAULT = {
+    "notificar_tecnicos": True,
+    "resumen_coordinacion_semanal": False,
+    "resumen_coordinacion_mensual": False
+}
 PERFILES_DEFAULT = {}
 VEHICULOS_DEFAULT = {}
 RUTA_GUARDIAS = "guardias_repsol.json"
@@ -372,6 +376,28 @@ def enviar_email(asunto, mensaje, destinatario=None):
         return False, f"No se pudo enviar el correo: {e}"
 
 
+
+def enviar_email_html(asunto, html, destinatario=None):
+    """Envía un correo HTML mediante la misma cuenta Gmail configurada."""
+    gmail_usuario = str(secreto("GMAIL_USUARIO", "")).strip()
+    gmail_password = str(secreto("GMAIL_APP_PASSWORD", "")).replace(" ", "").strip()
+    gmail_destino = str(destinatario or secreto("GMAIL_DESTINATARIO", "")).strip()
+    if not gmail_usuario or not gmail_password or not gmail_destino:
+        return False, "Falta configurar Gmail o el destinatario en Secrets."
+    email = EmailMessage()
+    email["From"], email["To"], email["Subject"] = gmail_usuario, gmail_destino, asunto
+    email.set_content("Este informe requiere un cliente de correo compatible con HTML.")
+    email.add_alternative(html, subtype="html")
+    try:
+        contexto=ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com",465,context=contexto,timeout=15) as servidor:
+            servidor.login(gmail_usuario,gmail_password); servidor.send_message(email)
+        return True, f"Resumen de coordinación enviado correctamente a {gmail_destino}."
+    except smtplib.SMTPAuthenticationError:
+        return False, "Gmail ha rechazado la autenticación."
+    except (smtplib.SMTPException,OSError) as e:
+        return False, f"No se pudo enviar el resumen: {e}"
+
 def avisos_prl_actuales():
     """PRL que requieren atención ahora: sin fecha, caducados o con 60 días o menos."""
     hoy = date.today()
@@ -657,6 +683,8 @@ PERFILES_TECNICOS = cargar_json(RUTA_PERFILES, PERFILES_DEFAULT)
 VEHICULOS = cargar_json(RUTA_VEHICULOS, VEHICULOS_DEFAULT)
 CONFIG_NOTIFICACIONES = cargar_json(RUTA_CONFIG_NOTIFICACIONES, CONFIG_NOTIFICACIONES_DEFAULT)
 CONFIG_NOTIFICACIONES.setdefault("notificar_tecnicos", True)
+CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_semanal", False)
+CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_mensual", False)
 SEGUIMIENTO_CI = cargar_json(RUTA_SEGUIMIENTO_CI, {})
 REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
@@ -739,12 +767,22 @@ st.markdown(r'''<style>
 .seg-analysis{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:16px 18px;box-shadow:0 7px 20px rgba(15,50,65,.035)}.seg-analysis-title{font-weight:800;color:#102a3a;margin-bottom:3px}.seg-analysis-sub{font-size:.72rem;color:#80939d;margin-bottom:12px}.seg-donut-wrap{display:flex;align-items:center;gap:18px}.seg-donut{width:116px;height:116px;border-radius:50%;position:relative;flex:0 0 auto}.seg-donut:after{content:'';position:absolute;inset:24px;background:#fff;border-radius:50%}.seg-donut-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;font-weight:800;color:#102a3a}.seg-legend{font-size:.75rem;line-height:1.8}.seg-dot2{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.version-card{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:18px 20px;margin:10px 0;box-shadow:0 7px 20px rgba(15,50,65,.035)}.version-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.version-name{font-size:1.05rem;font-weight:800;color:#102a3a}.version-date{font-size:.72rem;color:#80939d}.version-tag{display:inline-block;background:#e5f3f5;color:#0d5869;border-radius:20px;padding:4px 9px;font-size:.65rem;font-weight:800;margin-top:7px}.version-body{color:#536c79;font-size:.84rem;margin-top:10px;line-height:1.65}.global-ci{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:14px 16px;min-height:120px}.global-ci .name{font-weight:800;color:#0d5869}.global-ci .big{font-size:1.55rem;font-weight:800;color:#102a3a;margin:6px 0}.global-ci .mini{font-size:.72rem;color:#708590}
 </style>''', unsafe_allow_html=True)
 
-NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
+ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
+if ES_TECNICO:
+    NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','🖥️ Seguimiento CI':'Seguimiento CI','👥 Técnicos':'Técnicos'}
+else:
+    NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
 st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
 pagina = NAV_LABELS[pagina_label]
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
-centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
+if ES_TECNICO:
+    _tec_login = str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
+    _ci_login = TECNICOS.get(_tec_login,{}).get('ci')
+    centro = _ci_login if _ci_login in CENTROS else 'Todos'
+    st.sidebar.caption(f"CI vinculado · {centro}")
+else:
+    centro = st.sidebar.selectbox('Centro', ['Todos'] + CENTROS)
 visibles = [t for t,v in TECNICOS.items() if v.get('activo', True) and (centro == 'Todos' or v['ci'] == centro)]
 st.sidebar.divider()
 st.sidebar.caption(f'{st.session_state.usuario_actual} · {st.session_state.rol_actual}')
@@ -1359,6 +1397,34 @@ def informe_guardias_html(equipo, anio, mes=None):
     for m in ([mes] if mes else list(range(1,13))): calendario+=f'<h3>{MESES[m]}</h3>'+guardias_calendario_html(equipo,m,anio)
     return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe guardias 12x7</title><style>'+css+'</style></head><body><main>'+f'<div class="muted">GESTIÓN DE TÉCNICOS CI · GUARDIAS 12x7</div><h1>Informe de guardias · {escape(periodo)} {anio}</h1><p class="muted">Emitido el {datetime.now():%d/%m/%Y %H:%M} · {len(equipo)} técnicos incluidos</p>'+f'<div class="metrics"><div class="metric">Periodos de guardia<strong>{total_periodos}</strong></div><div class="metric">Días de guardia<strong>{total_dias}</strong></div><div class="metric">Activaciones<strong>{len(acts)}</strong></div><div class="metric">HE generadas<strong>{total_he:g} h</strong></div><div class="metric">Importe activaciones<strong>{total_imp:,.2f} €</strong></div></div>'+'<h2>1. Resumen por técnico</h2>'+th(resumen)+'<h2>2. Calendario de guardias</h2>'+calendario+'<h2>3. Periodos registrados</h2>'+th(detalle_g)+'<h2>4. Detalle de activaciones</h2>'+th(detalle_a)+'<p class="muted">Los importes corresponden a activaciones registradas según las condiciones configuradas en la aplicación.</p></main></body></html>')
 
+
+def guardar_guardias_autorizado(nuevo, accion, tecnico_objetivo):
+    """Editor: cualquier técnico. Técnico: únicamente su propia guardia."""
+    if EDITOR:
+        return guardar_cambios({RUTA_GUARDIAS:nuevo}, accion)
+    propio=tecnico_usuario_actual()
+    if not propio or tecnico_objetivo != propio:
+        st.error("Solo puedes modificar tus propias guardias.")
+        return False
+    evento={'fecha':datetime.now().isoformat(timespec='seconds'),'usuario':st.session_state.usuario_actual,
+            'accion':accion,'modulo':'Guardias','tecnico':propio,'ci':TECNICOS.get(propio,{}).get('ci','')}
+    cambios={RUTA_GUARDIAS:nuevo,'auditoria_repsol.json':AUDITORIA+[evento]}
+    textos={n:json_text(d) for n,d in cambios.items()}
+    try:
+        actuales=descargar_remoto() if REMOTE else {}
+        for n in cambios:
+            actual=actuales.get(n,{}).get('content') if REMOTE else ((BASE/n).read_text(encoding='utf-8') if (BASE/n).exists() else None)
+            if actual != SNAPSHOTS.get(n):
+                st.error("Los datos han cambiado desde que abriste la pantalla. Recarga y revisa.")
+                return False
+        if REMOTE:
+            response=requests.patch(URL,headers=HEADERS,json={'files':{n:{'content':t} for n,t in textos.items()}},timeout=15); response.raise_for_status()
+        for n,contenido in textos.items(): escribir_local(n,contenido)
+        st.session_state.guardado="Sincronizado con el almacenamiento remoto." if REMOTE else "Guardado localmente."
+        return True
+    except (requests.RequestException,OSError,ValueError,KeyError):
+        st.error("No se pudo confirmar el guardado."); return False
+
 def render_guardias():
     st.markdown('<div class="ops-hero"><div class="k">Cobertura operativa</div><div class="t">Guardias 12x7</div><div class="n">Planificación de periodos, activaciones, compensaciones y seguimiento por Complejo Industrial.</div></div>', unsafe_allow_html=True)
     st.markdown("""<style>
@@ -1439,7 +1505,7 @@ def render_guardias():
                     nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
                     gid=hashlib.sha256(f'{tg}|{inicio_guardia.isoformat()}|{fin_guardia.isoformat()}'.encode()).hexdigest()[:16]
                     nuevo.append({'id':gid,'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':inicio_guardia.isoformat(),'fin':fin_guardia.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
-                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}'): st.rerun()
+                    if guardar_guardias_autorizado(nuevo,f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}',tg): st.rerun()
         filas=[]
         for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
             if centro!='Todos' and g.get('centro')!=centro: continue
@@ -1456,8 +1522,9 @@ def render_guardias():
                 gid=st.selectbox('Guardia',[g['id'] for g in propias],format_func=lambda i:next(f"{g['tecnico']} · {date.fromisoformat(g['inicio']):%d/%m/%Y}" for g in propias if g['id']==i))
                 conf=st.checkbox('Confirmar eliminación',key='conf_del_guardia')
                 if st.button('Eliminar guardia',disabled=not conf):
+                    objetivo=next((g.get('tecnico') for g in REGISTROS_GUARDIAS if g.get('id')==gid),'')
                     nuevo=[g for g in REGISTROS_GUARDIAS if g.get('id')!=gid]
-                    if guardar_cambios({RUTA_GUARDIAS:nuevo},f'Eliminar guardia {gid}'): st.rerun()
+                    if guardar_guardias_autorizado(nuevo,f'Eliminar guardia {gid}',objetivo): st.rerun()
     with tab_act:
         st.markdown('#### Registrar activación')
         if not EDITOR:
@@ -1582,30 +1649,29 @@ def centros_seguimiento_permitidos():
     ci = TECNICOS.get(tecnico, {}).get("ci") if tecnico else None
     return [ci] if ci in CENTROS else []
 
-def guardar_seguimiento_ci(nuevo, accion, ci):
+def guardar_seguimiento_ci(nuevo, accion, ci, detalle_cambios=None, fecha_trabajo=None):
     if ci not in centros_seguimiento_permitidos():
         st.error("Tu usuario no tiene permisos para registrar actividad en este CI.")
         return False
-    evento = {"fecha": datetime.now().isoformat(timespec="seconds"), "usuario": st.session_state.usuario_actual, "accion": accion}
-    cambios = {RUTA_SEGUIMIENTO_CI: nuevo, "auditoria_repsol.json": AUDITORIA + [evento]}
-    textos = {n: json_text(d) for n, d in cambios.items()}
+    evento={"fecha":datetime.now().isoformat(timespec="seconds"),"usuario":st.session_state.usuario_actual,
+            "accion":accion,"modulo":"Seguimiento CI","ci":ci}
+    if fecha_trabajo: evento["fecha_trabajo"]=fecha_trabajo.isoformat() if hasattr(fecha_trabajo,"isoformat") else str(fecha_trabajo)
+    if detalle_cambios: evento["cambios"]=detalle_cambios
+    cambios={RUTA_SEGUIMIENTO_CI:nuevo,"auditoria_repsol.json":AUDITORIA+[evento]}
+    textos={n:json_text(d) for n,d in cambios.items()}
     try:
-        actuales = descargar_remoto() if REMOTE else {}
+        actuales=descargar_remoto() if REMOTE else {}
         for n in cambios:
-            actual = actuales.get(n, {}).get("content") if REMOTE else ((BASE/n).read_text(encoding="utf-8") if (BASE/n).exists() else None)
+            actual=actuales.get(n,{}).get("content") if REMOTE else ((BASE/n).read_text(encoding="utf-8") if (BASE/n).exists() else None)
             if actual != SNAPSHOTS.get(n):
-                st.error("Los datos han cambiado desde que abriste la pantalla. Recarga y revisa antes de guardar.")
-                return False
+                st.error("Los datos han cambiado desde que abriste la pantalla. Recarga y revisa antes de guardar."); return False
         if REMOTE:
-            response = requests.patch(URL, headers=HEADERS, json={"files": {n: {"content": t} for n, t in textos.items()}}, timeout=15)
-            response.raise_for_status()
-        for n, contenido in textos.items():
-            escribir_local(n, contenido)
-        st.session_state.guardado = "Sincronizado con el almacenamiento remoto." if REMOTE else "Guardado localmente."
+            response=requests.patch(URL,headers=HEADERS,json={"files":{n:{"content":t} for n,t in textos.items()}},timeout=15); response.raise_for_status()
+        for n,contenido in textos.items(): escribir_local(n,contenido)
+        st.session_state.guardado="Sincronizado con el almacenamiento remoto." if REMOTE else "Guardado localmente."
         return True
-    except (requests.RequestException, OSError, ValueError, KeyError):
-        st.error("No se pudo confirmar el guardado. Recarga antes de reintentar.")
-        return False
+    except (requests.RequestException,OSError,ValueError,KeyError):
+        st.error("No se pudo confirmar el guardado. Recarga antes de reintentar."); return False
 
 def seg_clave(ci, fecha):
     return f"{fecha.isoformat()}|{ci}"
@@ -1756,8 +1822,16 @@ def render_seguimiento_ci():
                         with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual["redes"][g][r]),key=f"seg_{g}_{r}")
                 obs=st.text_input("Observaciones (opcional)",value=actual["obs"]); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
             if ok:
+                cambios_detalle=[]
+                for _g,_label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+                    for _r in ("RS","RC","RCorp"):
+                        _antes=int(actual["redes"][_g][_r]); _despues=int(vals[_g][_r])
+                        if _antes != _despues:
+                            cambios_detalle.append(f"{_label} · {_r}: {_antes} → {_despues}")
+                if actual.get("obs","") != obs.strip():
+                    cambios_detalle.append(f"Observaciones: {actual.get('obs','') or '—'} → {obs.strip() or '—'}")
                 nuevo=seg_guardar_dia(ci,fecha,vals,obs)
-                if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci): st.rerun()
+                if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci,cambios_detalle,fecha): st.rerun()
     with tab_ana:
         st.markdown('<div class="section-eyebrow">DISTRIBUCIÓN POR RED</div>',unsafe_allow_html=True)
         st.caption("Porcentaje de actividad de cada grupo repartido entre RS, RC y RCorp para el periodo seleccionado.")
@@ -1817,11 +1891,75 @@ def html_seguimiento_global(anio, mes=None):
     out.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
     return ''.join(out)
 
+
+def html_resumen_coordinacion(tipo="semanal", referencia=None):
+    ref=referencia or date.today()
+    if tipo=="semanal":
+        inicio=ref-timedelta(days=ref.weekday()); fin=inicio+timedelta(days=6); periodo=f"{inicio:%d/%m/%Y} – {fin:%d/%m/%Y}"
+    else:
+        inicio=date(ref.year,ref.month,1); fin=date(ref.year,ref.month,calendar.monthrange(ref.year,ref.month)[1]); periodo=f"{MESES[ref.month]} {ref.year}"
+    # Ausencias/marcas
+    aus=[]
+    for (a,t,m,d),val in REGISTROS.items():
+        try: f=date(int(a),int(m),int(d))
+        except Exception: continue
+        if inicio<=f<=fin and tipo_registro(val):
+            aus.append((f,t,TECNICOS.get(t,{}).get('ci',''),tipo_registro(val)))
+    # Guardias que cruzan el periodo
+    guards=[]
+    for g in REGISTROS_GUARDIAS:
+        gi=_parse_fecha_iso(g.get('inicio')); gf=_parse_fecha_iso(g.get('fin'))
+        if gi and gf and gi<=fin and gf>=inicio:
+            guards.append(g)
+    prl=avisos_prl_actuales()
+    # seguimiento uses the period's month/year; weekly sum exact dates
+    seg=[]
+    for ci in CENTROS:
+        acc={"Parches":0,"AV":0,"BCK":0}
+        dias=0
+        f=inicio
+        while f<=fin:
+            rr=seg_registro(ci,f); tv=sum(rr["totales"].values())
+            if tv: dias+=1
+            for g in acc: acc[g]+=rr["totales"][g]
+            f+=timedelta(days=1)
+        seg.append((ci,dias,acc,sum(acc.values())))
+    total_seg=sum(x[3] for x in seg)
+    css="""body{font-family:Arial,sans-serif;background:#f5f8fa;color:#102a3a;margin:0;padding:28px}.hero{background:#0d5869;color:#fff;border-radius:16px;padding:26px 30px}.hero small{opacity:.75;font-weight:700;letter-spacing:.08em}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.k{background:#fff;border:1px solid #dbe4ea;border-radius:13px;padding:16px}.n{font-size:27px;font-weight:800;margin-top:6px}.muted{font-size:12px;color:#718692}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{background:#fff;border:1px solid #dbe4ea;border-radius:13px;padding:16px;margin:10px 0}table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #dbe4ea;padding:8px;text-align:left}th{background:#edf4f7}h2{margin-top:26px;color:#173542}"""
+    p=sum(x[2]["Parches"] for x in seg); av=sum(x[2]["AV"] for x in seg); b=sum(x[2]["BCK"] for x in seg)
+    out=[f'<!doctype html><html><head><meta charset="utf-8"><title>Resumen coordinación {escape(periodo)}</title><style>{css}</style></head><body>',
+         f'<div class="hero"><small>GESTIÓN TÉCNICOS CI · REPSOL</small><h1>Resumen de coordinación</h1><div>{escape(periodo)} · Todos los Complejos Industriales</div></div>',
+         f'<div class="kpis"><div class="k"><div class="muted">ACTIVIDAD CI</div><div class="n">{total_seg}</div></div><div class="k"><div class="muted">AUSENCIAS / MARCAS</div><div class="n">{len(aus)}</div></div><div class="k"><div class="muted">GUARDIAS</div><div class="n">{len(guards)}</div></div><div class="k"><div class="muted">PRL EN ATENCIÓN</div><div class="n">{len(prl)}</div></div></div>',
+         '<h2>Seguimiento operativo</h2><table><tr><th>CI</th><th>Parches</th><th>Antivirus</th><th>Backup</th><th>Total</th></tr>']
+    for ci,dias,d,total in seg: out.append(f'<tr><td>{escape(ci)}</td><td>{d["Parches"]}</td><td>{d["AV"]}</td><td>{d["BCK"]}</td><td><b>{total}</b></td></tr>')
+    out.append(f'<tr><th>Total</th><th>{p}</th><th>{av}</th><th>{b}</th><th>{total_seg}</th></tr></table>')
+    out.append('<h2>Ausencias, permisos y planificación</h2>')
+    if aus:
+        out.append('<table><tr><th>Fecha</th><th>CI</th><th>Técnico</th><th>Tipo</th></tr>')
+        for f,t,ci,tp in sorted(aus): out.append(f'<tr><td>{f:%d/%m/%Y}</td><td>{escape(ci)}</td><td>{escape(t)}</td><td>{escape(tp)}</td></tr>')
+        out.append('</table>')
+    else: out.append('<div class="card muted">Sin marcas registradas en el periodo.</div>')
+    out.append('<h2>Guardias</h2>')
+    if guards:
+        out.append('<table><tr><th>CI</th><th>Técnico</th><th>Periodo</th></tr>')
+        for g in sorted(guards,key=lambda x:x.get("inicio","")): out.append(f'<tr><td>{escape(str(g.get("centro","")))}</td><td>{escape(str(g.get("tecnico","")))}</td><td>{escape(str(g.get("inicio","")))} → {escape(str(g.get("fin","")))}</td></tr>')
+        out.append('</table>')
+    else: out.append('<div class="card muted">Sin guardias registradas para el periodo.</div>')
+    out.append('<h2>PRL que requiere atención</h2>')
+    if prl:
+        out.append('<table><tr><th>CI</th><th>Técnico</th><th>Caducidad</th><th>Estado</th></tr>')
+        for x in prl: out.append(f'<tr><td>{escape(x["centro"])}</td><td>{escape(x["tecnico"])}</td><td>{x["fecha"].strftime("%d/%m/%Y") if x["fecha"] else "Sin fecha"}</td><td>{escape(texto_estado_prl(x["dias"]))}</td></tr>')
+        out.append('</table>')
+    else: out.append('<div class="card muted">Sin PRL que requiera atención en ≤60 días.</div>')
+    out.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
+    return ''.join(out)
+
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v14.2</div><div class="sub">Seguimiento CI · informes globales · análisis por red · histórico de versiones</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v15</div><div class="sub">Multiusuario técnico · auditoría detallada · resumen de coordinación</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v15','28/09/2026','Multiusuario y coordinación','Permisos restringidos por rol Técnico, guardias propias, Seguimiento CI por centro, auditoría valor anterior → nuevo y resumen de coordinación manual/automático.'),
       ('v14.2','28/09/2026','Seguimiento CI avanzado','Informe global mensual/anual de todos los CI, análisis visual RS/RC/RCorp, KPIs renovados y nueva sección Versiones.'),
       ('v14.1','28/09/2026','Histórico Excel + multi-año','Lectura del histórico 2026, convivencia con registros nuevos y soporte de ejercicios futuros en un único JSON.'),
       ('v14','28/09/2026','Seguimiento operativo CI','Nuevo módulo diario de Parches, Antivirus y Backup por RS, RC y RCorp, calendario e informes HTML.'),
@@ -2097,6 +2235,32 @@ def render_config():
                     st.success(resultado)
                 else:
                     st.warning(resultado)
+
+        st.divider()
+        st.markdown('#### Resumen de coordinación')
+        st.caption('Informe corporativo con Seguimiento CI, ausencias/permisos, guardias y PRL de todos los Complejos Industriales.')
+        sem_actual=bool(CONFIG_NOTIFICACIONES.get("resumen_coordinacion_semanal",False))
+        mes_actual=bool(CONFIG_NOTIFICACIONES.get("resumen_coordinacion_mensual",False))
+        cs1,cs2=st.columns(2)
+        nuevo_sem=cs1.checkbox("Enviar resumen semanal automáticamente",value=sem_actual,key="cfg_coord_sem")
+        nuevo_mes=cs2.checkbox("Enviar resumen mensual automáticamente",value=mes_actual,key="cfg_coord_mes")
+        if nuevo_sem!=sem_actual or nuevo_mes!=mes_actual:
+            if st.button("Guardar programación de coordinación",type="primary",use_container_width=True):
+                cfg=copy.deepcopy(CONFIG_NOTIFICACIONES); cfg["resumen_coordinacion_semanal"]=nuevo_sem; cfg["resumen_coordinacion_mensual"]=nuevo_mes
+                if guardar_cambios({RUTA_CONFIG_NOTIFICACIONES:cfg},"Programación resumen coordinación"): st.rerun()
+        cm1,cm2=st.columns([1,1])
+        with cm1:
+            tipo_coord=st.radio("Resumen a generar",["Semanal","Mensual"],horizontal=True,key="coord_tipo")
+            ref_coord=st.date_input("Fecha de referencia",value=date.today(),key="coord_ref")
+        html_coord=html_resumen_coordinacion("semanal" if tipo_coord=="Semanal" else "mensual",ref_coord)
+        with cm2:
+            st.markdown('<div class="ops-card"><div class="title">Envío forzado</div><div class="note">Genera exactamente el mismo informe utilizado por la automatización y lo envía al destinatario de coordinación configurado en Gmail.</div></div>',unsafe_allow_html=True)
+            if st.button("📧 Generar y enviar ahora",type="primary",disabled=not configurado,use_container_width=True):
+                asunto=f"Resumen de coordinación · {tipo_coord} · {ref_coord:%d/%m/%Y}"
+                ok,res=enviar_email_html(asunto,html_coord)
+                (st.success if ok else st.error)(res)
+            st.download_button("⬇️ Descargar resumen HTML",html_coord.encode("utf-8"),file_name=f"Resumen_Coordinacion_{tipo_coord}_{ref_coord:%Y%m%d}.html",mime="text/html",use_container_width=True)
+        st.info("La programación automática se ejecuta mediante GitHub Actions. El workflow v15 lee estos dos interruptores del Gist antes de enviar.")
 
         st.divider()
         st.markdown('#### Próximos avisos automáticos')
