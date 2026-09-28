@@ -51,6 +51,9 @@ RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
 RUTA_CONFIG_NOTIFICACIONES = "config_notificaciones_repsol.json"
 RUTA_SEGUIMIENTO_CI = "seguimiento_ci_repsol.json"
+RUTA_SOLICITUDES = "solicitudes_repsol.json"
+RUTA_AVISOS_COORD = "avisos_coordinacion_repsol.json"
+RUTA_NOTIFICACIONES_LEIDAS = "notificaciones_leidas_repsol.json"
 CONFIG_NOTIFICACIONES_DEFAULT = {
     "notificar_tecnicos": True,
     "resumen_coordinacion_semanal": False,
@@ -612,7 +615,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -699,6 +702,33 @@ def guardar_cambios(cambios, accion):
         st.error('No se pudo confirmar el guardado. Recarga para comprobar el estado antes de reintentar. En modo local, una escritura múltiple puede quedar parcialmente aplicada.')
         return False
 
+def guardar_portal(cambios, accion, modulo='Portal'):
+    """Escritura controlada para acciones permitidas a Técnico/Editor sin abrir permisos globales."""
+    evento = {'fecha': datetime.now().isoformat(timespec='seconds'),
+              'usuario': st.session_state.get('usuario_actual',''), 'accion': accion, 'modulo': modulo}
+    cambios = dict(cambios)
+    cambios['auditoria_repsol.json'] = AUDITORIA + [evento]
+    textos = {n: json_text(d) for n,d in cambios.items()}
+    try:
+        actuales = descargar_remoto() if REMOTE else {}
+        for n in cambios:
+            actual = actuales.get(n, {}).get('content') if REMOTE else ((BASE/n).read_text(encoding='utf-8') if (BASE/n).exists() else None)
+            if actual != SNAPSHOTS.get(n):
+                st.error('Los datos han cambiado desde que abriste la pantalla. Recarga antes de reintentar.')
+                return False
+        if REMOTE:
+            response=requests.patch(URL,headers=HEADERS,json={'files':{n:{'content':t} for n,t in textos.items()}},timeout=15)
+            response.raise_for_status()
+        for n,contenido in textos.items():
+            try: escribir_local(n,contenido)
+            except OSError:
+                if not REMOTE: raise
+        st.session_state.guardado='Cambios guardados correctamente.'
+        return True
+    except (requests.RequestException,OSError,ValueError,KeyError):
+        st.error('No se pudo confirmar el guardado. Recarga y comprueba el estado antes de reintentar.')
+        return False
+
 def normalizar_registros(datos):
     result = {}
     for k, val in datos.items():
@@ -730,6 +760,9 @@ CONFIG_NOTIFICACIONES.setdefault("notificar_tecnicos", True)
 CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_semanal", False)
 CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_mensual", False)
 SEGUIMIENTO_CI = cargar_json(RUTA_SEGUIMIENTO_CI, {})
+SOLICITUDES = cargar_json(RUTA_SOLICITUDES, [])
+AVISOS_COORD = cargar_json(RUTA_AVISOS_COORD, [])
+NOTIFICACIONES_LEIDAS = cargar_json(RUTA_NOTIFICACIONES_LEIDAS, {})
 REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
@@ -813,9 +846,9 @@ st.markdown(r'''<style>
 
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
 if ES_TECNICO:
-    NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','🖥️ Seguimiento CI':'Seguimiento CI','👥 Técnicos':'Técnicos'}
+    NAV_LABELS = {'👤 Mi espacio':'Inicio','📨 Solicitudes':'Solicitudes','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','🖥️ Seguimiento CI':'Seguimiento CI','👥 Técnicos':'Técnicos'}
 else:
-    NAV_LABELS = {'🏠 Inicio':'Inicio','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
+    NAV_LABELS = {'🏠 Inicio':'Inicio','📨 Solicitudes':'Solicitudes','📢 Avisos':'Avisos','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
 st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
 pagina = NAV_LABELS[pagina_label]
@@ -873,7 +906,201 @@ def aviso_prl_visual(tecnico):
         return 2, 'warning', f'CADUCA EN {dias} DÍAS', 'Planificar la renovación.'
     return 4, 'success', 'VIGENTE', 'Sin actuaciones próximas.'
 
+def tecnico_sesion():
+    return str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
+
+def correo_tecnico(tecnico):
+    perfil=str(PERFILES_TECNICOS.get(tecnico,{}).get('correo','')).strip()
+    if perfil: return perfil
+    for uid,u in usuarios.items():
+        if str(u.get('tecnico','')).strip()==tecnico and '@' in str(uid): return str(uid).strip()
+    return ''
+
+def _id_estable(*partes):
+    return hashlib.sha256('|'.join(map(str,partes)).encode()).hexdigest()[:18]
+
+def avisos_coord_visibles(tecnico):
+    hoy=date.today(); ci=TECNICOS.get(tecnico,{}).get('ci',''); out=[]
+    for a in AVISOS_COORD:
+        if not a.get('activo',True): continue
+        cad=_parse_fecha_iso(a.get('caduca'))
+        if cad and cad<hoy: continue
+        destino=a.get('destino','Todos')
+        tecnicos=a.get('tecnicos',[]) or []
+        if destino=='Todos' or destino==ci or tecnico in tecnicos:
+            out.append(a)
+    return sorted(out,key=lambda x:(not x.get('importante',False),x.get('creado','')),reverse=False)
+
+def notificaciones_usuario(tecnico=None):
+    hoy=date.today(); items=[]
+    if tecnico:
+        estado,f,dias=estado_prl(tecnico)
+        if dias is None or dias<=60:
+            txt='Tu PRL no tiene fecha registrada.' if dias is None else ('Tu PRL está caducado.' if dias<0 else f'Tu PRL caduca en {dias} días.')
+            items.append({'id':_id_estable('prl',tecnico,f),'nivel':'danger' if dias is None or dias<30 else 'warning','titulo':'PRL','texto':txt})
+        futuras=[]
+        for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS,tecnico=tecnico):
+            if fin>=hoy: futuras.append((ini,fin))
+        futuras.sort()
+        if futuras:
+            ini,fin=futuras[0]
+            if ini<=hoy<=fin: txt=f'Tienes una guardia activa hasta el {fin:%d/%m/%Y}.'
+            else: txt=f'Tu próxima guardia comienza el {ini:%d/%m/%Y} y finaliza el {fin:%d/%m/%Y}.'
+            items.append({'id':_id_estable('guardia',tecnico,ini,fin),'nivel':'info','titulo':'Guardia','texto':txt})
+        for a in avisos_coord_visibles(tecnico):
+            items.append({'id':str(a.get('id')),'nivel':'danger' if a.get('importante') else 'info','titulo':a.get('titulo','Aviso de Coordinación'),'texto':a.get('mensaje','')})
+        for sol in SOLICITUDES:
+            if sol.get('tecnico')==tecnico and sol.get('estado') in ('Aprobada','Rechazada'):
+                items.append({'id':_id_estable('sol',sol.get('id'),sol.get('estado')),'nivel':'success' if sol.get('estado')=='Aprobada' else 'danger','titulo':f"Solicitud {sol.get('estado','').lower()}",'texto':f"{sol.get('tipo')} · {sol.get('desde')} a {sol.get('hasta')}"})
+    else:
+        pend=sum(1 for x in SOLICITUDES if x.get('estado')=='Pendiente')
+        if pend: items.append({'id':_id_estable('pendientes',pend),'nivel':'warning','titulo':'Solicitudes pendientes','texto':f'Tienes {pend} solicitud(es) pendientes de revisión.'})
+        prl=avisos_prl_actuales()
+        if prl: items.append({'id':_id_estable('prl-global',date.today(),len(prl)),'nivel':'warning','titulo':'PRL por revisar','texto':f'{len(prl)} reconocimiento(s) requieren atención.'})
+    return items
+
+def render_centro_notificaciones(tecnico=None):
+    uid=str(st.session_state.get('usuario_id') or st.session_state.get('usuario_actual',''))
+    leidas=set(NOTIFICACIONES_LEIDAS.get(uid,[]) or [])
+    items=notificaciones_usuario(tecnico); no_leidas=[x for x in items if x['id'] not in leidas]
+    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">🔔 Centro de notificaciones <span class="ci-badge {"warn" if no_leidas else "ok"}">{len(no_leidas)} sin leer</span></div><div class="ci-panel-note">Avisos personales, guardias, PRL, solicitudes y comunicaciones de Coordinación.</div></div>',unsafe_allow_html=True)
+    if not items: st.success('No tienes notificaciones pendientes.'); return
+    for n in items:
+        nuevo=n['id'] not in leidas
+        st.markdown(f'<div class="ops-card"><div class="title">{"● NUEVA · " if nuevo else ""}{escape(n["titulo"])}</div><div style="font-size:13px;color:#334e5b">{escape(n["texto"])}</div></div>',unsafe_allow_html=True)
+    if no_leidas and st.button('✓ Marcar todas como leídas',key=f'leer_{uid}'):
+        nuevo=copy.deepcopy(NOTIFICACIONES_LEIDAS); nuevo[uid]=sorted(leidas|{x['id'] for x in items})[-250:]
+        if guardar_portal({RUTA_NOTIFICACIONES_LEIDAS:nuevo},'Notificaciones marcadas como leídas','Notificaciones'): st.rerun()
+
+def render_mi_espacio():
+    t=tecnico_sesion()
+    if not t or t not in TECNICOS:
+        st.error('La cuenta no tiene un técnico válido vinculado. Revisa la configuración de usuarios.'); return
+    ci=TECNICOS[t]['ci']; hoy=date.today(); consumido,saldo=saldos(t,hoy.year)
+    st.markdown(f'<div class="ops-hero"><div class="k">Portal del Técnico · {escape(ci)}</div><div class="t">Hola, {escape(t.split()[0])}</div><div class="n">Tu planificación, guardias, saldos, PRL, recursos y comunicaciones en un único espacio.</div></div>',unsafe_allow_html=True)
+    proximas=[]
+    for (a,n,m,d),val in REGISTROS.items():
+        if n==t:
+            f=date(a,int(m),int(d)); tp=tipo_registro(val)
+            if f>=hoy and tp in ('V','VPA'): proximas.append((f,tp))
+    proximas.sort(); vac_txt='Sin vacaciones próximas' if not proximas else f'{proximas[0][0]:%d/%m/%Y} · {LEYENDA[proximas[0][1]][0]}'
+    guards=[]
+    for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS,tecnico=t):
+        if fin>=hoy: guards.append((ini,fin))
+    guards.sort(); guard_txt='Sin guardia próxima' if not guards else (f'Activa hasta {guards[0][1]:%d/%m/%Y}' if guards[0][0]<=hoy<=guards[0][1] else f'{guards[0][0]:%d/%m}–{guards[0][1]:%d/%m/%Y}')
+    est,fp,dias=estado_prl(t); perfil=PERFILES_TECNICOS.get(t,{}) or {}; matricula=perfil.get('matricula',''); veh=VEHICULOS.get(matricula,{}) if matricula else {}
+    cards=[('Próximas vacaciones',vac_txt,'📅'),('Próxima guardia',guard_txt,'🛡️'),('HLD disponibles',f"{saldo['HLD']:g} h",'⏱️'),('HE disponibles',f"{saldo['HE']:g} h",'⚡'),('PRL',f"{fp:%d/%m/%Y}" if fp else 'Sin fecha','🩺'),('Vehículo',f"{matricula} · {veh.get('modelo','')}" if matricula else 'Sin vehículo','🚐')]
+    cols=st.columns(3)
+    for i,(lab,val,ico) in enumerate(cards): cols[i%3].markdown(f'<div class="seg-kpi"><div class="label">{ico} {escape(lab)}</div><div style="font-size:1.15rem;font-weight:800;color:#102a3a;margin:12px 0">{escape(str(val))}</div><div class="sub">{escape(ci)}</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="ci-section-label">ESTA SEMANA</div>',unsafe_allow_html=True)
+    lunes=hoy-timedelta(days=hoy.weekday()); filas=[]
+    for i in range(7):
+        f=lunes+timedelta(days=i); val=valor_registro(t,f); tp=tipo_registro(val); estado,h=disponibilidad(t,f)
+        guard=any(ini<=f<=fin for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS,tecnico=t))
+        filas.append({'Día':f.strftime('%a %d/%m'),'Planificación':LEYENDA.get(tp,(tp or 'Sin novedad',''))[0],'Disponibilidad':estado,'Guardia':'Sí' if guard else '—'})
+    tabla(filas)
+    st.markdown('<div class="ci-section-label">NOTIFICACIONES</div>',unsafe_allow_html=True); render_centro_notificaciones(t)
+    st.markdown('<div class="ci-section-label">ACTIVIDAD RECIENTE</div>',unsafe_allow_html=True)
+    acts=[]
+    for a in reversed(AUDITORIA):
+        txt=str(a.get('accion',''))
+        if t.lower() in txt.lower() or str(a.get('tecnico',''))==t:
+            acts.append({'Fecha':str(a.get('fecha','')).replace('T',' '),'Actividad':txt,'Usuario':a.get('usuario','')})
+        if len(acts)>=8: break
+    tabla(acts)
+
+def _crear_registros_solicitud(sol):
+    tipo=sol.get('tipo'); t=sol.get('tecnico'); ini=_parse_fecha_iso(sol.get('desde')); fin=_parse_fecha_iso(sol.get('hasta'))
+    if tipo not in ('Vacaciones','VPA','HLD') or not ini or not fin: return None,'La solicitud no genera automáticamente cuadrante.'
+    codigo={'Vacaciones':'V','VPA':'VPA','HLD':'HLD'}[tipo]; fechas=[ini+timedelta(days=i) for i in range((fin-ini).days+1)]
+    fechas=[f for f in fechas if obtener_horas_jornada_real(t,f.year,f.month,f.day)>0]
+    propuesta=copy.deepcopy(REGISTROS)
+    for f in fechas:
+        k=(f.year,t,str(f.month),str(f.day)); jornada=float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
+        if codigo=='HLD':
+            horas=float(sol.get('horas_dia') or jornada)
+            if horas<=0 or horas>jornada: return None,f'HLD inválidas el {f:%d/%m}: {horas:g} h sobre jornada {jornada:g} h.'
+            propuesta[k]={'tipo':'HLD','horas_gastadas':horas,'anio':f.year,'tec':t}
+        else: propuesta[k]=codigo
+    _,saldo=saldos(t,ini.year,propuesta)
+    if any(saldo[x]<0 for x in ('V','VPA','HLD')): return None,'La aprobación superaría el saldo disponible del técnico.'
+    return propuesta,f'{len(fechas)} día(s) laborable(s) incorporados al cuadrante.'
+
+def render_solicitudes():
+    st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, VPA, HLD y cambios operativos con trazabilidad y resolución por Coordinación.</div></div>',unsafe_allow_html=True)
+    if ES_TECNICO:
+        t=tecnico_sesion(); st.subheader('Nueva solicitud')
+        with st.form('nueva_solicitud'):
+            tipo=st.selectbox('Tipo',['Vacaciones','VPA','HLD','Cambio de guardia','Otra'])
+            c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today()); hasta=c2.date_input('Hasta',date.today())
+            horas=st.number_input('Horas HLD por día (solo si aplica)',min_value=0.0,max_value=24.0,value=0.0,step=.5)
+            comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.')
+            enviar=st.form_submit_button('Enviar solicitud',type='primary')
+        if enviar:
+            if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
+            else:
+                sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if tipo=='HLD' else 0,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual}
+                nuevo=SOLICITUDES+[sol]
+                if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
+                    destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                    if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nComentario: {comentario or "—"}',destino)
+                    st.rerun()
+        st.subheader('Mis solicitudes')
+        filas=[{'Creada':x.get('creada','')[:16].replace('T',' '),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':x.get('estado'),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES) if x.get('tecnico')==t]
+        tabla(filas); return
+    pendientes=[x for x in SOLICITUDES if x.get('estado')=='Pendiente']
+    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Pendientes de revisión <span class="ci-badge {"warn" if pendientes else "ok"}">{len(pendientes)}</span></div></div>',unsafe_allow_html=True)
+    for sol in reversed(pendientes):
+        st.markdown(f'<div class="ops-card"><div class="title">{escape(sol.get("tecnico",""))} · {escape(sol.get("ci",""))}</div><div style="font-size:15px;font-weight:800;color:#173542">{escape(sol.get("tipo",""))} · {escape(sol.get("desde",""))} → {escape(sol.get("hasta",""))}</div><div class="note">{escape(sol.get("comentario") or "Sin comentario")}</div></div>',unsafe_allow_html=True)
+        c1,c2=st.columns(2)
+        if c1.button('✅ Aprobar',key='ap_'+sol['id'],use_container_width=True):
+            propuesta,msg=_crear_registros_solicitud(sol); nuevo=copy.deepcopy(SOLICITUDES)
+            for x in nuevo:
+                if x.get('id')==sol['id']: x.update({'estado':'Aprobada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':msg})
+            cambios={RUTA_SOLICITUDES:nuevo}
+            if propuesta is not None: cambios[RUTA_BDD]=serializar_registros(propuesta)
+            if guardar_portal(cambios,f"Solicitud aprobada: {sol.get('tecnico')} · {sol.get('tipo')} · {msg}",'Solicitudes'):
+                dest=correo_tecnico(sol.get('tecnico'))
+                if dest: enviar_email(f"Solicitud aprobada · {sol.get('tipo')}",f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido APROBADA.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}\n{msg}\n\nGestión Técnicos CI · REPSOL",dest)
+                st.rerun()
+        if c2.button('❌ Rechazar',key='re_'+sol['id'],use_container_width=True):
+            nuevo=copy.deepcopy(SOLICITUDES)
+            for x in nuevo:
+                if x.get('id')==sol['id']: x.update({'estado':'Rechazada','resuelta':datetime.now().isoformat(timespec='seconds'),'resuelta_por':st.session_state.usuario_actual,'resolucion':'Rechazada por Coordinación'})
+            if guardar_portal({RUTA_SOLICITUDES:nuevo},f"Solicitud rechazada: {sol.get('tecnico')} · {sol.get('tipo')}",'Solicitudes'):
+                dest=correo_tecnico(sol.get('tecnico'))
+                if dest: enviar_email(f"Solicitud rechazada · {sol.get('tipo')}",f"Hola {sol.get('tecnico','').split()[0]},\n\nTu solicitud ha sido RECHAZADA por Coordinación.\nPeriodo: {sol.get('desde')} a {sol.get('hasta')}.\n\nGestión Técnicos CI · REPSOL",dest)
+                st.rerun()
+    st.subheader('Histórico')
+    tabla([{'Técnico':x.get('tecnico'),'CI':x.get('ci'),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':x.get('estado'),'Resolución':x.get('resolucion','')} for x in reversed(SOLICITUDES)])
+
+def render_avisos():
+    if not EDITOR: st.error('Área reservada a Coordinación.'); return
+    st.markdown('<div class="ops-hero"><div class="k">Comunicación interna</div><div class="t">Avisos del coordinador</div><div class="n">Publica comunicaciones para todos los técnicos, un CI concreto o personas seleccionadas.</div></div>',unsafe_allow_html=True)
+    with st.form('nuevo_aviso'):
+        titulo=st.text_input('Título'); mensaje=st.text_area('Mensaje'); destino=st.selectbox('Destino',['Todos']+CENTROS+['Técnicos concretos'])
+        elegidos=st.multiselect('Técnicos',sorted(TECNICOS),disabled=destino!='Técnicos concretos')
+        c1,c2=st.columns(2); caduca=c1.date_input('Visible hasta',date.today()+timedelta(days=14)); importante=c2.checkbox('Marcar como importante')
+        publicar=st.form_submit_button('📢 Publicar aviso',type='primary')
+    if publicar:
+        if not titulo.strip() or not mensaje.strip(): st.error('Indica título y mensaje.')
+        elif destino=='Técnicos concretos' and not elegidos: st.error('Selecciona al menos un técnico.')
+        else:
+            a={'id':_id_estable(titulo,mensaje,datetime.now().isoformat()),'titulo':titulo.strip(),'mensaje':mensaje.strip(),'destino':destino,'tecnicos':elegidos,'caduca':caduca.isoformat(),'importante':importante,'activo':True,'creado':datetime.now().isoformat(timespec='seconds'),'creado_por':st.session_state.usuario_actual}
+            if guardar_portal({RUTA_AVISOS_COORD:AVISOS_COORD+[a]},f'Aviso publicado: {titulo} · {destino}','Avisos'): st.rerun()
+    st.subheader('Avisos publicados')
+    for a in reversed(AVISOS_COORD):
+        st.markdown(f'<div class="ops-card"><div class="title">{"⚠️ IMPORTANTE · " if a.get("importante") else ""}{escape(a.get("titulo",""))}</div><div style="font-size:13px;color:#334e5b">{escape(a.get("mensaje",""))}</div><div class="note">Destino: {escape(a.get("destino",""))} · Hasta {escape(a.get("caduca",""))}</div></div>',unsafe_allow_html=True)
+        if a.get('activo',True) and st.button('Archivar',key='arch_'+str(a.get('id'))):
+            nuevo=copy.deepcopy(AVISOS_COORD)
+            for x in nuevo:
+                if x.get('id')==a.get('id'): x['activo']=False
+            if guardar_portal({RUTA_AVISOS_COORD:nuevo},f"Aviso archivado: {a.get('titulo')}",'Avisos'): st.rerun()
+
+
 def render_inicio():
+    if ES_TECNICO:
+        render_mi_espacio(); return
     st.markdown('''<style>
     .home-box {--accent:#64748b;--surface:#f1f5f9;--ink:#334155;
       background:var(--surface);color:var(--ink);border:1px solid #dbe3ea;
@@ -898,6 +1125,7 @@ def render_inicio():
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
     st.markdown(f'<div class="ops-hero"><div class="k">Panel de situación · Complejos Industriales Repsol</div><div class="t">Visión operativa de los CI</div><div class="n">Disponibilidad, guardias, cobertura y PRL · Ámbito: {escape(centro)}</div></div>', unsafe_allow_html=True)
+    render_centro_notificaciones(None)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -2032,8 +2260,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v15.1</div><div class="sub">Recuperación de acceso por email · multiusuario técnico · coordinación</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16</div><div class="sub">Portal del Técnico · solicitudes · notificaciones · avisos de coordinación</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16','28/09/2026','Portal del Técnico','Mi espacio personalizado, centro de notificaciones con leído/no leído, buzón de solicitudes con aprobación y alta automática en cuadrante, y avisos segmentados de Coordinación.'),
       ('v15.1','28/09/2026','Recuperación de acceso','Nueva opción ¿Has olvidado tu contraseña? en el login. Los usuarios registrados pueden solicitar el envío de sus credenciales a su propio correo corporativo, con respuesta neutra y limitación de solicitudes.'),
       ('v15','28/09/2026','Multiusuario y coordinación','Permisos restringidos por rol Técnico, guardias propias, Seguimiento CI por centro, auditoría valor anterior → nuevo y resumen de coordinación manual/automático.'),
       ('v14.2','28/09/2026','Seguimiento CI avanzado','Informe global mensual/anual de todos los CI, análisis visual RS/RC/RCorp, KPIs renovados y nueva sección Versiones.'),
@@ -2360,7 +2589,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -2408,8 +2637,7 @@ def render_config():
             nuevo.setdefault(dd_anio,{})[c]=horas
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
-{'Inicio':render_inicio,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
+{'Inicio':render_inicio,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
