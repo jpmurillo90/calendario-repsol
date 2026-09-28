@@ -1,0 +1,34 @@
+name: Avisos PRL
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # GitHub Actions usa UTC. 06:00 UTC equivale a 08:00 en España peninsular
+    # durante horario de verano. En horario de invierno se ejecutará a las 07:00.
+    - cron: "0 6 * * 1-5"
+
+permissions:
+  contents: read
+
+jobs:
+  avisos-prl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Comprobar avisos PRL
+        env:
+          GMAIL_USUARIO: ${{ secrets.GMAIL_USUARIO }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_DESTINATARIO: ${{ secrets.GMAIL_DESTINATARIO }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: python avisos_prl.py
