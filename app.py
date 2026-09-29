@@ -401,21 +401,31 @@ def enviar_email_html(asunto, html, destinatario=None):
     except (smtplib.SMTPException,OSError) as e:
         return False, f"No se pudo enviar el resumen: {e}"
 
-def avisos_prl_actuales():
-    """PRL que requieren atención ahora: sin fecha, caducados o con 60 días o menos."""
+def estado_gestion_prl(tecnico):
+    datos = REGISTROS_PRL.get(tecnico, {}) or {}
+    return str(datos.get('estado_gestion','pendiente') or 'pendiente').lower()
+
+def avisos_prl_actuales(incluir_gestionados=False):
+    """PRL que requieren atención: sin fecha, caducados o <=60 días.
+    Los PRL con cita solicitada/programada conservan su estado real, pero no generan avisos repetitivos.
+    """
     hoy = date.today()
     avisos = []
     for tecnico in sorted(TECNICOS):
         datos = REGISTROS_PRL.get(tecnico, {}) or {}
+        gestion = str(datos.get('estado_gestion','pendiente') or 'pendiente').lower()
+        pausado = gestion in ('cita_solicitada','cita_programada')
+        if pausado and not incluir_gestionados:
+            continue
         valor = datos.get('fecha')
         try:
             fecha = date.fromisoformat(valor)
         except (ValueError, TypeError):
-            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': None, 'dias': None, 'obs': datos.get('obs','')})
+            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': None, 'dias': None, 'obs': datos.get('obs',''), 'estado_gestion':gestion, 'avisos_pausados':pausado, 'fecha_cita':datos.get('fecha_cita')})
             continue
         dias = (fecha - hoy).days
         if dias <= 60:
-            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': fecha, 'dias': dias, 'obs': datos.get('obs','')})
+            avisos.append({'tecnico': tecnico, 'centro': TECNICOS[tecnico]['ci'], 'fecha': fecha, 'dias': dias, 'obs': datos.get('obs',''), 'estado_gestion':gestion, 'avisos_pausados':pausado, 'fecha_cita':datos.get('fecha_cita')})
     return sorted(avisos, key=lambda x: (999999 if x['dias'] is None else x['dias'], x['tecnico']))
 
 def texto_estado_prl(dias):
@@ -1778,13 +1788,46 @@ def render_tecnicos():
         cad_txt=f.strftime('%d/%m/%Y') if f else 'Sin información'
         st.markdown(f'''<div class="resource-card"><div class="title">🩺 Reconocimiento / PRL</div><div style="margin:7px 0"><span class="ci-badge {badge_class}">{escape(estado.upper())}</span></div><div class="resource-meta">Caducidad <b>{escape(cad_txt)}</b></div></div>''',unsafe_allow_html=True)
         datos=REGISTROS_PRL.get(t,{})
+        gestion=str(datos.get('estado_gestion','pendiente') or 'pendiente').lower()
+        etiquetas_gestion={'pendiente':'🔴 Pendiente','cita_solicitada':'🟠 Cita solicitada','cita_programada':'🔵 Cita programada'}
+        if gestion in ('cita_solicitada','cita_programada'):
+            cita_txt=''
+            if datos.get('fecha_cita'):
+                try: cita_txt=f" · Cita {date.fromisoformat(datos['fecha_cita']):%d/%m/%Y}"
+                except (ValueError,TypeError): pass
+            st.info(f"{etiquetas_gestion.get(gestion,gestion)}{cita_txt} · Avisos repetitivos pausados. La caducidad PRL sigue siendo la indicada arriba.")
         if EDITOR:
+            with st.expander('🩺 Gestión de cita PRL', expanded=gestion in ('cita_solicitada','cita_programada')):
+                if gestion == 'pendiente':
+                    st.caption('Al marcar la cita como solicitada se pausarán los avisos repetitivos de este PRL, sin modificar su caducidad.')
+                    if st.button('📅 Marcar cita solicitada',key=f'prl_cita_solicitada_{t}',use_container_width=True):
+                        nuevo=copy.deepcopy(REGISTROS_PRL); d=copy.deepcopy(nuevo.get(t,{}) or {}); d.update({'estado_gestion':'cita_solicitada','gestion_desde':datetime.now().isoformat(timespec='seconds'),'gestion_por':st.session_state.get('usuario_actual','')}); nuevo[t]=d
+                        if guardar_cambios({RUTA_PRL:nuevo},f'PRL · {t} · Cita solicitada · avisos pausados'): st.rerun()
+                else:
+                    c1,c2=st.columns([2,1])
+                    cita_actual=None
+                    try: cita_actual=date.fromisoformat(datos.get('fecha_cita')) if datos.get('fecha_cita') else None
+                    except (ValueError,TypeError): cita_actual=None
+                    fecha_cita=c1.date_input('Fecha de la cita',value=cita_actual,key=f'fecha_cita_prl_{t}')
+                    if c2.button('💾 Guardar cita',key=f'guardar_cita_prl_{t}',use_container_width=True):
+                        nuevo=copy.deepcopy(REGISTROS_PRL); d=copy.deepcopy(nuevo.get(t,{}) or {}); d.update({'estado_gestion':'cita_programada' if fecha_cita else 'cita_solicitada','fecha_cita':fecha_cita.isoformat() if fecha_cita else None,'gestion_desde':d.get('gestion_desde') or datetime.now().isoformat(timespec='seconds'),'gestion_por':st.session_state.get('usuario_actual','')}); nuevo[t]=d
+                        if guardar_cambios({RUTA_PRL:nuevo},f'PRL · {t} · Cita programada {fecha_cita:%d/%m/%Y}' if fecha_cita else f'PRL · {t} · Cita solicitada'): st.rerun()
+                    if st.button('↩️ Reactivar avisos',key=f'reactivar_prl_{t}',use_container_width=True):
+                        nuevo=copy.deepcopy(REGISTROS_PRL); d=copy.deepcopy(nuevo.get(t,{}) or {}); d.update({'estado_gestion':'pendiente','fecha_cita':None,'gestion_desde':None,'gestion_por':None}); nuevo[t]=d
+                        if guardar_cambios({RUTA_PRL:nuevo},f'PRL · {t} · Avisos reactivados'): st.rerun()
             with st.expander('✏️ Editar reconocimiento y acceso'):
                 with st.form(f'prl_{t}'):
                     nip=st.text_input('NIP',value=datos.get('nip','')); dni=st.text_input('DNI',value=datos.get('dni','')); cad=st.date_input('Caducidad',value=f or date.today()); obs=st.text_input('Observaciones',value=datos.get('obs','')); sin_fecha=st.checkbox('Fecha desconocida',value=f is None); guardar=st.form_submit_button('Guardar reconocimiento',type='primary')
                 if guardar:
-                    nuevo=copy.deepcopy(REGISTROS_PRL); nuevo[t]={'nip':nip,'dni':dni,'fecha':None if sin_fecha else cad.isoformat(),'obs':obs}
-                    if guardar_cambios({RUTA_PRL:nuevo},f'Actualización PRL: {t}'): st.rerun()
+                    fecha_nueva=None if sin_fecha else cad.isoformat(); fecha_anterior=datos.get('fecha')
+                    nuevo=copy.deepcopy(REGISTROS_PRL); d=copy.deepcopy(datos)
+                    d.update({'nip':nip,'dni':dni,'fecha':fecha_nueva,'obs':obs})
+                    # Si cambia la caducidad, se considera renovación/nueva planificación y se reinicia la gestión.
+                    if fecha_nueva != fecha_anterior:
+                        d.update({'estado_gestion':'pendiente','fecha_cita':None,'gestion_desde':None,'gestion_por':None})
+                    nuevo[t]=d
+                    accion=f'Actualización PRL: {t}' + (' · nueva caducidad, avisos reactivados' if fecha_nueva != fecha_anterior else '')
+                    if guardar_cambios({RUTA_PRL:nuevo},accion): st.rerun()
     eventos=[]
     for (a,n,m,dia),val in REGISTROS.items():
         if n==t and a==dd_anio:
@@ -2505,8 +2548,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.6</div><div class="sub">Solicitudes · control de solapamientos y cobertura por CI</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.7</div><div class="sub">PRL · gestión de citas y pausa controlada de avisos</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.7','29/09/2026','Gestión de citas y avisos PRL','Nuevo estado de gestión del reconocimiento: cita solicitada o programada. Estos estados pausan los avisos repetitivos sin ocultar la caducidad real; permiten guardar fecha de cita, reactivar avisos y reinician automáticamente la gestión al registrar una nueva caducidad. Todas las acciones quedan auditadas.'),
       ('v16.6','28/09/2026','Control de solapamientos por CI','Antes de enviar una solicitud se comprueba la planificación de los compañeros del mismo CI. Si existe conflicto, el técnico debe confirmarlo expresamente. Coordinación vuelve a comprobarlo en tiempo real al aprobar, muestra el detalle y exige una segunda confirmación; la autorización queda auditada.'),
       ('v16.5','28/09/2026','Desglose diario HLD/HE','Las solicitudes por rango calculan cada jornada de forma individual, muestran un resumen previo fecha a fecha y consumen exactamente las horas reales de cada día, incluyendo viernes con jornada reducida.'),
       ('v16.4','28/09/2026','Jornada real precargada en HLD/HE','Al solicitar HLD o consumir HE, las horas por día se precargan con la jornada real máxima del técnico. El límite se adapta al periodo seleccionado y el técnico puede reducirlo para peticiones parciales.'),
@@ -2892,4 +2936,5 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
 
