@@ -356,7 +356,18 @@ button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!
 .ops-hero{background:linear-gradient(135deg,#123b49,#07566a);color:white;border-radius:16px;padding:18px 21px;margin:7px 0 16px;box-shadow:0 8px 22px rgba(15,43,56,.10)}
 .ops-hero .k{font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;opacity:.70}.ops-hero .t{font-size:20px;font-weight:800;margin-top:4px}.ops-hero .n{font-size:12px;opacity:.80;margin-top:4px}
 .ops-card{background:#fff;border:1px solid var(--ci-border);border-radius:14px;padding:17px 18px;box-shadow:0 4px 14px rgba(15,43,56,.035);margin:7px 0 14px}.ops-card .title{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#718493;margin-bottom:5px}.ops-card .note{font-size:12px;color:#718493}
-@media (max-width:900px){.block-container{padding-top:1rem}.ci-sep{display:none}.ci-statusbar{gap:3px}h1{font-size:1.65rem!important;}.ci-page-intro{display:block;}}
+/* v16.14.4 · Responsive: escritorio intacto, adaptación automática tablet/móvil */
+@media (max-width:1100px){.block-container{padding-left:1.25rem!important;padding-right:1.25rem!important}[data-testid="stHorizontalBlock"]{gap:.75rem!important}.grid-wrap,[data-testid="stDataFrame"]{max-width:100%;overflow-x:auto!important}}
+@media (max-width:768px){
+.block-container{padding-top:.85rem!important;padding-left:.72rem!important;padding-right:.72rem!important;padding-bottom:1.5rem!important}h1{font-size:1.55rem!important;line-height:1.15!important}h2{font-size:1.20rem!important;margin-top:1.05rem!important}h3{font-size:1rem!important}
+[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:.55rem!important}[data-testid="stHorizontalBlock"]>[data-testid="column"]{min-width:100%!important;width:100%!important;flex:1 1 100%!important}
+[data-testid="stMetric"]{padding:13px 14px!important;min-height:auto!important}[data-testid="stMetricValue"]{font-size:1.55rem!important}.ci-statusbar{gap:2px;margin:.45rem 0 .8rem;padding:7px 8px}.ci-statusitem{font-size:10.5px;padding:2px 5px}.ci-sep{display:none}.ci-page-intro{display:block;margin-bottom:10px}
+.ci-card,.ci-panel,.ops-card{padding:14px!important;margin-bottom:11px!important;min-height:0!important}.tech-hero,.ops-hero{padding:15px 16px!important;border-radius:13px!important;margin-bottom:12px!important}.tech-hero .name{font-size:19px!important}.ops-hero .t{font-size:18px!important}
+.info-card,.resource-card{padding:14px!important;min-height:0!important;margin-bottom:9px!important}.info-row{gap:8px;font-size:11.5px;align-items:flex-start}.info-row span{flex:0 0 42%}.info-row b{flex:1;min-width:0}
+.grid-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}.grid{min-width:760px!important;font-size:11px!important}.grid th,.grid td{padding:8px 6px!important}.grid .name{min-width:165px!important}[data-testid="stDataFrame"]{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{overflow-x:auto!important;flex-wrap:nowrap!important;justify-content:flex-start!important}[data-testid="stTabs"] [data-baseweb="tab"]{flex:0 0 auto!important;padding:0 11px!important;white-space:nowrap!important}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{width:100%!important;min-height:2.75rem!important}.tag{font-size:10px;padding:4px 7px;margin:2px}}
+@media (max-width:480px){.block-container{padding-left:.55rem!important;padding-right:.55rem!important}h1{font-size:1.4rem!important}.tech-hero .name{font-size:18px!important}.ci-statusitem{font-size:10px}.info-row{display:block;padding:7px 0}.info-row span{display:block;margin-bottom:2px;font-size:10.5px}.info-row b{display:block;text-align:left;font-size:11.5px}.info-card .title,.resource-card .title{margin-bottom:8px}[data-testid="stMetric"]{padding:11px 12px!important}[data-testid="stMetricLabel"]{font-size:.72rem!important}[data-testid="stMetricValue"]{font-size:1.4rem!important}.grid{min-width:700px!important}}
 </style>''', unsafe_allow_html=True)
 
 BASE = Path(__file__).resolve().parent
@@ -1909,7 +1920,7 @@ def render_tecnicos():
       <div class="info-row"><span>Bolsa de parada</span><b><span class="status-badge {bolsa_class}">{bolsa_badge}</span>{bolsa_detalle}</b></div>
       <div style="padding-top:10px;color:#8b9aaa;font-size:.78rem;">Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.</div>
     </div>"""
-    # v16.14.3 · Un único componente visual de Horario del CI para todos los roles.
+    # v16.14.4 · Un único componente visual de Horario del CI para todos los roles.
     # Técnico y Editor ven exactamente la misma tarjeta corporativa; únicamente
     # el Editor dispone del formulario de edición que aparece a continuación.
     st.markdown(horario_html, unsafe_allow_html=True)
@@ -2836,7 +2847,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
     versiones=[
-      ('v16.14.3','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
+      ('v16.14.4','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
       ('v16.14.2','30/09/2026','Ajuste visual ficha técnica','Compacta la tarjeta Horario del CI en el perfil Técnico, igualando su jerarquía visual con la vista Editor sin reintroducir HTML dinámico conflictivo ni el error React removeChild.'),
       ('v16.14.1','30/09/2026','Ficha técnica y registro persistente','Unifica visualmente Horario del CI en la ficha del rol Técnico usando componentes estables y mueve Registrar novedad a la parte superior del Cuadrante del Editor con un panel destacado y apertura persistente durante los reruns.'),
       ('v16.14','30/09/2026','Navegación y experiencia reorganizadas','Notificaciones pasa a ser una sección propia del menú lateral para Técnico y Editor; Mi espacio e Inicio quedan centrados en situación operativa, y Técnicos abre por defecto la ficha del usuario conectado.'),
