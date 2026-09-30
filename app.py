@@ -58,6 +58,7 @@ RUTA_SEGUIMIENTO_CI = "seguimiento_ci_repsol.json"
 RUTA_SOLICITUDES = "solicitudes_repsol.json"
 RUTA_AVISOS_COORD = "avisos_coordinacion_repsol.json"
 RUTA_NOTIFICACIONES_LEIDAS = "notificaciones_leidas_repsol.json"
+RUTA_NOTAS_COORD = "notas_coordinacion_repsol.json"
 CONFIG_NOTIFICACIONES_DEFAULT = {
     "notificar_tecnicos": True,
     "resumen_coordinacion_semanal": False,
@@ -640,7 +641,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_FESTIVOS_META, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, RUTA_NOTAS_COORD, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -788,6 +789,7 @@ SEGUIMIENTO_CI = cargar_json(RUTA_SEGUIMIENTO_CI, {})
 SOLICITUDES = cargar_json(RUTA_SOLICITUDES, [])
 AVISOS_COORD = cargar_json(RUTA_AVISOS_COORD, [])
 NOTIFICACIONES_LEIDAS = cargar_json(RUTA_NOTIFICACIONES_LEIDAS, {})
+NOTAS_COORD = cargar_json(RUTA_NOTAS_COORD, [])
 REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
@@ -857,6 +859,41 @@ def disponibilidad(tecnico, fecha):
         return ('Parcial' if resto else 'Ausente'), resto
     return ('Formación' if tipo == 'CF' else 'Ausente'), 0.
 
+def _texto_busqueda(*partes):
+    return ' '.join(str(x or '') for x in partes).casefold()
+
+def resultados_busqueda_global(consulta):
+    q = str(consulta or '').strip().casefold()
+    if len(q) < 2:
+        return []
+    if ES_TECNICO:
+        propio = str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
+        ci_propio = TECNICOS.get(propio, {}).get('ci')
+        permitidos = {t for t,d in TECNICOS.items() if d.get('activo', True) and d.get('ci') == ci_propio}
+    else:
+        propio = ''
+        permitidos = set(TECNICOS)
+    out=[]
+    for t in sorted(permitidos):
+        d=TECNICOS.get(t,{}) or {}; pf=PERFILES_TECNICOS.get(t,{}) or {}; prl=REGISTROS_PRL.get(t,{}) or {}
+        mat=str(pf.get('matricula','') or ''); veh=VEHICULOS.get(mat,{}) or {}
+        blob=_texto_busqueda(t,d.get('ci'),pf.get('correo'),pf.get('telefono'),pf.get('codigo_indra'),pf.get('usuario_repsol'),pf.get('mail_repsol'),pf.get('atex'),pf.get('plk_sim_atex'),mat,veh.get('modelo'),prl.get('obs'),'PRL')
+        if q in blob:
+            out.append({'tipo':'Técnico','titulo':t,'detalle':f"{d.get('ci','')} · {mat or 'Sin vehículo'}",'destino':'Técnicos','tecnico':t})
+    guardias = REGISTROS_GUARDIAS if EDITOR else [g for g in REGISTROS_GUARDIAS if g.get('tecnico') == propio]
+    for g in guardias:
+        if q in _texto_busqueda(g.get('tecnico'),g.get('centro'),g.get('inicio'),g.get('fin'),'guardia'):
+            out.append({'tipo':'Guardia','titulo':str(g.get('tecnico','')),'detalle':f"{g.get('centro','')} · {g.get('inicio','')} → {g.get('fin','')}",'destino':'Guardias'})
+    solicitudes = SOLICITUDES if EDITOR else [x for x in SOLICITUDES if x.get('tecnico') == propio]
+    for x in solicitudes:
+        if q in _texto_busqueda(x.get('tecnico'),x.get('tipo'),x.get('estado'),x.get('desde'),x.get('hasta'),x.get('comentario'),'solicitud'):
+            out.append({'tipo':'Solicitud','titulo':f"{x.get('tecnico','')} · {x.get('tipo','')}",'detalle':f"{x.get('desde','')} → {x.get('hasta','')} · {x.get('estado','')}",'destino':'Solicitudes'})
+    if EDITOR:
+        for n in NOTAS_COORD:
+            if q in _texto_busqueda(n.get('tecnico'),n.get('texto'),n.get('estado'),n.get('autor'),'nota'):
+                out.append({'tipo':'Nota','titulo':str(n.get('tecnico','')),'detalle':str(n.get('texto',''))[:90],'destino':'Técnicos','tecnico':n.get('tecnico','')})
+    return out[:12]
+
 CENTROS = sorted({v['ci'] for v in TECNICOS.values()})
 logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
@@ -871,6 +908,24 @@ st.markdown(r'''<style>
 </style>''', unsafe_allow_html=True)
 
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
+
+# v16.15 · Buscador global superior. Respeta el alcance del rol conectado.
+st.sidebar.markdown('<div class="ci-section-label" style="margin-top:4px">BÚSQUEDA GLOBAL</div>', unsafe_allow_html=True)
+_busqueda_global = st.sidebar.text_input('Buscar en la plataforma', placeholder='David, PRL, 2959MZM…', label_visibility='collapsed', key='busqueda_global')
+_resultados_global = resultados_busqueda_global(_busqueda_global) if len(_busqueda_global.strip()) >= 2 else []
+if _busqueda_global.strip() and len(_busqueda_global.strip()) < 2:
+    st.sidebar.caption('Escribe al menos 2 caracteres.')
+elif _busqueda_global.strip() and not _resultados_global:
+    st.sidebar.caption('Sin resultados con tus permisos actuales.')
+elif _resultados_global:
+    with st.sidebar.expander(f'🔎 Resultados · {len(_resultados_global)}', expanded=True):
+        for _i,_r in enumerate(_resultados_global):
+            st.caption(f"{_r['tipo']} · {_r['detalle']}")
+            if st.button(_r['titulo'], key=f"global_{_i}_{hashlib.md5((_r['tipo']+_r['titulo']+str(_i)).encode()).hexdigest()[:8]}", use_container_width=True):
+                st.session_state['nav_destino'] = _r['destino']
+                if _r.get('tecnico'):
+                    st.session_state['tecnico_busqueda_global'] = _r['tecnico']
+                st.rerun()
 if ES_TECNICO:
     NAV_LABELS = {
         '🏠 Mi espacio':'Inicio',
@@ -898,7 +953,14 @@ else:
         '🧩 Versiones':'Versiones',
     }
     st.sidebar.markdown('<div class="ci-section-label">COORDINACIÓN · OPERACIÓN · GESTIÓN</div>', unsafe_allow_html=True)
-pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
+_nav_destino = st.session_state.pop('nav_destino', None)
+_nav_opciones = list(NAV_LABELS)
+_nav_index = 0
+if _nav_destino:
+    for _i,_lab in enumerate(_nav_opciones):
+        if NAV_LABELS[_lab] == _nav_destino:
+            _nav_index = _i; break
+pagina_label = st.sidebar.radio('Navegación', _nav_opciones, index=_nav_index, label_visibility='collapsed', key='navegacion_principal')
 pagina = NAV_LABELS[pagina_label]
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 if ES_TECNICO:
@@ -1860,7 +1922,10 @@ def render_tecnicos():
     indice_prop=opciones_tecnicos.index(propio) if propio in opciones_tecnicos else 0
     if ES_TECNICO:
         st.caption('Consulta tu ficha o la información operativa de tus compañeros del CI.')
-    t = st.selectbox('Buscar técnico',opciones_tecnicos,index=indice_prop)
+    _tec_global = st.session_state.pop('tecnico_busqueda_global', '')
+    if _tec_global in opciones_tecnicos:
+        indice_prop = opciones_tecnicos.index(_tec_global)
+    t = st.selectbox('Buscar técnico',opciones_tecnicos,index=indice_prop, key='selector_ficha_tecnico')
     perfil = PERFILES_TECNICOS.get(t, {})
     centro_t = TECNICOS[t]['ci']
     matricula = perfil.get('matricula','')
@@ -1927,7 +1992,49 @@ def render_tecnicos():
             if guardar_perfil:
                 nuevo=copy.deepcopy(PERFILES_TECNICOS); perfil_nuevo=copy.deepcopy(nuevo.get(t,{})); perfil_nuevo.update({'correo':correo.strip(),'telefono':telefono.strip(),'codigo_indra':codigo_indra.strip(),'usuario_repsol':usuario.strip(),'mail_repsol':mail.strip(),'telf_fijo':fijo.strip(),'atex':atex.strip(),'plk_sim_atex':plk.strip(),'matricula':matricula_edit}); nuevo[t]=perfil_nuevo
                 if guardar_cambios({RUTA_PERFILES:nuevo},f'Perfil corporativo: {t}'): st.rerun()
-    st.markdown('<div class="ci-section-label">Recursos y habilitaciones</div>',unsafe_allow_html=True)
+    # v16.15 · Notas internas de Coordinación. Nunca se muestran al rol Técnico.
+    if EDITOR:
+        st.markdown('<div class="ci-section-label">Notas internas · Coordinación</div>', unsafe_allow_html=True)
+        notas_t = [n for n in NOTAS_COORD if n.get('tecnico') == t]
+        pendientes_n = [n for n in notas_t if n.get('estado','pendiente') == 'pendiente']
+        resueltas_n = [n for n in notas_t if n.get('estado') == 'resuelta']
+        cna,cnb = st.columns([3,1])
+        cna.markdown(f'''<div class="ops-card" style="border-left:4px solid #0d5869"><div class="title">📝 NOTAS INTERNAS</div><div style="font-size:1rem;font-weight:800;color:#173542">{len(pendientes_n)} pendiente(s)</div><div class="note">Información operativa privada de Coordinación. No es visible para el técnico ni se incluye en informes generales.</div></div>''', unsafe_allow_html=True)
+        cnb.metric('Histórico', len(notas_t))
+        with st.expander('＋ Añadir nota de Coordinación', expanded=False):
+            with st.form(f'nueva_nota_{t}', clear_on_submit=True):
+                texto_nota = st.text_area('Nota', placeholder='Ej.: Pendiente renovar ATEX. Cita solicitada…')
+                crear_nota = st.form_submit_button('Guardar nota', type='primary')
+            if crear_nota:
+                texto_nota = texto_nota.strip()
+                if not texto_nota:
+                    st.warning('Escribe el contenido de la nota.')
+                else:
+                    nueva = {'id':hashlib.sha256(f"{t}|{datetime.now().isoformat()}|{texto_nota}".encode()).hexdigest()[:16], 'tecnico':t, 'texto':texto_nota, 'estado':'pendiente', 'fecha':datetime.now().isoformat(timespec='seconds'), 'autor':st.session_state.usuario_actual, 'resuelta_fecha':'', 'resuelta_por':''}
+                    if guardar_cambios({RUTA_NOTAS_COORD:NOTAS_COORD+[nueva]}, f'Nota coordinación creada: {t}'):
+                        st.rerun()
+        for n in sorted(pendientes_n, key=lambda x:x.get('fecha',''), reverse=True):
+            try: fecha_n=datetime.fromisoformat(n.get('fecha','')).strftime('%d/%m/%Y %H:%M')
+            except (ValueError,TypeError): fecha_n=str(n.get('fecha',''))
+            with st.container(border=True):
+                st.markdown(f"**🟠 Pendiente** · {escape(fecha_n)} · {escape(str(n.get('autor','')))}")
+                st.write(n.get('texto',''))
+                if st.button('✓ Marcar como resuelta', key=f"resolver_nota_{n.get('id','')}"):
+                    nuevas=copy.deepcopy(NOTAS_COORD)
+                    for item in nuevas:
+                        if item.get('id') == n.get('id'):
+                            item['estado']='resuelta'; item['resuelta_fecha']=datetime.now().isoformat(timespec='seconds'); item['resuelta_por']=st.session_state.usuario_actual
+                    if guardar_cambios({RUTA_NOTAS_COORD:nuevas}, f'Nota coordinación resuelta: {t}'):
+                        st.rerun()
+        if resueltas_n:
+            with st.expander(f'Histórico de notas resueltas · {len(resueltas_n)}'):
+                for n in sorted(resueltas_n, key=lambda x:x.get('resuelta_fecha') or x.get('fecha',''), reverse=True):
+                    try: fecha_n=datetime.fromisoformat(n.get('fecha','')).strftime('%d/%m/%Y %H:%M')
+                    except (ValueError,TypeError): fecha_n=str(n.get('fecha',''))
+                    st.markdown(f"**✓ Resuelta** · {fecha_n} · {n.get('autor','')}  ")
+                    st.caption(n.get('texto',''))
+
+    st.markdown('<div class=\"ci-section-label\">Recursos y habilitaciones</div>',unsafe_allow_html=True)
     vcol,pcol=st.columns(2)
     with vcol:
         tarjeta=str(veh.get('tarjeta','')) if veh else ''; masked=('•••• '+tarjeta[-4:]) if tarjeta else 'Sin tarjeta registrada'
@@ -2834,8 +2941,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.15</div><div class="sub">Buscador global y notas de Coordinación</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.15','30/09/2026','Buscador global y notas de Coordinación','Añade búsqueda global superior con resultados según permisos y navegación contextual a técnicos, vehículos, PRL, guardias y solicitudes. Incorpora notas internas privadas por técnico para Coordinación, con autor, fecha, estado pendiente/resuelta e histórico persistente.'),
       ('v16.14.3','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
       ('v16.14.2','30/09/2026','Ajuste visual ficha técnica','Compacta la tarjeta Horario del CI en el perfil Técnico, igualando su jerarquía visual con la vista Editor sin reintroducir HTML dinámico conflictivo ni el error React removeChild.'),
       ('v16.14.1','30/09/2026','Ficha técnica y registro persistente','Unifica visualmente Horario del CI en la ficha del rol Técnico usando componentes estables y mueve Registrar novedad a la parte superior del Cuadrante del Editor con un panel destacado y apertura persistente durante los reruns.'),
@@ -3191,7 +3299,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_FESTIVOS_META:FESTIVOS_META,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_FESTIVOS_META:FESTIVOS_META,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,RUTA_NOTAS_COORD:NOTAS_COORD,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -3297,3 +3405,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
