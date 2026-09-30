@@ -1814,6 +1814,21 @@ def render_cuadrante():
     vista = cols[1].radio('Vista',['Equipo','Individual'],horizontal=True)
     seleccion = cols[2].selectbox('Técnico', ['Todos']+visibles if vista=='Equipo' else visibles)
     equipo = visibles if seleccion=='Todos' else [seleccion]
+
+    # v16.14.1 · Acción principal de Coordinación siempre visible y persistente.
+    # El toggle conserva su estado durante los reruns de Streamlit, por lo que
+    # cambiar técnico, fechas o tipo de novedad no vuelve a ocultar el formulario.
+    if EDITOR:
+        st.markdown('''<div class="ops-card" style="border-left:5px solid #ff4b55;margin:8px 0 12px;">
+          <div class="title" style="color:#b4232d;">GESTIÓN DEL CUADRANTE</div>
+          <div style="font-size:16px;font-weight:800;color:#173542;">＋ Registrar novedad</div>
+          <div class="note">Vacaciones, VPA, HLD, HE, formación, bajas y permisos. El formulario permanecerá abierto mientras trabajas con él.</div>
+        </div>''', unsafe_allow_html=True)
+        mostrar_registro = st.toggle('Mostrar formulario de registro', value=False, key='mostrar_registro_cuadrante')
+        if mostrar_registro:
+            with st.container(border=True):
+                registrar_ausencia()
+
     contenido = cuadrante_html(equipo,mes,dd_anio)
     st.markdown(contenido,unsafe_allow_html=True)
     with st.expander('Leyenda de estados'):
@@ -1836,9 +1851,8 @@ def render_cuadrante():
                            file_name=f'informe_ci_{dd_anio}_{mes:02d}.html',mime='text/html',
                            key='descarga_informe_ampliado')
         st.caption('Cuadrante, cobertura, PRL, ausencias, saldos y festivos. Respeta los mismos filtros.')
-    if EDITOR:
-        with st.expander('＋ Registrar novedad · ausencia, permiso, HLD o HE',expanded=False): registrar_ausencia()
-    else: st.caption('Modo consulta: no puedes modificar registros.')
+    if not EDITOR:
+        st.caption('Modo consulta: no puedes modificar registros.')
 
 def render_tecnicos():
     opciones_tecnicos=list(visibles)
@@ -1898,20 +1912,26 @@ def render_tecnicos():
     # v16.12.2 · Evita HTML dinámico complejo en el perfil del rol Técnico.
     # Streamlit gestiona íntegramente estos nodos para prevenir NoFoundError/removeChild.
     if ES_TECNICO:
+        # Misma jerarquía visual que la tarjeta del Editor, pero construida con
+        # componentes nativos para mantener estable el DOM del perfil Técnico.
         with st.container(border=True):
-            st.markdown(f"**🕐 Horario del CI · {centro_t}**")
-            hc1, hc2 = st.columns(2)
-            with hc1:
-                st.caption('HORARIO')
-                st.write(horario_txt)
-            with hc2:
-                st.caption('HORAS SEMANALES')
-                st.write(semanal_txt)
-            st.caption('OBSERVACIONES')
-            st.write(obs_horario)
-            st.caption('BOLSA DE PARADA')
-            st.write(('🟠 ' if bolsa_activa else '🟢 ') + bolsa_txt)
-            st.caption(f'Información organizativa del CI para {dd_anio} · Solo lectura · No altera las reglas de cálculo.')
+            st.caption(f'🕐 HORARIO DEL CI · {centro_t.upper()}')
+            filas_horario = [
+                ('Horario', horario_txt),
+                ('Horas semanales', semanal_txt),
+                ('Observaciones', obs_horario),
+            ]
+            for etiqueta, valor in filas_horario:
+                izq, der = st.columns([1, 2.2], vertical_alignment='center')
+                izq.caption(etiqueta)
+                der.markdown(f"<div style='text-align:right;font-size:0.86rem;font-weight:700;color:#173542'>{escape(str(valor))}</div>", unsafe_allow_html=True)
+            izq, der = st.columns([1, 2.2], vertical_alignment='center')
+            izq.caption('Bolsa de parada')
+            if bolsa_activa:
+                der.warning(f'ACTIVA · {bolsa_txt.replace("Activa · ","")}', icon='🟠')
+            else:
+                der.success('NO ACTIVA', icon='🟢')
+            st.caption(f'Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.')
     else:
         st.markdown(horario_html, unsafe_allow_html=True)
     if EDITOR:
@@ -2835,8 +2855,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14</div><div class="sub">Navegación y experiencia reorganizadas</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.14.1','30/09/2026','Ficha técnica y registro persistente','Unifica visualmente Horario del CI en la ficha del rol Técnico usando componentes estables y mueve Registrar novedad a la parte superior del Cuadrante del Editor con un panel destacado y apertura persistente durante los reruns.'),
       ('v16.14','30/09/2026','Navegación y experiencia reorganizadas','Notificaciones pasa a ser una sección propia del menú lateral para Técnico y Editor; Mi espacio e Inicio quedan centrados en situación operativa, y Técnicos abre por defecto la ficha del usuario conectado.'),
       ('v16.11','30/09/2026','Liquidación mensual de guardias','Resumen mensual de semanas completas lunes–domingo, periodo de devengo, importe a 140 € brutos por semana, detalle por técnico y envío conjunto por email a Coordinación.'),
       ('v16.12','30/09/2026','Excel mensual de guardias y código Indra','Código empleado Indra en la ficha de cada técnico y descarga del Excel mensual de PLUS MENSAFONO con semanas reales, importe, proyecto, fechas de devengo y comentario.'),
