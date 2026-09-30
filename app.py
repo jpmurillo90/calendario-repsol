@@ -1778,16 +1778,16 @@ def render_tecnicos():
             bolsa_txt = f"Activa · {bolsa_ini:%d/%m/%Y} → {bolsa_fin:%d/%m/%Y}"
         except (TypeError, ValueError):
             bolsa_txt = f"Activa · {bolsa_ini} → {bolsa_fin}"
-    st.markdown(f'''
-    <div class="info-card" style="margin-top:14px">
-      <div class="title">🕐 Horario del CI · {escape(centro_t)}</div>
-      <div class="info-row"><span>Horario</span><b>{escape(horario_txt)}</b></div>
-      <div class="info-row"><span>Horas semanales</span><b>{escape(semanal_txt)}</b></div>
-      <div class="info-row"><span>Observaciones</span><b>{escape(obs_horario)}</b></div>
-      <div class="info-row"><span>Bolsa de parada</span><b>{escape(bolsa_txt)}</b></div>
-      <div class="resource-meta" style="margin-top:10px">ℹ️ Información organizativa del CI para {dd_anio}. La edición se realiza desde Configuración → Horarios CI. Esta tarjeta es informativa y no altera las reglas de cálculo.</div>
-    </div>
-    ''', unsafe_allow_html=True)
+    # v16.9.1 · Contenedor Streamlit aislado para evitar conflictos de reconciliación
+    # del DOM (React removeChild) con las tarjetas HTML superiores.
+    with st.container(border=True):
+        st.markdown(f"**🕐 Horario del CI · {escape(centro_t)}**")
+        hc1, hc2 = st.columns(2)
+        hc1.markdown(f"**Horario**  \n{escape(horario_txt)}")
+        hc2.markdown(f"**Horas semanales**  \n{escape(semanal_txt)}")
+        st.markdown(f"**Observaciones**  \n{escape(obs_horario)}")
+        st.markdown(f"**Bolsa de parada**  \n{escape(bolsa_txt)}")
+        st.caption(f"Información organizativa del CI para {dd_anio}. La edición se realiza desde Configuración → Horarios CI. Esta información no altera las reglas de cálculo.")
     if EDITOR:
         with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
@@ -2586,6 +2586,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.8</div><div class="sub">PRL · gestión integrada en reconocimiento</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
       ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
       ('v16.8','29/09/2026','Gestión PRL integrada','Integra el estado de gestión PRL, cita solicitada/programada y reactivación de avisos dentro de Editar reconocimiento y acceso, justo después de la caducidad, manteniendo auditoría y reinicio automático al renovar.'),
       ('v16.7','29/09/2026','Gestión de citas y avisos PRL','Nuevo estado de gestión del reconocimiento: cita solicitada o programada. Estos estados pausan los avisos repetitivos sin ocultar la caducidad real; permiten guardar fecha de cita, reactivar avisos y reinician automáticamente la gestión al registrar una nueva caducidad. Todas las acciones quedan auditadas.'),
@@ -2974,5 +2975,6 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
 
 
