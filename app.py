@@ -2588,6 +2588,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.8</div><div class="sub">PRL · gestión integrada en reconocimiento</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
       ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
       ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
@@ -2933,12 +2934,11 @@ def render_config():
         st.download_button('Descargar copia completa de los datos',buf.getvalue(),file_name=f'backup_ci_{date.today()}.zip',mime='application/zip')
         st.caption('Incluye todos los centros y años, no credenciales. Contiene datos personales: consérvala en un lugar restringido.')
         return
-    c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
     if opcion=='Festivos':
         # v16.10 · Gestión avanzada de festivos. Las fechas siguen usando la
         # estructura histórica (mes, día); los nombres se guardan aparte.
         destino = st.selectbox('Centro / ámbito', ['🌍 TODOS LOS CI'] + CENTROS,
-                               index=(CENTROS.index(c)+1 if c in CENTROS else 0),
+                               index=(CENTROS.index(centro)+1 if centro in CENTROS else 0),
                                key=f'fest_dest_{dd_anio}')
         st.caption('Usa “TODOS LOS CI” para festivos nacionales o comunes. Añadir/Eliminar mantiene la lógica actual de cálculo de jornada.')
 
@@ -2985,9 +2985,10 @@ def render_config():
         st.markdown('### 📅 Resumen de festivos por CI')
         st.caption(f'Festivos configurados para {dd_anio}. Los registros antiguos sin descripción se muestran como “Sin descripción”.')
         nombres_dia = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
-        for ci_res in CENTROS:
+        centros_resumen = CENTROS if destino == '🌍 TODOS LOS CI' else [destino]
+        for ci_res in centros_resumen:
             dias_ci = sorted(FESTIVOS_POR_ANIO.get(dd_anio,{}).get(ci_res,[]))
-            with st.expander(f'{ci_res} · {len(dias_ci)} festivo(s)', expanded=(ci_res==c)):
+            with st.expander(f'{ci_res} · {len(dias_ci)} festivo(s)', expanded=(destino != '🌍 TODOS LOS CI')):
                 filas=[]
                 meta_ci = FESTIVOS_META.get(str(dd_anio),{}).get(ci_res,{})
                 for m,d in dias_ci:
@@ -3001,6 +3002,7 @@ def render_config():
                 if filas: tabla(filas)
                 else: st.caption('No hay festivos configurados para este CI.')
     elif opcion=='Horarios':
+        c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
         actual = HORARIOS_CI_ANUAL.get(dd_anio,HORARIOS_CI_DEFAULT[dd_anio]).get(c,{})
         st.info('La descripción del horario es informativa. Se mantienen las reglas originales de cálculo de jornada; cambiar el texto no modifica esas reglas. La bolsa de parada sí afecta al cálculo.')
         with st.form(f'horario_{c}_{dd_anio}'):
@@ -3017,6 +3019,7 @@ def render_config():
             nuevo.setdefault(dd_anio,{})[c]={'horario':horario,'h_sem':semanal,'obs':obs,'bolsa_ini':ini if bolsa else None,'bolsa_fin':fin if bolsa else None}
             if guardar_cambios({RUTA_HORARIOS_CI:nuevo},f'Horario: {c}, {dd_anio}'): st.rerun()
     else:
+        c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
         valor = float(HLD_ANUAL_POR_ANIO.get(dd_anio,{}).get(c,87.))
         with st.form(f'hld_{c}_{dd_anio}'):
             horas = st.number_input('Horas HLD anuales',min_value=0.,max_value=1000.,value=valor,step=.5)
@@ -3030,3 +3033,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
