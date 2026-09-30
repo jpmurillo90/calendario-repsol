@@ -1956,6 +1956,53 @@ def resumen_guardias_tecnico(registros, tecnico, anio, mes=None):
     dias = sum((fin - ini).days + 1 for ini, fin in periodos)
     return len(periodos), dias
 
+def periodo_liquidacion_guardias(anio, mes):
+    primero = date(anio, mes, 1)
+    inicio = primero - timedelta(days=primero.weekday())
+    ultimo = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    fin = ultimo - timedelta(days=(ultimo.weekday() - 6) % 7)
+    return inicio, fin
+
+
+def semanas_completas_guardia(tecnico, anio, mes):
+    inicio, fin = periodo_liquidacion_guardias(anio, mes)
+    periodos = periodos_guardia_reales(REGISTROS_GUARDIAS, tecnico=tecnico)
+    semanas = []
+    lunes = inicio
+    while lunes + timedelta(days=6) <= fin:
+        domingo = lunes + timedelta(days=6)
+        if any(gi <= lunes and gf >= domingo for gi, gf in periodos):
+            semanas.append((lunes, domingo))
+        lunes += timedelta(days=7)
+    return semanas
+
+
+def resumen_liquidacion_guardias(anio, mes, equipo):
+    inicio, fin = periodo_liquidacion_guardias(anio, mes)
+    filas = []
+    for tecnico in equipo:
+        semanas = semanas_completas_guardia(tecnico, anio, mes)
+        if semanas:
+            filas.append({'Técnico':tecnico,'CI':TECNICOS.get(tecnico,{}).get('ci',''),'Semanas':len(semanas),'Periodo devengo':f'{inicio:%d/%m/%Y} → {fin:%d/%m/%Y}','Importe (€)':len(semanas)*140.0,'_semanas':semanas})
+    return inicio, fin, filas
+
+
+def html_liquidacion_guardias(anio, mes, equipo):
+    inicio, fin, filas = resumen_liquidacion_guardias(anio, mes, equipo)
+    total_sem = sum(x['Semanas'] for x in filas)
+    total_imp = sum(x['Importe (€)'] for x in filas)
+    rows = ''.join('<tr><td>'+escape(x['Técnico'])+'</td><td>'+escape(x['CI'])+'</td><td>'+str(x['Semanas'])+'</td><td>'+escape(x['Periodo devengo'])+'</td><td>'+f"{x['Importe (€)']:,.2f} €"+'</td></tr>' for x in filas)
+    if not rows: rows='<tr><td colspan="5">Sin semanas completas de guardia registradas.</td></tr>'
+    detalles=''.join('<p><b>'+escape(x['Técnico'])+'</b> · '+escape(x['CI'])+' · '+' · '.join(f'{a:%d/%m/%Y}–{b:%d/%m/%Y}' for a,b in x['_semanas'])+'</p>' for x in filas)
+    return ('<!doctype html><html lang="es"><head><meta charset="utf-8"><style>'
+            'body{font-family:Arial,sans-serif;color:#173542}table{width:100%;border-collapse:collapse}th{background:#123f4d;color:white;text-align:left;padding:8px}td{padding:8px;border-bottom:1px solid #dde5ea}.k{color:#6d8190;font-size:13px}'
+            '</style></head><body><h2>Resumen mensual de guardias · '+escape(MESES[mes])+' '+str(anio)+'</h2>'
+            '<p class="k">Periodo de devengo: '+inicio.strftime('%d/%m/%Y')+' → '+fin.strftime('%d/%m/%Y')+' · 140,00 € brutos por semana completa (lunes–domingo)</p>'
+            '<p><b>'+str(total_sem)+'</b> semanas completas · <b>'+f'{total_imp:,.2f} €'+'</b> importe total</p>'
+            '<table><thead><tr><th>Técnico</th><th>CI</th><th>Semanas</th><th>Periodo devengo</th><th>Importe</th></tr></thead><tbody>'+rows+'</tbody></table>'
+            '<h3>Detalle de semanas realizadas</h3>'+(detalles or '<p>Sin semanas completas registradas.</p>')+
+            '<p class="k">Uso interno · Gestión Técnicos CI · REPSOL · Generado '+datetime.now().strftime('%d/%m/%Y %H:%M')+'</p></body></html>')
+
 def guardias_calendario_html(equipo, mes, anio):
     ndias=calendar.monthrange(anio,mes)[1]; dias_sem=['L','M','X','J','V','S','D']; hoy=date.today()
     css="""<style>.gcal-wrap{overflow-x:auto;border:1px solid #dce5eb;border-radius:12px;background:white;margin:10px 0 18px}table.gcal{border-collapse:collapse;width:100%;min-width:1050px;font-size:11px}.gcal th{background:#123f4d;color:#fff;padding:8px 5px;border-right:1px solid #d7e0e5;text-align:center}.gcal th.name{min-width:190px;text-align:left;padding-left:12px}.gcal td{height:42px;text-align:center;border-right:1px solid #e3e9ed;border-bottom:1px solid #e3e9ed;padding:3px}.gcal td.name{text-align:left;padding:7px 10px;white-space:nowrap}.gcal .ci{display:block;color:#607584;font-size:10px;margin-top:2px}.gcal .weekend{background:#f1f3f5}.gcal .guard{background:#c9e7f0;color:#0b5267;font-weight:800}.gcal .today{box-shadow:inset 0 0 0 2px #008bb0}.gcal .dow{display:block;font-size:9px;margin-top:2px;opacity:.9}</style>"""
@@ -2049,7 +2096,7 @@ def render_guardias():
     c1,c2,c3,c4,c5=st.columns(5)
     for col,label,val in [(c1,'Periodos de guardia',total_periodos_anio),(c2,'Días de guardia',total_dias_anio),(c3,'Activaciones',len(acts_anio)),(c4,'HE por activaciones',f'{total_he:g} h'),(c5,'Importe activaciones',f'{total_importe:,.2f} €')]:
         col.markdown(f'<div class="guard-kpi"><small>{label}</small><strong>{val}</strong></div>',unsafe_allow_html=True)
-    tab_plan,tab_act,tab_calc,tab_res,tab_inf=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen','📄 Informe'])
+    tab_plan,tab_act,tab_calc,tab_res,tab_liq,tab_inf=st.tabs(['📅 Planificación','⚡ Activaciones','🧮 Calculadora','📊 Resumen','💶 Liquidación mensual','📄 Informe'])
     perfil_usuario = usuarios.get(st.session_state.get('usuario_id',''), {}) if hasattr(usuarios, 'get') else {}
     tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
     tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
@@ -2188,6 +2235,33 @@ def render_guardias():
                 if periodos_mes or aa: filas.append({'CI':ci,'Mes':MESES[mes],'Periodos':periodos_mes,'Días de guardia':dias_mes,'Activaciones':len(aa),'HE generadas':round(sum(float(a.get('he_generadas',0) or 0) for a in aa),2),'Importe bruto (€)':round(sum(float(a.get('importe',0) or 0) for a in aa),2)})
         tabla(filas)
         st.caption('La hoja original indica una estimación de 5 activaciones de guardia máximo al año por cada CCII; se muestra como referencia, no como bloqueo.')
+
+    with tab_liq:
+        st.markdown('#### Liquidación mensual de guardias')
+        st.caption('Solo se contabilizan semanas completas de lunes a domingo. Cada semana completa registrada se valora en 140,00 € brutos.')
+        mes_liq=st.selectbox('Mes de liquidación',list(MESES),index=(date.today().month-1 if date.today().year==dd_anio else 0),format_func=MESES.get,key='guard_liq_mes')
+        equipo_liq=[t for t in visibles if centro=='Todos' or TECNICOS[t]['ci']==centro]
+        if not EDITOR and tecnico_sesion:
+            equipo_liq=[tecnico_sesion]
+        ini_liq,fin_liq,filas_liq=resumen_liquidacion_guardias(dd_anio,mes_liq,equipo_liq)
+        total_sem=sum(x['Semanas'] for x in filas_liq); total_imp=sum(x['Importe (€)'] for x in filas_liq)
+        l1,l2,l3=st.columns(3)
+        l1.metric('Periodo de devengo',f'{ini_liq:%d/%m} → {fin_liq:%d/%m}')
+        l2.metric('Semanas completas',total_sem)
+        l3.metric('Importe total',f'{total_imp:,.2f} €')
+        tabla([{'Técnico':x['Técnico'],'CI':x['CI'],'Semanas':x['Semanas'],'Periodo devengo':x['Periodo devengo'],'Importe (€)':x['Importe (€)']} for x in filas_liq])
+        with st.expander('Ver detalle de las semanas contabilizadas',expanded=False):
+            tabla([{'Técnico':x['Técnico'],'CI':x['CI'],'Semana':f'{a:%d/%m/%Y} → {b:%d/%m/%Y}','Importe (€)':140.0} for x in filas_liq for a,b in x['_semanas']])
+        if EDITOR:
+            st.markdown('##### Enviar resumen')
+            destino_liq=str(secreto('GMAIL_DESTINATARIO','')).strip()
+            st.caption(f'Destinatario configurado: {destino_liq or "No configurado"}')
+            confirmar_liq=st.checkbox('Confirmo que quiero enviar el resumen mensual de guardias.',key='guard_liq_confirm')
+            if st.button('📧 Enviar resumen',type='primary',disabled=not confirmar_liq or not destino_liq,key='guard_liq_send'):
+                asunto=f'Guardias REPSOL · {MESES[mes_liq]} {dd_anio} · Resumen conjunto'
+                ok,msg=enviar_email_html(asunto,html_liquidacion_guardias(dd_anio,mes_liq,equipo_liq),destino_liq)
+                if ok: st.success(msg)
+                else: st.error(msg)
 
     with tab_inf:
         st.markdown('#### Informe de guardias')
@@ -2586,8 +2660,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.8</div><div class="sub">PRL · gestión integrada en reconocimiento</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.11</div><div class="sub">Guardias · liquidación mensual conjunta</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.11','30/09/2026','Liquidación mensual de guardias','Resumen mensual de semanas completas lunes–domingo, periodo de devengo, importe a 140 € brutos por semana, detalle por técnico y envío conjunto por email a Coordinación.'),
       ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
       ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
@@ -3033,4 +3108,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
