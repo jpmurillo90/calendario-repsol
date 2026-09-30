@@ -1808,7 +1808,25 @@ def render_tecnicos():
       <div class="info-row"><span>Bolsa de parada</span><b><span class="status-badge {bolsa_class}">{bolsa_badge}</span>{bolsa_detalle}</b></div>
       <div style="padding-top:10px;color:#8b9aaa;font-size:.78rem;">Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.</div>
     </div>"""
-    st.markdown(horario_html, unsafe_allow_html=True)
+    # v16.12.2 · Evita HTML dinámico complejo en el perfil del rol Técnico.
+    # Streamlit gestiona íntegramente estos nodos para prevenir NoFoundError/removeChild.
+    if ES_TECNICO:
+        with st.container(border=True):
+            st.markdown(f"**🕐 Horario del CI · {centro_t}**")
+            hc1, hc2 = st.columns(2)
+            with hc1:
+                st.caption('HORARIO')
+                st.write(horario_txt)
+            with hc2:
+                st.caption('HORAS SEMANALES')
+                st.write(semanal_txt)
+            st.caption('OBSERVACIONES')
+            st.write(obs_horario)
+            st.caption('BOLSA DE PARADA')
+            st.write(('🟠 ' if bolsa_activa else '🟢 ') + bolsa_txt)
+            st.caption(f'Información organizativa del CI para {dd_anio} · Solo lectura · No altera las reglas de cálculo.')
+    else:
+        st.markdown(horario_html, unsafe_allow_html=True)
     if EDITOR:
         with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
@@ -2736,6 +2754,7 @@ def render_versiones():
       ('v16.12','30/09/2026','Excel mensual de guardias y código Indra','Código empleado Indra en la ficha de cada técnico y descarga del Excel mensual de PLUS MENSAFONO con semanas reales, importe, proyecto, fechas de devengo y comentario.'),
       ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
       ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
+      ('v16.12.2','30/09/2026','Corrección perfil Técnico','Corrige el error React/DOM removeChild en la ficha del rol Técnico renderizando Horario del CI con componentes nativos y estables de Streamlit; la vista Editor mantiene la tarjeta corporativa.'),
       ('v16.12.1','30/09/2026','Ficha corporativa y horario CI','Permite editar el Código empleado Indra también desde Configuración → Técnicos y rediseña Horario del CI con la identidad visual corporativa de las tarjetas operativas, manteniéndolo informativo y sin efecto en cálculos.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
       ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
