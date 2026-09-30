@@ -1762,6 +1762,32 @@ def render_tecnicos():
     for col,(titulo,filas) in zip((c1,c2,c3),cards):
         html='<div class="info-card"><div class="title">'+escape(titulo)+'</div>'+''.join('<div class="info-row"><span>'+escape(a)+'</span><b>'+escape(str(b or '—'))+'</b></div>' for a,b in filas)+'</div>'
         col.markdown(html,unsafe_allow_html=True)
+
+    # v16.9 · Horario informativo del CI en la ficha del técnico.
+    # Es una vista de solo lectura de Configuración → Horarios CI y NO modifica
+    # ninguna regla de cálculo de jornada, vacaciones, HLD o HE.
+    horario_ci = HORARIOS_CI_ANUAL.get(dd_anio, HORARIOS_CI_DEFAULT.get(dd_anio, {})).get(centro_t, {})
+    horario_txt = str(horario_ci.get('horario', '') or 'Sin horario informado').replace('<br>', ' · ').replace('<br/>', ' · ').replace('<br />', ' · ')
+    semanal_txt = str(horario_ci.get('h_sem', '') or '—')
+    obs_horario = str(horario_ci.get('obs', '') or '—')
+    bolsa_ini = horario_ci.get('bolsa_ini')
+    bolsa_fin = horario_ci.get('bolsa_fin')
+    bolsa_txt = 'No activa'
+    if bolsa_ini and bolsa_fin:
+        try:
+            bolsa_txt = f"Activa · {bolsa_ini:%d/%m/%Y} → {bolsa_fin:%d/%m/%Y}"
+        except (TypeError, ValueError):
+            bolsa_txt = f"Activa · {bolsa_ini} → {bolsa_fin}"
+    st.markdown(f'''
+    <div class="info-card" style="margin-top:14px">
+      <div class="title">🕐 Horario del CI · {escape(centro_t)}</div>
+      <div class="info-row"><span>Horario</span><b>{escape(horario_txt)}</b></div>
+      <div class="info-row"><span>Horas semanales</span><b>{escape(semanal_txt)}</b></div>
+      <div class="info-row"><span>Observaciones</span><b>{escape(obs_horario)}</b></div>
+      <div class="info-row"><span>Bolsa de parada</span><b>{escape(bolsa_txt)}</b></div>
+      <div class="resource-meta" style="margin-top:10px">ℹ️ Información organizativa del CI para {dd_anio}. La edición se realiza desde Configuración → Horarios CI. Esta tarjeta es informativa y no altera las reglas de cálculo.</div>
+    </div>
+    ''', unsafe_allow_html=True)
     if EDITOR:
         with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
@@ -2560,6 +2586,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.8</div><div class="sub">PRL · gestión integrada en reconocimiento</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
       ('v16.8','29/09/2026','Gestión PRL integrada','Integra el estado de gestión PRL, cita solicitada/programada y reactivación de avisos dentro de Editar reconocimiento y acceso, justo después de la caducidad, manteniendo auditoría y reinicio automático al renovar.'),
       ('v16.7','29/09/2026','Gestión de citas y avisos PRL','Nuevo estado de gestión del reconocimiento: cita solicitada o programada. Estos estados pausan los avisos repetitivos sin ocultar la caducidad real; permiten guardar fecha de cita, reactivar avisos y reinician automáticamente la gestión al registrar una nueva caducidad. Todas las acciones quedan auditadas.'),
       ('v16.6','28/09/2026','Control de solapamientos por CI','Antes de enviar una solicitud se comprueba la planificación de los compañeros del mismo CI. Si existe conflicto, el técnico debe confirmarlo expresamente. Coordinación vuelve a comprobarlo en tiempo real al aprobar, muestra el detalle y exige una segunda confirmación; la autorización queda auditada.'),
@@ -2947,4 +2974,5 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
 
