@@ -872,10 +872,32 @@ st.markdown(r'''<style>
 
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
 if ES_TECNICO:
-    NAV_LABELS = {'👤 Mi espacio':'Inicio','📨 Solicitudes':'Solicitudes','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','🖥️ Seguimiento CI':'Seguimiento CI','👥 Técnicos':'Técnicos'}
+    NAV_LABELS = {
+        '🏠 Mi espacio':'Inicio',
+        '🔔 Notificaciones':'Notificaciones',
+        '📨 Solicitudes':'Solicitudes',
+        '📅 Cuadrante':'Cuadrante',
+        '🛡️ Guardias':'Guardias',
+        '🖥️ Seguimiento CI':'Seguimiento CI',
+        '👥 Técnicos':'Técnicos',
+    }
+    st.sidebar.markdown('<div class="ci-section-label">PERSONAL · OPERACIÓN · INFORMACIÓN</div>', unsafe_allow_html=True)
 else:
-    NAV_LABELS = {'🏠 Inicio':'Inicio','📨 Solicitudes':'Solicitudes','📢 Avisos':'Avisos','📅 Cuadrante':'Cuadrante','🛡️ Guardias':'Guardias','👥 Técnicos':'Técnicos','⏱️ Horas extra':'Horas extra','🖥️ Seguimiento CI':'Seguimiento CI','📊 Informes':'Informes','🧩 Versiones':'Versiones','⚙️ Configuración':'Configuración'}
-st.sidebar.markdown('<div class="ci-section-label">Operación y gestión</div>', unsafe_allow_html=True)
+    NAV_LABELS = {
+        '🏠 Inicio':'Inicio',
+        '🔔 Notificaciones':'Notificaciones',
+        '📨 Solicitudes':'Solicitudes',
+        '📅 Cuadrante':'Cuadrante',
+        '🛡️ Guardias':'Guardias',
+        '🖥️ Seguimiento CI':'Seguimiento CI',
+        '👥 Técnicos':'Técnicos',
+        '⏱️ Horas extra':'Horas extra',
+        '📊 Informes':'Informes',
+        '📢 Avisos del coordinador':'Avisos',
+        '⚙️ Configuración':'Configuración',
+        '🧩 Versiones':'Versiones',
+    }
+    st.sidebar.markdown('<div class="ci-section-label">COORDINACIÓN · OPERACIÓN · GESTIÓN</div>', unsafe_allow_html=True)
 pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
 pagina = NAV_LABELS[pagina_label]
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
@@ -1048,6 +1070,18 @@ def render_centro_notificaciones(tecnico=None):
         nuevo=copy.deepcopy(NOTIFICACIONES_LEIDAS); nuevo[uid]=sorted(leidas|{x['id'] for x in enriquecidas})[-250:]
         if guardar_portal({RUTA_NOTIFICACIONES_LEIDAS:nuevo},'Notificaciones marcadas como leídas','Notificaciones'): st.rerun()
 
+def render_notificaciones():
+    if ES_TECNICO:
+        t=tecnico_sesion()
+        if not t or t not in TECNICOS:
+            st.error('La cuenta no tiene un técnico válido vinculado. Revisa la configuración de usuarios.')
+            return
+        st.markdown(f'<div class="ops-hero"><div class="k">Portal del Técnico · {escape(TECNICOS[t]["ci"])}</div><div class="t">Centro de notificaciones</div><div class="n">Avisos personales, solicitudes, guardias, PRL y comunicaciones de Coordinación.</div></div>',unsafe_allow_html=True)
+        render_centro_notificaciones(t)
+    else:
+        st.markdown('<div class="ops-hero"><div class="k">Coordinación · Centro de control</div><div class="t">Notificaciones</div><div class="n">Prioriza solicitudes, PRL y avisos operativos que requieren actuación.</div></div>',unsafe_allow_html=True)
+        render_centro_notificaciones(None)
+
 def render_mi_espacio():
     t=tecnico_sesion()
     if not t or t not in TECNICOS:
@@ -1075,7 +1109,6 @@ def render_mi_espacio():
         guard=any(ini<=f<=fin for ini,fin in periodos_guardia_reales(REGISTROS_GUARDIAS,tecnico=t))
         filas.append({'Día':f.strftime('%a %d/%m'),'Planificación':LEYENDA.get(tp,(tp or 'Sin novedad',''))[0],'Disponibilidad':estado,'Guardia':'Sí' if guard else '—'})
     tabla(filas)
-    st.markdown('<div class="ci-section-label">NOTIFICACIONES</div>',unsafe_allow_html=True); render_centro_notificaciones(t)
     st.markdown('<div class="ci-section-label">ACTIVIDAD RECIENTE</div>',unsafe_allow_html=True)
     acts=[]
     for a in reversed(AUDITORIA):
@@ -1446,7 +1479,6 @@ def render_inicio():
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
     st.markdown(f'<div class="ops-hero"><div class="k">Panel de situación · Complejos Industriales Repsol</div><div class="t">Visión operativa de los CI</div><div class="n">Disponibilidad, guardias, cobertura y PRL · Ámbito: {escape(centro)}</div></div>', unsafe_allow_html=True)
-    render_centro_notificaciones(None)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -1809,7 +1841,12 @@ def render_cuadrante():
     else: st.caption('Modo consulta: no puedes modificar registros.')
 
 def render_tecnicos():
-    t = st.selectbox('Buscar técnico',visibles)
+    opciones_tecnicos=list(visibles)
+    propio=tecnico_sesion() if ES_TECNICO else ''
+    indice_prop=opciones_tecnicos.index(propio) if propio in opciones_tecnicos else 0
+    if ES_TECNICO:
+        st.caption('Consulta tu ficha o la información operativa de tus compañeros del CI.')
+    t = st.selectbox('Buscar técnico',opciones_tecnicos,index=indice_prop)
     perfil = PERFILES_TECNICOS.get(t, {})
     centro_t = TECNICOS[t]['ci']
     matricula = perfil.get('matricula','')
@@ -2798,8 +2835,9 @@ def html_resumen_coordinacion(tipo="semanal", referencia=None):
 def render_versiones():
     st.markdown('<div class="ops-hero"><div class="k">Producto interno · evolución continua</div><div class="t">Versiones de Gestión Técnicos CI</div><div class="n">Historial de mejoras funcionales, automatizaciones e identidad visual incorporadas a la plataforma.</div></div>',unsafe_allow_html=True)
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
-    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.11</div><div class="sub">Guardias · liquidación mensual conjunta</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14</div><div class="sub">Navegación y experiencia reorganizadas</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.14','30/09/2026','Navegación y experiencia reorganizadas','Notificaciones pasa a ser una sección propia del menú lateral para Técnico y Editor; Mi espacio e Inicio quedan centrados en situación operativa, y Técnicos abre por defecto la ficha del usuario conectado.'),
       ('v16.11','30/09/2026','Liquidación mensual de guardias','Resumen mensual de semanas completas lunes–domingo, periodo de devengo, importe a 140 € brutos por semana, detalle por técnico y envío conjunto por email a Coordinación.'),
       ('v16.12','30/09/2026','Excel mensual de guardias y código Indra','Código empleado Indra en la ficha de cada técnico y descarga del Excel mensual de PLUS MENSAFONO con semanas reales, importe, proyecto, fechas de devengo y comentario.'),
       ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
@@ -3253,7 +3291,7 @@ def render_config():
             nuevo.setdefault(dd_anio,{})[c]=horas
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
-{'Inicio':render_inicio,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
+{'Inicio':render_inicio,'Notificaciones':render_notificaciones,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
