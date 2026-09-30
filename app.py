@@ -1,6 +1,6 @@
 """Gestión de Técnicos CI — versión reorganizada.
 Ejecutar: streamlit run app.py
-Dependencias: streamlit>=1.40,<2, pandas, requests.
+Dependencias: streamlit>=1.40,<2, pandas, requests, openpyxl.
 Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
 Configurar [usuarios] en .streamlit/secrets.toml (sin usuarios por defecto).
 Admite password para compatibilidad o password_hash PBKDF2 (ver verificar_password).
@@ -29,6 +29,9 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Gestión Técnicos CI · REPSOL", page_icon="🏭", layout="wide")
 ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
@@ -61,6 +64,17 @@ CONFIG_NOTIFICACIONES_DEFAULT = {
     "resumen_coordinacion_mensual": False
 }
 PERFILES_DEFAULT = {}
+CODIGOS_INDRA_DEFAULT = {
+    "Juan Pedro Murillo Huete": "709355",
+    "David Muñoz Burguillo": "709743",
+    "Joan Vila Cascán": "710090",
+    "Oscar Luna Murillo": "722573",
+    "David Rodriguez Novua": "709717",
+    "Endika Ramirez Rodriguez": "723603",
+    "Fernando Bocija Sánchez": "565127",
+    "Simon Conesa Lloris": "716271",
+    "Alejandro Gutierrez Bastida": "717260",
+}
 VEHICULOS_DEFAULT = {}
 RUTA_GUARDIAS = "guardias_repsol.json"
 RUTA_ACTIVACIONES = "activaciones_guardia_repsol.json"
@@ -1760,7 +1774,7 @@ def render_tecnicos():
         col.caption(f'Consumidos: {usados[k]:g} {unidad}')
     st.markdown('<div class="ci-section-label">Información operativa</div>',unsafe_allow_html=True)
     c1,c2,c3=st.columns(3)
-    cards=[('Contacto',[('Correo Minsait',perfil.get('correo','')),('Teléfono',perfil.get('telefono','')),('Telf. fijo',perfil.get('telf_fijo',''))]),('Acceso REPSOL',[('Usuario',perfil.get('usuario_repsol','')),('Mail',perfil.get('mail_repsol','')),('CI',centro_t)]),('Comunicaciones ATEX',[('ATEX',perfil.get('atex','')),('PLK SIM ATEX',perfil.get('plk_sim_atex','')),('Vehículo',matricula or 'Sin asignar')])]
+    cards=[('Contacto',[('Correo Minsait',perfil.get('correo','')),('Teléfono',perfil.get('telefono','')),('Telf. fijo',perfil.get('telf_fijo',''))]),('Acceso REPSOL',[('Código empleado Indra',perfil.get('codigo_indra') or CODIGOS_INDRA_DEFAULT.get(t,'')),('Usuario',perfil.get('usuario_repsol','')),('Mail',perfil.get('mail_repsol','')),('CI',centro_t)]),('Comunicaciones ATEX',[('ATEX',perfil.get('atex','')),('PLK SIM ATEX',perfil.get('plk_sim_atex','')),('Vehículo',matricula or 'Sin asignar')])]
     for col,(titulo,filas) in zip((c1,c2,c3),cards):
         html='<div class="info-card"><div class="title">'+escape(titulo)+'</div>'+''.join('<div class="info-row"><span>'+escape(a)+'</span><b>'+escape(str(b or '—'))+'</b></div>' for a,b in filas)+'</div>'
         col.markdown(html,unsafe_allow_html=True)
@@ -1795,13 +1809,14 @@ def render_tecnicos():
             with st.form(f'perfil_{t}'):
                 a,b=st.columns(2)
                 correo=a.text_input('Correo Minsait',value=perfil.get('correo','')); telefono=b.text_input('Teléfono',value=perfil.get('telefono',''))
+                codigo_indra=a.text_input('Código empleado Indra',value=perfil.get('codigo_indra') or CODIGOS_INDRA_DEFAULT.get(t,'')); b.caption('Código corporativo de empleado Indra')
                 usuario=a.text_input('Usuario REPSOL',value=perfil.get('usuario_repsol','')); mail=b.text_input('Mail REPSOL',value=perfil.get('mail_repsol',''))
                 fijo=a.text_input('Telf. fijo',value=perfil.get('telf_fijo','')); atex=b.text_input('ATEX',value=perfil.get('atex',''))
                 plk=a.text_input('PLK SIM ATEX',value=perfil.get('plk_sim_atex',''))
                 opciones=['']+sorted(VEHICULOS); matricula_edit=b.selectbox('Vehículo asignado',opciones,index=opciones.index(matricula) if matricula in opciones else 0,format_func=lambda x:'Sin vehículo' if not x else f"{x} · {VEHICULOS.get(x,{}).get('modelo','')}")
                 guardar_perfil=st.form_submit_button('Guardar cambios',type='primary')
             if guardar_perfil:
-                nuevo=copy.deepcopy(PERFILES_TECNICOS); nuevo[t]={'correo':correo.strip(),'telefono':telefono.strip(),'usuario_repsol':usuario.strip(),'mail_repsol':mail.strip(),'telf_fijo':fijo.strip(),'atex':atex.strip(),'plk_sim_atex':plk.strip(),'matricula':matricula_edit}
+                nuevo=copy.deepcopy(PERFILES_TECNICOS); perfil_nuevo=copy.deepcopy(nuevo.get(t,{})); perfil_nuevo.update({'correo':correo.strip(),'telefono':telefono.strip(),'codigo_indra':codigo_indra.strip(),'usuario_repsol':usuario.strip(),'mail_repsol':mail.strip(),'telf_fijo':fijo.strip(),'atex':atex.strip(),'plk_sim_atex':plk.strip(),'matricula':matricula_edit}); nuevo[t]=perfil_nuevo
                 if guardar_cambios({RUTA_PERFILES:nuevo},f'Perfil corporativo: {t}'): st.rerun()
     st.markdown('<div class="ci-section-label">Recursos y habilitaciones</div>',unsafe_allow_html=True)
     vcol,pcol=st.columns(2)
@@ -1985,6 +2000,52 @@ def resumen_liquidacion_guardias(anio, mes, equipo):
         if semanas:
             filas.append({'Técnico':tecnico,'CI':TECNICOS.get(tecnico,{}).get('ci',''),'Semanas':len(semanas),'Periodo devengo':f'{inicio:%d/%m/%Y} → {fin:%d/%m/%Y}','Importe (€)':len(semanas)*140.0,'_semanas':semanas})
     return inicio, fin, filas
+
+
+def excel_liquidacion_guardias(anio, mes, equipo):
+    inicio, fin, filas = resumen_liquidacion_guardias(anio, mes, equipo)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Guardias {MESES[mes]} {anio}"[:31]
+
+    # Cabecera agrupada equivalente a la plantilla original.
+    ws.merge_cells('A1:B1'); ws['A1'] = 'Empleado'
+    ws.merge_cells('C1:E1'); ws['C1'] = 'Concepto'
+    ws.merge_cells('F1:G1'); ws['F1'] = 'Proyecto/Elemento'
+    ws.merge_cells('H1:I1'); ws['H1'] = 'Fechas de devengo'
+    ws['J1'] = 'COMENTARIO'
+    headers = ['Código','Nombre','Concepto','Unidad','Importe','Proy.','Elem.','Fec.Ini.','Fec.Fin','']
+    for c, value in enumerate(headers, 1):
+        ws.cell(2, c, value)
+
+    thin = Side(style='thin')
+    borde = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for row in ws.iter_rows(min_row=1, max_row=2, min_col=1, max_col=10):
+        for cell in row:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = borde
+
+    fila = 3
+    for x in filas:
+        tecnico = x['Técnico']
+        perfil = PERFILES_TECNICOS.get(tecnico, {})
+        codigo = str(perfil.get('codigo_indra') or CODIGOS_INDRA_DEFAULT.get(tecnico, '')).strip()
+        valores = [codigo, tecnico, 'PLUS MENSAFONO', x['Semanas'], x['Semanas'] * 140, 'REPCII', 1, inicio, fin, f'GUARDIAS REPSOL {MESES[mes].upper()}']
+        for c, value in enumerate(valores, 1):
+            cell = ws.cell(fila, c, value)
+            cell.border = borde
+            cell.alignment = Alignment(horizontal='center' if c not in (2,3,10) else 'left', vertical='center')
+        ws.cell(fila, 8).number_format = 'dd/mm/yyyy'
+        ws.cell(fila, 9).number_format = 'dd/mm/yyyy'
+        ws.cell(fila, 5).number_format = '0'
+        fila += 1
+
+    widths = {1:12,2:30,3:22,4:10,5:12,6:12,7:9,8:14,9:14,10:34}
+    for c,w in widths.items(): ws.column_dimensions[get_column_letter(c)].width = w
+    ws.freeze_panes = 'A3'
+    bio = io.BytesIO(); wb.save(bio); bio.seek(0)
+    return bio.getvalue()
 
 
 def html_liquidacion_guardias(anio, mes, equipo):
@@ -2252,6 +2313,10 @@ def render_guardias():
         tabla([{'Técnico':x['Técnico'],'CI':x['CI'],'Semanas':x['Semanas'],'Periodo devengo':x['Periodo devengo'],'Importe (€)':x['Importe (€)']} for x in filas_liq])
         with st.expander('Ver detalle de las semanas contabilizadas',expanded=False):
             tabla([{'Técnico':x['Técnico'],'CI':x['CI'],'Semana':f'{a:%d/%m/%Y} → {b:%d/%m/%Y}','Importe (€)':140.0} for x in filas_liq for a,b in x['_semanas']])
+        excel_liq = excel_liquidacion_guardias(dd_anio, mes_liq, equipo_liq)
+        st.download_button('📊 Descargar Excel mensual', excel_liq, file_name=f'Guardias_REPSOL_{MESES[mes_liq]}_{dd_anio}.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', key='guard_liq_excel')
+        if any(not str(PERFILES_TECNICOS.get(x['Técnico'],{}).get('codigo_indra') or CODIGOS_INDRA_DEFAULT.get(x['Técnico'],'')).strip() for x in filas_liq):
+            st.warning('Algún técnico liquidado no tiene Código empleado Indra informado. El Excel se genera, pero su código aparecerá vacío.')
         if EDITOR:
             st.markdown('##### Enviar resumen')
             destino_liq=str(secreto('GMAIL_DESTINATARIO','')).strip()
@@ -2663,6 +2728,7 @@ def render_versiones():
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.11</div><div class="sub">Guardias · liquidación mensual conjunta</div></div>',unsafe_allow_html=True)
     versiones=[
       ('v16.11','30/09/2026','Liquidación mensual de guardias','Resumen mensual de semanas completas lunes–domingo, periodo de devengo, importe a 140 € brutos por semana, detalle por técnico y envío conjunto por email a Coordinación.'),
+      ('v16.12','30/09/2026','Excel mensual de guardias y código Indra','Código empleado Indra en la ficha de cada técnico y descarga del Excel mensual de PLUS MENSAFONO con semanas reales, importe, proyecto, fechas de devengo y comentario.'),
       ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
       ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
