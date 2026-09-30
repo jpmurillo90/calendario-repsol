@@ -1794,16 +1794,21 @@ def render_tecnicos():
             bolsa_txt = f"Activa · {bolsa_ini:%d/%m/%Y} → {bolsa_fin:%d/%m/%Y}"
         except (TypeError, ValueError):
             bolsa_txt = f"Activa · {bolsa_ini} → {bolsa_fin}"
-    # v16.9.1 · Contenedor Streamlit aislado para evitar conflictos de reconciliación
-    # del DOM (React removeChild) con las tarjetas HTML superiores.
-    with st.container(border=True):
-        st.markdown(f"**🕐 Horario del CI · {escape(centro_t)}**")
-        hc1, hc2 = st.columns(2)
-        hc1.markdown(f"**Horario**  \n{escape(horario_txt)}")
-        hc2.markdown(f"**Horas semanales**  \n{escape(semanal_txt)}")
-        st.markdown(f"**Observaciones**  \n{escape(obs_horario)}")
-        st.markdown(f"**Bolsa de parada**  \n{escape(bolsa_txt)}")
-        st.caption(f"Información organizativa del CI para {dd_anio}. La edición se realiza desde Configuración → Horarios CI. Esta información no altera las reglas de cálculo.")
+    # v16.12.1 · Tarjeta corporativa de horario, aislada en una única llamada HTML.
+    # Solo lectura: hereda Configuración → Horarios CI y no participa en cálculos.
+    bolsa_activa = bool(bolsa_ini and bolsa_fin)
+    bolsa_badge = 'ACTIVA' if bolsa_activa else 'NO ACTIVA'
+    bolsa_class = 'warn' if bolsa_activa else 'ok'
+    bolsa_detalle = (' &nbsp; ' + escape(bolsa_txt.replace('Activa · ',''))) if bolsa_activa else ''
+    horario_html = f"""<div class="info-card" style="margin-top:10px;margin-bottom:12px;">
+      <div class="title">🕐 HORARIO DEL CI · {escape(centro_t)}</div>
+      <div class="info-row"><span>Horario</span><b>{escape(horario_txt)}</b></div>
+      <div class="info-row"><span>Horas semanales</span><b>{escape(semanal_txt)}</b></div>
+      <div class="info-row"><span>Observaciones</span><b>{escape(obs_horario)}</b></div>
+      <div class="info-row"><span>Bolsa de parada</span><b><span class="status-badge {bolsa_class}">{bolsa_badge}</span>{bolsa_detalle}</b></div>
+      <div style="padding-top:10px;color:#8b9aaa;font-size:.78rem;">Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.</div>
+    </div>"""
+    st.markdown(horario_html, unsafe_allow_html=True)
     if EDITOR:
         with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
@@ -2731,6 +2736,7 @@ def render_versiones():
       ('v16.12','30/09/2026','Excel mensual de guardias y código Indra','Código empleado Indra en la ficha de cada técnico y descarga del Excel mensual de PLUS MENSAFONO con semanas reales, importe, proyecto, fechas de devengo y comentario.'),
       ('v16.10.1','30/09/2026','Selector único de festivos','Simplifica la gestión de festivos a un único selector Centro / ámbito para consultar, añadir y eliminar, manteniendo TODOS LOS CI, comentarios y resumen por centro.'),
       ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
+      ('v16.12.1','30/09/2026','Ficha corporativa y horario CI','Permite editar el Código empleado Indra también desde Configuración → Técnicos y rediseña Horario del CI con la identidad visual corporativa de las tarjetas operativas, manteniéndolo informativo y sin efecto en cálculos.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
       ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
       ('v16.8','29/09/2026','Gestión PRL integrada','Integra el estado de gestión PRL, cita solicitada/programada y reactivación de avisos dentro de Editar reconocimiento y acceso, justo después de la caducidad, manteniendo auditoría y reinicio automático al renovar.'),
@@ -2900,6 +2906,7 @@ def render_config():
             st.markdown('#### Editar técnico existente')
             elegido = st.selectbox('Técnico', sorted(TECNICOS), key='config_tecnico_editar')
             actual = TECNICOS[elegido]
+            perfil_actual = PERFILES_TECNICOS.get(elegido,{})
             ci_actual = actual.get('ci','')
             opciones_ci = centros_existentes if ci_actual in centros_existentes else centros_existentes + [ci_actual]
             with st.form(f'editar_tecnico_{elegido}'):
@@ -2907,13 +2914,19 @@ def render_config():
                 ce1, ce2 = st.columns(2)
                 nuevas_vac = ce1.number_input('Vacaciones anuales (días)', min_value=0, max_value=60, value=int(actual.get('vac_totales',22)), step=1)
                 nuevo_vpa = ce2.number_input('VPA base (días)', min_value=0, max_value=60, value=int(actual.get('vpa_base',0)), step=1)
+                codigo_indra_cfg = ce1.text_input('Código empleado Indra', value=str(perfil_actual.get('codigo_indra') or CODIGOS_INDRA_DEFAULT.get(elegido,'')), help='Código corporativo de empleado Indra utilizado en la ficha y en la liquidación mensual de guardias.')
+                ce2.caption('Dato corporativo del técnico. El Excel mensual de guardias toma este valor automáticamente.')
                 activo = st.checkbox('Técnico activo', value=bool(actual.get('activo',True)))
                 st.caption('Desactivar oculta al técnico de la operativa habitual, pero conserva vacaciones, ausencias, HE/HLD, PRL y auditoría históricas.')
                 guardar_tec = st.form_submit_button('Guardar cambios', type='primary')
             if guardar_tec:
                 nuevos_tecnicos = copy.deepcopy(TECNICOS)
                 nuevos_tecnicos[elegido].update({'ci':nuevo_ci,'vac_totales':int(nuevas_vac),'vpa_base':int(nuevo_vpa),'activo':activo})
-                if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos},f'Actualizar técnico: {elegido} · {nuevo_ci} · activo={activo}'):
+                nuevos_perfiles = copy.deepcopy(PERFILES_TECNICOS)
+                perfil_editado = copy.deepcopy(nuevos_perfiles.get(elegido,{}))
+                perfil_editado['codigo_indra'] = codigo_indra_cfg.strip()
+                nuevos_perfiles[elegido] = perfil_editado
+                if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos,RUTA_PERFILES:nuevos_perfiles},f'Actualizar técnico: {elegido} · {nuevo_ci} · Código Indra {codigo_indra_cfg.strip() or "sin asignar"} · activo={activo}'):
                     st.rerun()
         return
 
