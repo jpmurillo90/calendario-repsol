@@ -985,17 +985,67 @@ def notificaciones_usuario(tecnico=None):
         if prl: items.append({'id':_id_estable('prl-global',date.today(),len(prl)),'nivel':'warning','titulo':'PRL por revisar','texto':f'{len(prl)} reconocimiento(s) requieren atención.'})
     return items
 
+def _clasificar_notificacion(n, es_editor=False):
+    titulo=str(n.get('titulo','')).lower(); texto=str(n.get('texto','')).lower(); nivel=str(n.get('nivel','info'))
+    todo=f'{titulo} {texto}'
+    if 'solicitud' in todo: categoria='Solicitudes'
+    elif 'prl' in todo or 'reconocimiento' in todo: categoria='PRL'
+    elif 'guardia' in todo: categoria='Guardias'
+    elif 'seguimiento' in todo: categoria='Seguimiento CI'
+    elif 'coordin' in todo or 'imputacion' in todo or 'imputación' in todo: categoria='Avisos'
+    else: categoria='Sistema'
+    requiere = bool(es_editor and (('pendiente' in todo and 'solicitud' in todo) or categoria=='PRL'))
+    if not es_editor: requiere = bool(nivel=='danger' and categoria in ('PRL','Avisos'))
+    prioridad = 0 if requiere else (1 if nivel in ('danger','warning') else 2)
+    return categoria, requiere, prioridad
+
 def render_centro_notificaciones(tecnico=None):
     uid=str(st.session_state.get('usuario_id') or st.session_state.get('usuario_actual',''))
     leidas=set(NOTIFICACIONES_LEIDAS.get(uid,[]) or [])
-    items=notificaciones_usuario(tecnico); no_leidas=[x for x in items if x['id'] not in leidas]
-    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">🔔 Centro de notificaciones <span class="ci-badge {"warn" if no_leidas else "ok"}">{len(no_leidas)} sin leer</span></div><div class="ci-panel-note">Avisos personales, guardias, PRL, solicitudes y comunicaciones de Coordinación.</div></div>',unsafe_allow_html=True)
-    if not items: st.success('No tienes notificaciones pendientes.'); return
+    items=notificaciones_usuario(tecnico); es_editor = tecnico is None; enriquecidas=[]
     for n in items:
-        nuevo=n['id'] not in leidas
-        st.markdown(f'<div class="ops-card"><div class="title">{"● NUEVA · " if nuevo else ""}{escape(n["titulo"])}</div><div style="font-size:13px;color:#334e5b">{escape(n["texto"])}</div></div>',unsafe_allow_html=True)
+        x=dict(n); cat,requiere,prio=_clasificar_notificacion(x,es_editor)
+        x['categoria']=cat; x['requiere']=requiere; x['prioridad']=prio; x['nueva']=x['id'] not in leidas; enriquecidas.append(x)
+    enriquecidas.sort(key=lambda x:(x['prioridad'], not x['nueva'], str(x.get('titulo',''))))
+    no_leidas=[x for x in enriquecidas if x['nueva']]; requieren=[x for x in enriquecidas if x['requiere']]
+    pendientes=[x for x in enriquecidas if x['nivel'] in ('warning','danger') and not x['requiere']]; resueltas=[x for x in enriquecidas if not x['nueva']]
+    st.markdown('''<style>
+    .notif-head{background:#fff;border:1px solid #dce5ea;border-radius:15px;padding:17px 18px;box-shadow:0 5px 18px rgba(15,43,56,.045);margin:4px 0 12px}
+    .notif-title{font-size:16px;font-weight:850;color:#102f3c}.notif-note{font-size:12px;color:#708894;margin-top:5px}
+    .notif-card{background:#fff;border:1px solid #dce5ea;border-left:4px solid #8aa2ad;border-radius:13px;padding:13px 15px;margin:8px 0;box-shadow:0 3px 12px rgba(15,43,56,.035)}
+    .notif-card.danger{border-left-color:#c24141}.notif-card.warning{border-left-color:#d79516}.notif-card.success{border-left-color:#29965c}.notif-card.info{border-left-color:#1485a0}
+    .notif-card .nt{font-size:11px;font-weight:850;letter-spacing:.055em;text-transform:uppercase;color:#526f7d;margin-bottom:5px}.notif-card .nb{font-size:13px;color:#263f4b}
+    .notif-chip{display:inline-block;border-radius:999px;padding:3px 8px;margin-left:6px;font-size:10px;font-weight:800;border:1px solid #d9e2e7;background:#f7fafb;color:#49636f}
+    .notif-chip.new{background:#fff8e7;border-color:#f1ce70;color:#8a6507}.notif-chip.action{background:#fff0f0;border-color:#e8a0a0;color:#a22f2f}
+    </style>''',unsafe_allow_html=True)
+    titulo_centro='Centro de control' if es_editor else 'Centro de notificaciones'
+    nota_centro='Prioriza solicitudes, PRL y avisos operativos que requieren actuación.' if es_editor else 'Tus avisos personales, solicitudes, guardias, PRL y comunicaciones de Coordinación.'
+    st.markdown(f'<div class="notif-head"><div class="notif-title">🔔 {titulo_centro} <span class="notif-chip new">{len(no_leidas)} sin leer</span></div><div class="notif-note">{nota_centro}</div></div>',unsafe_allow_html=True)
+    c1,c2,c3,c4=st.columns(4)
+    metricas=[(('🔴 Requieren acción' if es_editor else '🔴 Atención'),len(requieren)),('🟠 Pendientes',len(pendientes)),('🔔 Sin leer',len(no_leidas)),('✓ Leídas',len(resueltas))]
+    for c,(lab,val) in zip((c1,c2,c3,c4),metricas): c.metric(lab,val)
+    cats=['Todas','Sin leer'] + (['Requieren acción'] if es_editor else []) + ['Solicitudes','Guardias','PRL','Avisos']
+    filtro=st.radio('Filtrar notificaciones',cats,horizontal=True,key=f'notif_filtro_{uid}_{"ed" if es_editor else "tec"}',label_visibility='collapsed')
+    visibles=[]
+    for n in enriquecidas:
+        if filtro=='Sin leer' and not n['nueva']: continue
+        if filtro=='Requieren acción' and not n['requiere']: continue
+        if filtro not in ('Todas','Sin leer','Requieren acción') and n['categoria']!=filtro: continue
+        visibles.append(n)
+    if not enriquecidas:
+        st.success('No hay notificaciones activas.'); return
+    if not visibles: st.info('No hay notificaciones en este filtro.')
+    else:
+        activas=[x for x in visibles if x['nueva'] or x['requiere']]; anteriores=[x for x in visibles if x not in activas]
+        for n in activas:
+            chips=(f'<span class="notif-chip new">NUEVA</span>' if n['nueva'] else '') + (f'<span class="notif-chip action">REQUIERE ACCIÓN</span>' if n['requiere'] else '')
+            st.markdown(f'<div class="notif-card {escape(str(n.get("nivel","info")))}"><div class="nt">{escape(n["categoria"])} · {escape(n["titulo"])} {chips}</div><div class="nb">{escape(n["texto"])}</div></div>',unsafe_allow_html=True)
+        if anteriores:
+            with st.expander(f'🗂️ Notificaciones anteriores ({len(anteriores)})',expanded=False):
+                for n in anteriores:
+                    st.markdown(f'<div class="notif-card {escape(str(n.get("nivel","info")))}"><div class="nt">{escape(n["categoria"])} · {escape(n["titulo"])}</div><div class="nb">{escape(n["texto"])}</div></div>',unsafe_allow_html=True)
     if no_leidas and st.button('✓ Marcar todas como leídas',key=f'leer_{uid}'):
-        nuevo=copy.deepcopy(NOTIFICACIONES_LEIDAS); nuevo[uid]=sorted(leidas|{x['id'] for x in items})[-250:]
+        nuevo=copy.deepcopy(NOTIFICACIONES_LEIDAS); nuevo[uid]=sorted(leidas|{x['id'] for x in enriquecidas})[-250:]
         if guardar_portal({RUTA_NOTIFICACIONES_LEIDAS:nuevo},'Notificaciones marcadas como leídas','Notificaciones'): st.rerun()
 
 def render_mi_espacio():
@@ -2766,6 +2816,7 @@ def render_versiones():
       ('v16.3','28/09/2026','Saldo inteligente en solicitudes','El técnico ve en tiempo real el saldo del concepto seleccionado, lo reservado por solicitudes pendientes, el consumo de la nueva petición y el saldo restante. Se bloquean solicitudes que superen el saldo realmente disponible.'),
       ('v16.2','28/09/2026','Avisos también por email','Los avisos de Coordinación pueden publicarse solo en la plataforma o enviarse además por correo. Respeta el alcance Todos, CI o técnicos concretos, muestra cuántos destinatarios tienen correo disponible e informa del resultado de entrega sin bloquear la publicación del aviso.'),
       ('v16.1','28/09/2026','Solicitudes y cancelaciones','Solicitudes limitadas a Vacaciones, Vacaciones año anterior, HLD y consumo de HE. Estados visuales por color y nuevo flujo de cancelación: el técnico solicita cancelar una petición aprobada y Coordinación debe aprobarla antes de retirar la planificación y restituir el saldo.'),
+      ('v16.13','30/09/2026','Nuevo Centro de notificaciones','Centro diferenciado para Técnico y Editor, KPIs, filtros, prioridad visual, leídas/no leídas, histórico compacto y acción para marcar todas como leídas.'),
       ('v16','28/09/2026','Portal del Técnico','Mi espacio personalizado, centro de notificaciones con leído/no leído, buzón de solicitudes con aprobación y alta automática en cuadrante, y avisos segmentados de Coordinación.'),
       ('v15.1','28/09/2026','Recuperación de acceso','Nueva opción ¿Has olvidado tu contraseña? en el login. Los usuarios registrados pueden solicitar el envío de sus credenciales a su propio correo corporativo, con respuesta neutra y limitación de solicitudes.'),
       ('v15','28/09/2026','Multiusuario y coordinación','Permisos restringidos por rol Técnico, guardias propias, Seguimiento CI por centro, auditoría valor anterior → nuevo y resumen de coordinación manual/automático.'),
@@ -3206,3 +3257,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
