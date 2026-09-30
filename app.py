@@ -36,6 +36,7 @@ ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
 RUTA_BDD = "datos_tecnicos_repsol.json"
 
 RUTA_FESTIVOS = "festivos_repsol.json"
+RUTA_FESTIVOS_META = "festivos_meta_repsol.json"
 
 RUTA_HE = "he_repsol.json"
 
@@ -624,7 +625,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 # El límite de intentos es por sesión; el despliegue debe restringirse a la organización.
 
 # -------------------- Persistencia compatible y verificable --------------------
-ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_HE, RUTA_CONFIG_ANUAL,
+ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_FESTIVOS_META, RUTA_HE, RUTA_CONFIG_ANUAL,
             RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
@@ -777,6 +778,7 @@ REGISTROS_GUARDIAS = cargar_json(RUTA_GUARDIAS, [])
 ACTIVACIONES_GUARDIA = cargar_json(RUTA_ACTIVACIONES, [])
 AUDITORIA = cargar_json('auditoria_repsol.json', [])
 FESTIVOS_POR_ANIO = {int(a): {c: [tuple(x) for x in v] for c,v in cs.items()} for a,cs in cargar_json(RUTA_FESTIVOS, FESTIVOS_POR_ANIO_DEFAULT).items()}
+FESTIVOS_META = cargar_json(RUTA_FESTIVOS_META, {})
 CONFIG_ANUAL_POR_ANIO = {int(a): v for a,v in cargar_json(RUTA_CONFIG_ANUAL, CONFIG_ANUAL_DEFAULT).items()}
 HORARIOS_CI_ANUAL = {int(a): cs for a,cs in cargar_json(RUTA_HORARIOS_CI, HORARIOS_CI_DEFAULT).items()}
 for cs in HORARIOS_CI_ANUAL.values():
@@ -2586,6 +2588,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.8</div><div class="sub">PRL · gestión integrada en reconocimiento</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.10','30/09/2026','Gestión avanzada de festivos','Permite añadir o eliminar festivos por CI o en TODOS LOS CI, guardar nombre/comentario y consultar un resumen agrupado por centro con fecha, día y descripción, manteniendo intacta la lógica de cálculo.'),
       ('v16.9.1','30/09/2026','Corrección visual de ficha técnica','Aísla la tarjeta Horario del CI en un contenedor nativo de Streamlit para evitar errores React/DOM removeChild en la ficha de técnicos, manteniendo la información y cálculos sin cambios.'),
       ('v16.9','30/09/2026','Horario del CI en ficha técnica','Muestra en la ficha de cada técnico el horario informativo configurado para su CI, horas semanales, observaciones y bolsa de parada. Es una vista de solo lectura enlazada a Configuración → Horarios CI y no modifica las reglas de cálculo.'),
       ('v16.8','29/09/2026','Gestión PRL integrada','Integra el estado de gestión PRL, cita solicitada/programada y reactivación de avisos dentro de Editar reconocimiento y acceso, justo después de la caducidad, manteniendo auditoría y reinicio automático al renovar.'),
@@ -2923,7 +2926,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_FESTIVOS_META:FESTIVOS_META,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
@@ -2932,19 +2935,71 @@ def render_config():
         return
     c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
     if opcion=='Festivos':
-        actuales = FESTIVOS_POR_ANIO.get(dd_anio,{}).get(c,[])
-        tabla([{'Fecha':date(dd_anio,m,d)} for m,d in actuales])
-        f = st.date_input('Fecha',date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
-        accion = st.radio('Operación',['Añadir','Eliminar'],horizontal=True)
-        ok = st.checkbox('Confirmar eliminación') if accion=='Eliminar' else True
-        if st.button('Guardar festivo',type='primary',disabled=not ok):
+        # v16.10 · Gestión avanzada de festivos. Las fechas siguen usando la
+        # estructura histórica (mes, día); los nombres se guardan aparte.
+        destino = st.selectbox('Centro / ámbito', ['🌍 TODOS LOS CI'] + CENTROS,
+                               index=(CENTROS.index(c)+1 if c in CENTROS else 0),
+                               key=f'fest_dest_{dd_anio}')
+        st.caption('Usa “TODOS LOS CI” para festivos nacionales o comunes. Añadir/Eliminar mantiene la lógica actual de cálculo de jornada.')
+
+        f = st.date_input('Fecha', date(dd_anio,1,1),
+                          min_value=date(dd_anio,1,1), max_value=date(dd_anio,12,31),
+                          key=f'fest_fecha_{dd_anio}')
+        comentario = st.text_input('Nombre / comentario del festivo',
+                                   placeholder='Ej.: Fiesta Nacional de España / Festivo local / Traslado festivo',
+                                   key=f'fest_com_{dd_anio}')
+        accion = st.radio('Operación',['Añadir','Eliminar'],horizontal=True,key=f'fest_acc_{dd_anio}')
+        ok = st.checkbox('Confirmar eliminación',key=f'fest_del_ok_{dd_anio}') if accion=='Eliminar' else True
+
+        if st.button('Guardar festivo',type='primary',disabled=not ok,key=f'fest_save_{dd_anio}'):
             nuevo = copy.deepcopy(FESTIVOS_POR_ANIO)
-            dias = nuevo.setdefault(dd_anio,{}).setdefault(c,[])
+            meta = copy.deepcopy(FESTIVOS_META)
+            objetivos = CENTROS if destino == '🌍 TODOS LOS CI' else [destino]
             par = (f.month,f.day)
-            if accion=='Añadir' and par not in dias: dias.append(par); dias.sort()
-            elif accion=='Eliminar' and par in dias: dias.remove(par)
-            else: st.info('No hay cambios que guardar.'); return
-            if guardar_cambios({RUTA_FESTIVOS:nuevo},f'{accion} festivo: {c}, {f}'): st.rerun()
+            cambios = 0
+            for ci_obj in objetivos:
+                dias = nuevo.setdefault(dd_anio,{}).setdefault(ci_obj,[])
+                clave = f'{dd_anio}-{f.month:02d}-{f.day:02d}'
+                meta_ci = meta.setdefault(str(dd_anio),{}).setdefault(ci_obj,{})
+                if accion=='Añadir':
+                    if par not in dias:
+                        dias.append(par); dias.sort(); cambios += 1
+                    # Permite completar/cambiar el nombre aunque la fecha ya existiese.
+                    if comentario.strip():
+                        if meta_ci.get(clave) != comentario.strip(): cambios += 1
+                        meta_ci[clave] = comentario.strip()
+                else:
+                    if par in dias:
+                        dias.remove(par); cambios += 1
+                    if clave in meta_ci:
+                        meta_ci.pop(clave,None); cambios += 1
+            if not cambios:
+                st.info('No hay cambios que guardar.')
+            else:
+                ambito = 'TODOS LOS CI' if destino == '🌍 TODOS LOS CI' else destino
+                detalle = f' · {comentario.strip()}' if comentario.strip() else ''
+                if guardar_cambios({RUTA_FESTIVOS:nuevo,RUTA_FESTIVOS_META:meta},
+                                   f'{accion} festivo: {ambito}, {f}{detalle}'):
+                    st.rerun()
+
+        st.markdown('### 📅 Resumen de festivos por CI')
+        st.caption(f'Festivos configurados para {dd_anio}. Los registros antiguos sin descripción se muestran como “Sin descripción”.')
+        nombres_dia = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
+        for ci_res in CENTROS:
+            dias_ci = sorted(FESTIVOS_POR_ANIO.get(dd_anio,{}).get(ci_res,[]))
+            with st.expander(f'{ci_res} · {len(dias_ci)} festivo(s)', expanded=(ci_res==c)):
+                filas=[]
+                meta_ci = FESTIVOS_META.get(str(dd_anio),{}).get(ci_res,{})
+                for m,d in dias_ci:
+                    fd=date(dd_anio,m,d)
+                    clave=f'{dd_anio}-{m:02d}-{d:02d}'
+                    filas.append({
+                        'Fecha':fd.strftime('%d/%m/%Y'),
+                        'Día':nombres_dia[fd.weekday()],
+                        'Nombre / comentario':meta_ci.get(clave,'Sin descripción')
+                    })
+                if filas: tabla(filas)
+                else: st.caption('No hay festivos configurados para este CI.')
     elif opcion=='Horarios':
         actual = HORARIOS_CI_ANUAL.get(dd_anio,HORARIOS_CI_DEFAULT[dd_anio]).get(c,{})
         st.info('La descripción del horario es informativa. Se mantienen las reglas originales de cálculo de jornada; cambiar el texto no modifica esas reglas. La bolsa de parada sí afecta al cálculo.')
@@ -2975,6 +3030,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
-
-
