@@ -1909,55 +1909,10 @@ def render_tecnicos():
       <div class="info-row"><span>Bolsa de parada</span><b><span class="status-badge {bolsa_class}">{bolsa_badge}</span>{bolsa_detalle}</b></div>
       <div style="padding-top:10px;color:#8b9aaa;font-size:.78rem;">Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.</div>
     </div>"""
-    # v16.12.2 · Evita HTML dinámico complejo en el perfil del rol Técnico.
-    # Streamlit gestiona íntegramente estos nodos para prevenir NoFoundError/removeChild.
-    if ES_TECNICO:
-        # v16.14.2 · Tarjeta compacta y estable para el rol Técnico.
-        # Se mantienen componentes Streamlit para no reintroducir removeChild;
-        # el CSS queda limitado al contenedor mediante su key.
-        st.markdown("""
-        <style>
-        .st-key-horario_ci_tecnico {
-            background:#ffffff;
-            border:1px solid #dce5ea !important;
-            border-radius:14px;
-            box-shadow:0 7px 20px rgba(20,55,70,.055);
-            padding:4px 16px 7px 16px;
-            margin-top:10px;
-            margin-bottom:12px;
-        }
-        .st-key-horario_ci_tecnico [data-testid="stVerticalBlock"] { gap:.05rem; }
-        .st-key-horario_ci_tecnico [data-testid="stHorizontalBlock"] {
-            min-height:31px;
-            border-bottom:1px solid #edf1f3;
-            align-items:center;
-        }
-        .st-key-horario_ci_tecnico [data-testid="column"] { padding-top:2px; padding-bottom:2px; }
-        .st-key-horario_ci_tecnico .stCaptionContainer { margin:0 !important; }
-        .st-key-horario_ci_tecnico p { margin-bottom:0 !important; }
-        </style>
-        """, unsafe_allow_html=True)
-        with st.container(border=False, key='horario_ci_tecnico'):
-            st.caption(f'🕐  HORARIO DEL CI · {centro_t.upper()}')
-            filas_horario = [
-                ('Horario', horario_txt),
-                ('Horas semanales', semanal_txt),
-                ('Observaciones', obs_horario),
-            ]
-            for etiqueta, valor in filas_horario:
-                izq, der = st.columns([1, 2.35], vertical_alignment='center')
-                izq.caption(etiqueta)
-                der.markdown(f"<div style='text-align:right;font-size:.82rem;font-weight:700;color:#102f3d'>{escape(str(valor))}</div>", unsafe_allow_html=True)
-            izq, der = st.columns([1, 2.35], vertical_alignment='center')
-            izq.caption('Bolsa de parada')
-            if bolsa_activa:
-                estado_bolsa = f'🟠 **ACTIVA** · {bolsa_txt.replace("Activa · ","")}'
-            else:
-                estado_bolsa = '🟢 **NO ACTIVA**'
-            der.markdown(f"<div style='text-align:right;font-size:.80rem;color:#173542'>{estado_bolsa}</div>", unsafe_allow_html=True)
-            st.caption(f'Información organizativa del CI para {dd_anio} · Solo lectura · Se edita desde Configuración → Horarios CI · No altera las reglas de cálculo.')
-    else:
-        st.markdown(horario_html, unsafe_allow_html=True)
+    # v16.14.3 · Un único componente visual de Horario del CI para todos los roles.
+    # Técnico y Editor ven exactamente la misma tarjeta corporativa; únicamente
+    # el Editor dispone del formulario de edición que aparece a continuación.
+    st.markdown(horario_html, unsafe_allow_html=True)
     if EDITOR:
         with st.expander('✏️ Editar datos corporativos y asignación'):
             with st.form(f'perfil_{t}'):
@@ -2881,6 +2836,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v16.14.3','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
       ('v16.14.2','30/09/2026','Ajuste visual ficha técnica','Compacta la tarjeta Horario del CI en el perfil Técnico, igualando su jerarquía visual con la vista Editor sin reintroducir HTML dinámico conflictivo ni el error React removeChild.'),
       ('v16.14.1','30/09/2026','Ficha técnica y registro persistente','Unifica visualmente Horario del CI en la ficha del rol Técnico usando componentes estables y mueve Registrar novedad a la parte superior del Cuadrante del Editor con un panel destacado y apertura persistente durante los reruns.'),
       ('v16.14','30/09/2026','Navegación y experiencia reorganizadas','Notificaciones pasa a ser una sección propia del menú lateral para Técnico y Editor; Mi espacio e Inicio quedan centrados en situación operativa, y Técnicos abre por defecto la ficha del usuario conectado.'),
