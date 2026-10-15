@@ -1337,11 +1337,13 @@ def render_solicitudes():
                 with st.form(f'confirmar_retirada_{clave_fila}'):
                     motivo_p=st.text_input('Motivo (opcional)',key=f'motivo_retirada_{clave_fila}')
                     confirmar_p=st.checkbox('Confirmo que deseo retirar esta solicitud',key=f'check_retirada_{clave_fila}')
-                    confirmar_btn=st.form_submit_button('Confirmar retirada',disabled=not confirmar_p)
+                    confirmar_btn=st.form_submit_button('Confirmar retirada')
                 if st.button('Volver',key=f'volver_retirada_{clave_fila}'):
                     st.session_state.pop('retirada_confirmar_id',None)
                     st.rerun()
-                if confirmar_btn:
+                if confirmar_btn and not confirmar_p:
+                    st.error('Marca la casilla de confirmación antes de retirar la solicitud.')
+                if confirmar_btn and confirmar_p:
                     actual_p=next((x for x in SOLICITUDES if x.get('id')==identificador_fila),None)
                     if (not actual_p or actual_p.get('tecnico')!=t or
                         actual_p.get('estado')!='Pendiente' or actual_p.get('solicitud_origen')):
@@ -3365,3 +3367,4 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
