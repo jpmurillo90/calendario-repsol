@@ -1317,6 +1317,54 @@ def render_solicitudes():
         propias=[x for x in reversed(SOLICITUDES) if x.get('tecnico')==t and not x.get('solicitud_origen')]
         filas=[{'Creada':x.get('creada','')[:16].replace('T',' '),'Tipo':x.get('tipo'),'Periodo':f"{x.get('desde')} → {x.get('hasta')}",'Estado':_estado_solicitud_visual(x.get('estado')),'Resolución':x.get('resolucion','')} for x in propias]
         tabla(filas)
+        # Retirada inmediata de solicitudes propias todavía pendientes de aprobación.
+        # No altera el cuadrante ni requiere autorización de Coordinación.
+        pendientes_propias=[x for x in propias if x.get('estado')=='Pendiente']
+        if pendientes_propias:
+            st.markdown('<div class="ci-section-label">RETIRAR SOLICITUD ENVIADA POR ERROR</div>',unsafe_allow_html=True)
+            st.caption('Puedes retirar una solicitud pendiente antes de que Coordinación la apruebe. Quedará registrada como Cancelada y liberará el saldo reservado.')
+            opciones_pendientes={
+                f"{x.get('tipo')} · {x.get('desde')} → {x.get('hasta')} · {str(x.get('id',''))[-7:]}":x
+                for x in pendientes_propias
+            }
+            with st.form('sol_retirar_pendiente_form'):
+                etiqueta_p=st.selectbox('Solicitud pendiente',list(opciones_pendientes))
+                motivo_p=st.text_input('Motivo (opcional)',placeholder='Por ejemplo: error en las fechas')
+                confirmar_p=st.checkbox('Confirmo que quiero retirar esta solicitud')
+                retirar_p=st.form_submit_button('Retirar solicitud pendiente',disabled=not confirmar_p)
+            if retirar_p:
+                origen_p=opciones_pendientes[etiqueta_p]
+                # Revalidar propietario, estado y naturaleza de la solicitud antes de escribir.
+                actual_p=next((x for x in SOLICITUDES if x.get('id')==origen_p.get('id')),None)
+                if (not actual_p or actual_p.get('tecnico')!=t or
+                    actual_p.get('estado')!='Pendiente' or actual_p.get('solicitud_origen')):
+                    st.error('Esta solicitud ya no puede retirarse. Actualiza la página.')
+                else:
+                    nuevo_p=copy.deepcopy(SOLICITUDES)
+                    for item_p in nuevo_p:
+                        if item_p.get('id')==actual_p.get('id'):
+                            item_p.update({
+                                'estado':'Cancelada',
+                                'cancelada':datetime.now().isoformat(timespec='seconds'),
+                                'cancelada_por':st.session_state.usuario_actual,
+                                'resolucion':'Retirada por el técnico antes de su aprobación' +
+                                    (f' · {motivo_p.strip()}' if motivo_p.strip() else '')
+                            })
+                            break
+                    if guardar_portal({RUTA_SOLICITUDES:nuevo_p},
+                                     f"Solicitud pendiente retirada: {t} · {actual_p.get('tipo')} · {actual_p.get('id')}",
+                                     'Solicitudes'):
+                        destino_p=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                        if destino_p:
+                            enviar_email(
+                                f"Solicitud retirada · {t} · {actual_p.get('tipo')}",
+                                f"{t} ({TECNICOS[t]['ci']}) ha retirado una solicitud pendiente.\\n\\n"
+                                f"Tipo: {actual_p.get('tipo')}\\n"
+                                f"Periodo: {actual_p.get('desde')} a {actual_p.get('hasta')}\\n"
+                                f"Motivo: {motivo_p.strip() or 'No indicado'}",
+                                destino_p
+                            )
+                        st.rerun()
         cancelables=[x for x in propias if x.get('estado')=='Aprobada']
         if cancelables:
             st.markdown('<div class="ci-section-label">CANCELAR UNA SOLICITUD APROBADA</div>',unsafe_allow_html=True)
