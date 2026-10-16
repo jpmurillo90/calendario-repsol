@@ -1,4 +1,4 @@
-"""Gestión de Técnicos CI — versión reorganizada.
+"""Gestión de Técnicos CI — versión 17.5 · interfaz empresarial.
 Ejecutar: streamlit run app.py
 Dependencias: streamlit>=1.40,<2, pandas, requests, openpyxl.
 Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
@@ -34,6 +34,16 @@ from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Gestión Técnicos CI · REPSOL", page_icon="🏭", layout="wide")
+st.markdown("""<style>
+/* v17.5 · Diseño de diálogos, tablas y acciones empresariales */
+div[data-testid="stDialog"] div[role="dialog"]{border-radius:22px!important;border:1px solid #d7e4e9!important;box-shadow:0 26px 75px #092c3c38!important;max-height:90vh!important}
+div[data-testid="stDialog"] div[role="dialog"] h1,div[data-testid="stDialog"] div[role="dialog"] h2{color:#103b4b!important;font-weight:800!important;letter-spacing:-.025em}
+div[data-testid="stDialog"] div[role="dialog"] [data-testid="stForm"]{background:#f8fbfc;border:1px solid #e0ebef;border-radius:14px;padding:18px}
+div[data-testid="stDialog"] div[role="dialog"] [data-testid="stFormSubmitButton"] button[kind="primary"],div[data-testid="stDialog"] button[kind="primary"]{background:#096579!important;border-radius:10px!important}
+div[data-testid="stDataFrame"]{border:1px solid #e1e9ed;border-radius:14px;overflow:hidden}
+@media(max-width:700px){div[data-testid="stDialog"] div[role="dialog"]{max-height:95vh!important;border-radius:15px!important}div[data-testid="stDialog"] div[role="dialog"] [data-testid="stForm"]{padding:10px}}
+</style>""",unsafe_allow_html=True)
+
 ANOS_DISPONIBLES = [2026, 2027, 2028, 2029, 2030]
 
 RUTA_BDD = "datos_tecnicos_repsol.json"
@@ -1988,10 +1998,12 @@ def render_cuadrante():
           <div style="font-size:16px;font-weight:800;color:#173542;">＋ Registrar novedad</div>
           <div class="note">Vacaciones, VPA, HLD, HE, formación, bajas y permisos. El formulario permanecerá abierto mientras trabajas con él.</div>
         </div>''', unsafe_allow_html=True)
-        mostrar_registro = st.toggle('Mostrar formulario de registro', value=False, key='mostrar_registro_cuadrante')
-        if mostrar_registro:
-            with st.container(border=True):
-                registrar_ausencia()
+        @st.dialog('Registrar ausencia o permiso', width='large')
+        def _v175_ausencia_modal():
+            st.caption('Coordinación · Registro de novedades en el cuadrante')
+            registrar_ausencia()
+        if st.button('＋ Registrar novedad', type='primary', key='v175_registrar_novedad'):
+            _v175_ausencia_modal()
 
     contenido = cuadrante_html(equipo,mes,dd_anio)
     st.markdown(contenido,unsafe_allow_html=True)
@@ -3234,38 +3246,44 @@ def render_config():
             tarjeta=str(v.get('tarjeta',''))
             filas.append({'Matrícula':mat,'Modelo':v.get('modelo',''),'Asignado a':', '.join(asignados) or 'Sin asignar','Tarjeta':('•••• '+tarjeta[-4:]) if tarjeta else 'Sin datos'})
         tabla(filas)
-        st.divider()
-        mats=sorted(VEHICULOS)
-        modo=st.radio('Operación',['Editar vehículo','Añadir vehículo','Eliminar vehículo'],horizontal=True,key='modo_vehiculo')
-        elegido=st.selectbox('Vehículo',mats,key='vehiculo_editar') if modo in ('Editar vehículo','Eliminar vehículo') and mats else ''
-        actual=VEHICULOS.get(elegido,{})
-        if modo=='Eliminar vehículo':
-            if not mats: st.info('No hay vehículos registrados.'); return
-            asignados=[t for t,p in PERFILES_TECNICOS.items() if p.get('matricula')==elegido]
-            st.warning(f"Vas a eliminar {elegido} · {actual.get('modelo','Vehículo')}.")
-            if asignados: st.info('Actualmente asignado a: '+', '.join(asignados)+'. Al eliminarlo se desasignará automáticamente de estas fichas.')
-            confirmar=st.checkbox('Confirmo que quiero eliminar este vehículo',key='confirmar_borrado_vehiculo')
-            if st.button('🗑️ Eliminar vehículo',type='primary',disabled=not confirmar,use_container_width=True):
-                nuevos_vehiculos=copy.deepcopy(VEHICULOS); nuevos_vehiculos.pop(elegido,None); nuevos_perfiles=copy.deepcopy(PERFILES_TECNICOS)
-                for nombre in asignados: nuevos_perfiles.setdefault(nombre,{})['matricula']=''
-                if guardar_cambios({RUTA_VEHICULOS:nuevos_vehiculos,RUTA_PERFILES:nuevos_perfiles},f'Eliminar vehículo: {elegido}'): st.rerun()
+        st.caption('Selecciona una acción para administrar el catálogo sin abandonar la vista.')
+        @st.dialog('Gestión de vehículos', width='large')
+        def _v175_vehiculo_modal():
+            mats=sorted(VEHICULOS)
+            modo=st.radio('Operación',['Editar vehículo','Añadir vehículo','Eliminar vehículo'],horizontal=True,key='modo_vehiculo')
+            elegido=st.selectbox('Vehículo',mats,key='vehiculo_editar') if modo in ('Editar vehículo','Eliminar vehículo') and mats else ''
+            actual=VEHICULOS.get(elegido,{})
+            if modo=='Eliminar vehículo':
+                if not mats: st.info('No hay vehículos registrados.'); return
+                asignados=[t for t,p in PERFILES_TECNICOS.items() if p.get('matricula')==elegido]
+                st.warning(f"Vas a eliminar {elegido} · {actual.get('modelo','Vehículo')}.")
+                if asignados: st.info('Actualmente asignado a: '+', '.join(asignados)+'. Al eliminarlo se desasignará automáticamente de estas fichas.')
+                confirmar=st.checkbox('Confirmo que quiero eliminar este vehículo',key='confirmar_borrado_vehiculo')
+                if st.button('🗑️ Eliminar vehículo',type='primary',disabled=not confirmar,use_container_width=True):
+                    nuevos_vehiculos=copy.deepcopy(VEHICULOS); nuevos_vehiculos.pop(elegido,None); nuevos_perfiles=copy.deepcopy(PERFILES_TECNICOS)
+                    for nombre in asignados: nuevos_perfiles.setdefault(nombre,{})['matricula']=''
+                    if guardar_cambios({RUTA_VEHICULOS:nuevos_vehiculos,RUTA_PERFILES:nuevos_perfiles},f'Eliminar vehículo: {elegido}'): st.rerun()
+                return
+            with st.form('gestion_vehiculo'):
+                matricula=st.text_input('Matrícula',value=elegido,disabled=bool(elegido)).strip().upper().replace(' ','')
+                modelo=st.text_input('Modelo',value=actual.get('modelo',''))
+                st.caption('🔐 Datos de pago restringidos a usuarios Editor.')
+                tarjeta=st.text_input('N.º tarjeta',value=actual.get('tarjeta',''),type='password')
+                pin=st.text_input('PIN',value=actual.get('pin',''),type='password')
+                guardar_v=st.form_submit_button('Guardar vehículo',type='primary')
+            if guardar_v:
+                if not matricula:
+                    st.error('Indica la matrícula.'); return
+                if modo=='Añadir vehículo' and matricula in VEHICULOS:
+                    st.error('La matrícula ya existe.'); return
+                nuevo=copy.deepcopy(VEHICULOS)
+                nuevo[matricula]={'modelo':modelo.strip(),'tarjeta':tarjeta.strip(),'pin':pin.strip()}
+                if guardar_cambios({RUTA_VEHICULOS:nuevo},f'Vehículo: {matricula}'):
+                    st.rerun()
             return
-        with st.form('gestion_vehiculo'):
-            matricula=st.text_input('Matrícula',value=elegido,disabled=bool(elegido)).strip().upper().replace(' ','')
-            modelo=st.text_input('Modelo',value=actual.get('modelo',''))
-            st.caption('🔐 Datos de pago restringidos a usuarios Editor.')
-            tarjeta=st.text_input('N.º tarjeta',value=actual.get('tarjeta',''),type='password')
-            pin=st.text_input('PIN',value=actual.get('pin',''),type='password')
-            guardar_v=st.form_submit_button('Guardar vehículo',type='primary')
-        if guardar_v:
-            if not matricula:
-                st.error('Indica la matrícula.'); return
-            if modo=='Añadir vehículo' and matricula in VEHICULOS:
-                st.error('La matrícula ya existe.'); return
-            nuevo=copy.deepcopy(VEHICULOS)
-            nuevo[matricula]={'modelo':modelo.strip(),'tarjeta':tarjeta.strip(),'pin':pin.strip()}
-            if guardar_cambios({RUTA_VEHICULOS:nuevo},f'Vehículo: {matricula}'):
-                st.rerun()
+
+        if st.button('＋ Añadir / editar / eliminar vehículo', type='primary', key='v175_vehiculo_abrir'):
+            _v175_vehiculo_modal()
         return
 
     if opcion=='Avisos por email':
