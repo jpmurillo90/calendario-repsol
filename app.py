@@ -1342,85 +1342,117 @@ def dialogo_retirar_solicitud(identificador_fila, t):
                     st.session_state.pop('retirada_confirmar_id',None)
                     st.rerun()
 
+@st.dialog('Nueva solicitud', width='large')
+def dialogo_nueva_solicitud():
+    t=tecnico_sesion(); st.caption('Completa los datos de la ausencia. Se calcularán automáticamente los saldos y los solapamientos.')
+    tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'],key='sol_tipo')
+    c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today(),key='sol_desde'); hasta=c2.date_input('Hasta',date.today(),key='sol_hasta')
+    aplica_horas=tipo in ('HLD','Consumir HE')
+    fechas_periodo=[]
+    if hasta>=desde:
+        for i in range((hasta-desde).days+1):
+            f=desde+timedelta(days=i)
+            j=float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
+            if j>0: fechas_periodo.append((f,j))
+    jornada_completa=False
+    horas=0.0
+    if aplica_horas:
+        jornada_completa=st.checkbox(
+            'Solicitar jornada completa', value=True,
+            help='Calcula automáticamente las horas reales de cada día. Si el viernes tiene menos jornada, consumirá menos horas.'
+        )
+        if jornada_completa:
+            st.caption('Se aplicará la jornada real de cada fecha del rango. Puedes revisar el desglose antes de enviar.')
+        elif fechas_periodo:
+            limite=min(j for _,j in fechas_periodo)
+            valor_defecto=min(limite, 1.0)
+            horas=st.number_input(
+                f'Horas por día · máximo común del periodo: {limite:g} h',
+                min_value=0.5, max_value=float(limite), value=float(valor_defecto), step=0.5,
+                key=f'sol_horas_parcial_{tipo}_{desde.isoformat()}_{hasta.isoformat()}'
+            )
+        else:
+            st.info('El periodo seleccionado no contiene jornadas laborables computables.')
+    else:
+        st.number_input('Horas por día (solo HLD / HE)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=True,key=f'sol_horas_off_{tipo}_{desde.isoformat()}_{hasta.isoformat()}')
+
+    if aplica_horas and fechas_periodo:
+        st.markdown('#### Desglose del periodo')
+        dias_semana=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+        filas_desglose=[]
+        total_periodo=0.0
+        for f,jornada in fechas_periodo:
+            consumo=jornada if jornada_completa else min(float(horas),jornada)
+            total_periodo+=consumo
+            filas_desglose.append({
+                'Fecha':f"{dias_semana[f.weekday()]} {f:%d/%m/%Y}",
+                'Jornada prevista':f"{jornada:g} h",
+                'Horas solicitadas':f"{consumo:g} h"
+            })
+        tabla(filas_desglose)
+        st.markdown(f"**Total del periodo: {total_periodo:g} h**")
+
+    rs=_resumen_saldo_solicitud(t,tipo,desde,hasta,horas if aplica_horas else 0,jornada_completa if aplica_horas else False)
+    titulo={'Vacaciones':'Vacaciones','Vacaciones año anterior':'Vacaciones año anterior','HLD':'HLD','Consumir HE':'Horas extra'}[tipo]
+    st.markdown(f"""<div class='balance-head' style='margin:8px 0 14px'><h3>Saldo disponible · {escape(titulo)}</h3><p>Saldo anual actualizado y solicitudes pendientes ya reservadas.</p></div><div class='seg-grid'><div class='seg-kpi'><div class='label'>SALDO ACTUAL</div><div class='value'>{rs['saldo_actual']:g} {rs['unidad']}</div><div class='sub'>Saldo consolidado</div></div><div class='seg-kpi'><div class='label'>PENDIENTE DE APROBACIÓN</div><div class='value'>{rs['reservado']:g} {rs['unidad']}</div><div class='sub'>Ya reservado</div></div><div class='seg-kpi total'><div class='label'>DISPONIBLE PARA SOLICITAR</div><div class='value'>{rs['disponible']:g} {rs['unidad']}</div><div class='sub'>Saldo utilizable ahora</div></div><div class='seg-kpi'><div class='label'>ESTA SOLICITUD</div><div class='value'>{rs['solicitado']:g} {rs['unidad']}</div><div class='sub'>Consumo calculado</div></div><div class='seg-kpi'><div class='label'>SALDO RESTANTE</div><div class='value'>{rs['restante']:g} {rs['unidad']}</div><div class='sub'>Si se aprueba</div></div></div>""",unsafe_allow_html=True)
+    if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
+    elif rs['solicitado']<=0: st.warning('El periodo seleccionado no contiene jornadas laborables computables.')
+    elif rs['restante']<0: st.error(f"Saldo insuficiente. La solicitud supera en {abs(rs['restante']):g} {rs['unidad']} el saldo realmente disponible.")
+    conflictos=_solapamientos_ci(t,desde,hasta)
+    comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.',key='sol_comentario')
+    enviar=st.button('Enviar solicitud',type='primary',disabled=not rs['valido'],key='sol_enviar')
+    if enviar and conflictos:
+        st.session_state['sol_conflicto_pendiente']={'firma':f'{t}|{tipo}|{desde}|{hasta}','conflictos':conflictos}
+    firma_actual=f'{t}|{tipo}|{desde}|{hasta}'
+    pendiente_conf=st.session_state.get('sol_conflicto_pendiente',{})
+    confirmar_envio=False
+    if pendiente_conf.get('firma')==firma_actual and conflictos:
+        st.warning(f'⚠️ Solapamiento de cobertura detectado en {TECNICOS[t]["ci"]}. La solicitud coincide con planificación de otro técnico del CI.')
+        tabla(_tabla_solapamientos(conflictos))
+        revisado=st.checkbox('He revisado el solapamiento y deseo enviar la solicitud igualmente.',key='sol_confirma_solapamiento')
+        confirmar_envio=st.button('Confirmar y enviar solicitud',type='primary',disabled=not revisado,key='sol_enviar_confirmado')
+    if enviar and not conflictos or confirmar_envio:
+        sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas and not jornada_completa else 0,'jornada_completa':jornada_completa if aplica_horas else False,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solapamiento_detectado':bool(conflictos),'solapamiento_confirmado_tecnico':bool(conflictos)}
+        nuevo=SOLICITUDES+[sol]
+        if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
+            destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
+            if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nConsumo: {rs["solicitado"]:g} {rs["unidad"]}\nSaldo restante si se aprueba: {rs["restante"]:g} {rs["unidad"]}\nSolapamiento de cobertura: {"SÍ · revisado por el técnico" if conflictos else "No"}\nComentario: {comentario or "—"}',destino)
+            st.session_state.pop('sol_conflicto_pendiente',None)
+            st.rerun()
+
+@st.dialog('Solicitar cancelación de una ausencia aprobada', width='large')
+def dialogo_cancelacion_aprobada(t, propias):
+    cancelables=[x for x in propias if x.get('estado')=='Aprobada']
+    if cancelables:
+        st.markdown('<div class="ci-section-label">CANCELAR UNA SOLICITUD APROBADA</div>',unsafe_allow_html=True)
+        st.caption('La cancelación no borra nada directamente: se envía a Coordinación y solo al aprobarse se retira del cuadrante y se restituye el saldo correspondiente.')
+        opciones={f"{x.get('tipo')} · {x.get('desde')} → {x.get('hasta')}":x for x in cancelables}
+        etiqueta=st.selectbox('Solicitud a cancelar',list(opciones),key='sol_cancelar_sel')
+        motivo=st.text_input('Motivo de cancelación',key='sol_cancelar_motivo')
+        if st.button('Solicitar cancelación',type='secondary',key='sol_cancelar_btn'):
+            origen=opciones[etiqueta]
+            ya=any(x.get('solicitud_origen')==origen.get('id') and x.get('estado')=='Pendiente' for x in SOLICITUDES)
+            if ya: st.warning('Ya existe una solicitud de cancelación pendiente para este registro.')
+            else:
+                can={'id':_id_estable('cancelar',origen.get('id'),datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':f"Cancelar · {origen.get('tipo')}",'desde':origen.get('desde'),'hasta':origen.get('hasta'),'comentario':motivo.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solicitud_origen':origen.get('id')}
+                if guardar_portal({RUTA_SOLICITUDES:SOLICITUDES+[can]},f"Cancelación solicitada: {t} · {origen.get('tipo')}",'Solicitudes'):
+                    destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                    if destino: enviar_email(f"Cancelación solicitada · {t} · {origen.get('tipo')}",f"{t} ({TECNICOS[t]['ci']}) solicita cancelar una solicitud aprobada.\n\nTipo: {origen.get('tipo')}\nPeriodo: {origen.get('desde')} a {origen.get('hasta')}\nMotivo: {motivo or '—'}",destino)
+                    st.rerun()
+
 def render_solicitudes():
     st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, vacaciones del año anterior, HLD y consumo de HE con aprobación, trazabilidad y actualización automática del cuadrante.</div></div>',unsafe_allow_html=True)
     if ES_TECNICO:
-        t=tecnico_sesion(); st.subheader('Nueva solicitud')
-        tipo=st.selectbox('Tipo',['Vacaciones','Vacaciones año anterior','HLD','Consumir HE'],key='sol_tipo')
-        c1,c2=st.columns(2); desde=c1.date_input('Desde',date.today(),key='sol_desde'); hasta=c2.date_input('Hasta',date.today(),key='sol_hasta')
-        aplica_horas=tipo in ('HLD','Consumir HE')
-        fechas_periodo=[]
-        if hasta>=desde:
-            for i in range((hasta-desde).days+1):
-                f=desde+timedelta(days=i)
-                j=float(obtener_horas_jornada_real(t,f.year,f.month,f.day))
-                if j>0: fechas_periodo.append((f,j))
-        jornada_completa=False
-        horas=0.0
-        if aplica_horas:
-            jornada_completa=st.checkbox(
-                'Solicitar jornada completa', value=True,
-                help='Calcula automáticamente las horas reales de cada día. Si el viernes tiene menos jornada, consumirá menos horas.'
-            )
-            if jornada_completa:
-                st.caption('Se aplicará la jornada real de cada fecha del rango. Puedes revisar el desglose antes de enviar.')
-            elif fechas_periodo:
-                limite=min(j for _,j in fechas_periodo)
-                valor_defecto=min(limite, 1.0)
-                horas=st.number_input(
-                    f'Horas por día · máximo común del periodo: {limite:g} h',
-                    min_value=0.5, max_value=float(limite), value=float(valor_defecto), step=0.5,
-                    key=f'sol_horas_parcial_{tipo}_{desde.isoformat()}_{hasta.isoformat()}'
-                )
-            else:
-                st.info('El periodo seleccionado no contiene jornadas laborables computables.')
-        else:
-            st.number_input('Horas por día (solo HLD / HE)',min_value=0.0,max_value=24.0,value=0.0,step=.5,disabled=True,key=f'sol_horas_off_{tipo}_{desde.isoformat()}_{hasta.isoformat()}')
-
-        if aplica_horas and fechas_periodo:
-            st.markdown('#### Desglose del periodo')
-            dias_semana=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
-            filas_desglose=[]
-            total_periodo=0.0
-            for f,jornada in fechas_periodo:
-                consumo=jornada if jornada_completa else min(float(horas),jornada)
-                total_periodo+=consumo
-                filas_desglose.append({
-                    'Fecha':f"{dias_semana[f.weekday()]} {f:%d/%m/%Y}",
-                    'Jornada prevista':f"{jornada:g} h",
-                    'Horas solicitadas':f"{consumo:g} h"
-                })
-            tabla(filas_desglose)
-            st.markdown(f"**Total del periodo: {total_periodo:g} h**")
-
-        rs=_resumen_saldo_solicitud(t,tipo,desde,hasta,horas if aplica_horas else 0,jornada_completa if aplica_horas else False)
-        titulo={'Vacaciones':'Vacaciones','Vacaciones año anterior':'Vacaciones año anterior','HLD':'HLD','Consumir HE':'Horas extra'}[tipo]
-        st.markdown(f"""<div class='balance-head' style='margin:8px 0 14px'><h3>Saldo disponible · {escape(titulo)}</h3><p>Saldo anual actualizado y solicitudes pendientes ya reservadas.</p></div><div class='seg-grid'><div class='seg-kpi'><div class='label'>SALDO ACTUAL</div><div class='value'>{rs['saldo_actual']:g} {rs['unidad']}</div><div class='sub'>Saldo consolidado</div></div><div class='seg-kpi'><div class='label'>PENDIENTE DE APROBACIÓN</div><div class='value'>{rs['reservado']:g} {rs['unidad']}</div><div class='sub'>Ya reservado</div></div><div class='seg-kpi total'><div class='label'>DISPONIBLE PARA SOLICITAR</div><div class='value'>{rs['disponible']:g} {rs['unidad']}</div><div class='sub'>Saldo utilizable ahora</div></div><div class='seg-kpi'><div class='label'>ESTA SOLICITUD</div><div class='value'>{rs['solicitado']:g} {rs['unidad']}</div><div class='sub'>Consumo calculado</div></div><div class='seg-kpi'><div class='label'>SALDO RESTANTE</div><div class='value'>{rs['restante']:g} {rs['unidad']}</div><div class='sub'>Si se aprueba</div></div></div>""",unsafe_allow_html=True)
-        if hasta<desde: st.error('La fecha final no puede ser anterior a la inicial.')
-        elif rs['solicitado']<=0: st.warning('El periodo seleccionado no contiene jornadas laborables computables.')
-        elif rs['restante']<0: st.error(f"Saldo insuficiente. La solicitud supera en {abs(rs['restante']):g} {rs['unidad']} el saldo realmente disponible.")
-        conflictos=_solapamientos_ci(t,desde,hasta)
-        comentario=st.text_area('Comentario / detalle',placeholder='Añade cualquier información que deba conocer Coordinación.',key='sol_comentario')
-        enviar=st.button('Enviar solicitud',type='primary',disabled=not rs['valido'],key='sol_enviar')
-        if enviar and conflictos:
-            st.session_state['sol_conflicto_pendiente']={'firma':f'{t}|{tipo}|{desde}|{hasta}','conflictos':conflictos}
-        firma_actual=f'{t}|{tipo}|{desde}|{hasta}'
-        pendiente_conf=st.session_state.get('sol_conflicto_pendiente',{})
-        confirmar_envio=False
-        if pendiente_conf.get('firma')==firma_actual and conflictos:
-            st.warning(f'⚠️ Solapamiento de cobertura detectado en {TECNICOS[t]["ci"]}. La solicitud coincide con planificación de otro técnico del CI.')
-            tabla(_tabla_solapamientos(conflictos))
-            revisado=st.checkbox('He revisado el solapamiento y deseo enviar la solicitud igualmente.',key='sol_confirma_solapamiento')
-            confirmar_envio=st.button('Confirmar y enviar solicitud',type='primary',disabled=not revisado,key='sol_enviar_confirmado')
-        if enviar and not conflictos or confirmar_envio:
-            sol={'id':_id_estable(t,tipo,desde,hasta,datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':tipo,'desde':desde.isoformat(),'hasta':hasta.isoformat(),'horas_dia':horas if aplica_horas and not jornada_completa else 0,'jornada_completa':jornada_completa if aplica_horas else False,'comentario':comentario.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solapamiento_detectado':bool(conflictos),'solapamiento_confirmado_tecnico':bool(conflictos)}
-            nuevo=SOLICITUDES+[sol]
-            if guardar_portal({RUTA_SOLICITUDES:nuevo},f'Solicitud creada: {t} · {tipo} · {desde} a {hasta}','Solicitudes'):
-                destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
-                if destino: enviar_email(f'Nueva solicitud · {t} · {tipo}',f'{t} ({TECNICOS[t]["ci"]}) ha registrado una solicitud.\n\nTipo: {tipo}\nPeriodo: {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}\nConsumo: {rs["solicitado"]:g} {rs["unidad"]}\nSaldo restante si se aprueba: {rs["restante"]:g} {rs["unidad"]}\nSolapamiento de cobertura: {"SÍ · revisado por el técnico" if conflictos else "No"}\nComentario: {comentario or "—"}',destino)
-                st.session_state.pop('sol_conflicto_pendiente',None)
-                st.rerun()
-        st.subheader('Mis solicitudes')
+        t=tecnico_sesion()
+        cabecera, accion=st.columns([4,1.5],vertical_alignment='center')
+        with cabecera:
+            st.markdown('### Mis solicitudes')
+            st.caption('Consulta tus peticiones, su estado y las acciones disponibles.')
+        with accion:
+            if st.button('＋ Nueva solicitud',type='primary',use_container_width=True,key='v173_nueva_solicitud'):
+                st.session_state['v173_abrir_nueva']=True
+        if st.session_state.pop('v173_abrir_nueva',False):
+            dialogo_nueva_solicitud()
         propias=[x for x in reversed(SOLICITUDES) if x.get('tecnico')==t and not x.get('solicitud_origen')]
         st.caption('Las solicitudes pendientes pueden retirarse directamente. Las aprobadas requieren solicitar su cancelación a Coordinación.')
         for indice_sol, solicitud_fila in enumerate(propias):
@@ -1442,23 +1474,11 @@ def render_solicitudes():
             st.divider()
         if st.session_state.get('retirada_confirmar_id'):
             dialogo_retirar_solicitud(st.session_state['retirada_confirmar_id'], t)
-        cancelables=[x for x in propias if x.get('estado')=='Aprobada']
-        if cancelables:
-            st.markdown('<div class="ci-section-label">CANCELAR UNA SOLICITUD APROBADA</div>',unsafe_allow_html=True)
-            st.caption('La cancelación no borra nada directamente: se envía a Coordinación y solo al aprobarse se retira del cuadrante y se restituye el saldo correspondiente.')
-            opciones={f"{x.get('tipo')} · {x.get('desde')} → {x.get('hasta')}":x for x in cancelables}
-            etiqueta=st.selectbox('Solicitud a cancelar',list(opciones),key='sol_cancelar_sel')
-            motivo=st.text_input('Motivo de cancelación',key='sol_cancelar_motivo')
-            if st.button('Solicitar cancelación',type='secondary',key='sol_cancelar_btn'):
-                origen=opciones[etiqueta]
-                ya=any(x.get('solicitud_origen')==origen.get('id') and x.get('estado')=='Pendiente' for x in SOLICITUDES)
-                if ya: st.warning('Ya existe una solicitud de cancelación pendiente para este registro.')
-                else:
-                    can={'id':_id_estable('cancelar',origen.get('id'),datetime.now().isoformat()),'tecnico':t,'ci':TECNICOS[t]['ci'],'tipo':f"Cancelar · {origen.get('tipo')}",'desde':origen.get('desde'),'hasta':origen.get('hasta'),'comentario':motivo.strip(),'estado':'Pendiente','creada':datetime.now().isoformat(timespec='seconds'),'creada_por':st.session_state.usuario_actual,'solicitud_origen':origen.get('id')}
-                    if guardar_portal({RUTA_SOLICITUDES:SOLICITUDES+[can]},f"Cancelación solicitada: {t} · {origen.get('tipo')}",'Solicitudes'):
-                        destino=str(secreto('GMAIL_DESTINATARIO','')).strip()
-                        if destino: enviar_email(f"Cancelación solicitada · {t} · {origen.get('tipo')}",f"{t} ({TECNICOS[t]['ci']}) solicita cancelar una solicitud aprobada.\n\nTipo: {origen.get('tipo')}\nPeriodo: {origen.get('desde')} a {origen.get('hasta')}\nMotivo: {motivo or '—'}",destino)
-                        st.rerun()
+        if any(x.get('estado')=='Aprobada' for x in propias):
+            if st.button('Solicitar cancelación de una ausencia aprobada',key='v173_cancelar_aprobada'):
+                st.session_state['v173_cancelar_aprobada_open']=True
+            if st.session_state.pop('v173_cancelar_aprobada_open',False):
+                dialogo_cancelacion_aprobada(t, propias)
         return
     pendientes=[x for x in SOLICITUDES if x.get('estado')=='Pendiente']
     st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Pendientes de revisión <span class="ci-badge {"warn" if pendientes else "ok"}">{len(pendientes)}</span></div></div>',unsafe_allow_html=True)
