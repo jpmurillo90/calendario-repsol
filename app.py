@@ -904,6 +904,43 @@ st.markdown(r'''<style>
 .seg-analysis{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:16px 18px;box-shadow:0 7px 20px rgba(15,50,65,.035)}.seg-analysis-title{font-weight:800;color:#102a3a;margin-bottom:3px}.seg-analysis-sub{font-size:.72rem;color:#80939d;margin-bottom:12px}.seg-donut-wrap{display:flex;align-items:center;gap:18px}.seg-donut{width:116px;height:116px;border-radius:50%;position:relative;flex:0 0 auto}.seg-donut:after{content:'';position:absolute;inset:24px;background:#fff;border-radius:50%}.seg-donut-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;font-weight:800;color:#102a3a}.seg-legend{font-size:.75rem;line-height:1.8}.seg-dot2{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.version-card{background:#fff;border:1px solid #d9e3e8;border-radius:15px;padding:18px 20px;margin:10px 0;box-shadow:0 7px 20px rgba(15,50,65,.035)}.version-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.version-name{font-size:1.05rem;font-weight:800;color:#102a3a}.version-date{font-size:.72rem;color:#80939d}.version-tag{display:inline-block;background:#e5f3f5;color:#0d5869;border-radius:20px;padding:4px 9px;font-size:.65rem;font-weight:800;margin-top:7px}.version-body{color:#536c79;font-size:.84rem;margin-top:10px;line-height:1.65}.global-ci{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:14px 16px;min-height:120px}.global-ci .name{font-weight:800;color:#0d5869}.global-ci .big{font-size:1.55rem;font-weight:800;color:#102a3a;margin:6px 0}.global-ci .mini{font-size:.72rem;color:#708590}
 </style>''', unsafe_allow_html=True)
 
+# v17.1 · rediseño visual de Inicio y navegación (sin cambios en datos)
+st.markdown("""<style>
+/* Navegación lateral tipo aplicación empresarial */
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#102b3b 0%,#153d4e 100%)!important;border-right:0!important;box-shadow:8px 0 32px rgba(5,30,45,.14)!important}
+[data-testid="stSidebar"] *{color:#e7f3f6!important}
+[data-testid="stSidebar"] [data-testid="stImage"]{background:#fff;border-radius:13px;padding:8px!important;margin:10px 0 18px}
+[data-testid="stSidebar"] h1{font-size:1.3rem!important;font-weight:800!important;color:white!important}
+[data-testid="stSidebar"] [role="radiogroup"]{gap:5px!important}
+[data-testid="stSidebar"] [role="radiogroup"] label{border:1px solid transparent!important;border-radius:12px!important;padding:10px 12px!important;min-height:42px;background:transparent!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{background:#ffffff19!important;border-color:#ffffff20!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:linear-gradient(100deg,#16758a,#1c627a)!important;border-color:#5bafc0!important;box-shadow:0 5px 15px #001c2a35!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p{font-weight:800!important;color:#fff!important}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"]>div{background:#ffffff12!important;border:1px solid #ffffff3b!important;border-radius:10px!important}
+[data-testid="stSidebar"] .ci-section-label{color:#a7c6d0!important;letter-spacing:.13em!important;margin-top:16px!important}
+[data-testid="stSidebar"] button{background:#ffffff14!important;border-color:#ffffff45!important;color:#fff!important}
+/* Página principal */
+.stApp{background:radial-gradient(ellipse at 80% 0%,#e7f3f6 0%,transparent 36%),#f3f7f9!important}
+.block-container{max-width:1550px!important;padding-top:2.1rem!important}
+.ci-v171-hero{background:linear-gradient(115deg,#0c3042 0%,#11546a 63%,#15788b 100%);border-radius:22px;padding:30px 34px;color:#fff;margin:12px 0 24px;box-shadow:0 18px 40px rgba(10,58,75,.17);position:relative;overflow:hidden}
+.ci-v171-hero:after{content:'';position:absolute;width:270px;height:270px;border:1px solid #ffffff2b;border-radius:50%;right:-70px;top:-135px;box-shadow:0 0 0 55px #ffffff09,0 0 0 110px #ffffff08}
+.ci-v171-hero .eyebrow{font-size:11px;letter-spacing:.18em;font-weight:800;color:#b7e9f0;text-transform:uppercase}
+.ci-v171-hero .heading{font-size:clamp(24px,3vw,36px);font-weight:850;letter-spacing:-.04em;margin:9px 0}
+.ci-v171-hero .description{font-size:14px;color:#d5e8ed;max-width:730px;line-height:1.7}
+.ci-v171-hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+.ci-v171-hero .chip{padding:6px 11px;background:#ffffff1c;border:1px solid #ffffff2c;border-radius:999px;font-size:11px;font-weight:700;color:white}
+.ci-v171-kpi{background:white;border:1px solid #dfebef;border-radius:17px;padding:20px 20px 18px;min-height:146px;box-shadow:0 10px 25px #133a4910;margin:6px 0 16px;position:relative;overflow:hidden}
+.ci-v171-kpi:before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,#0f8192)}
+.ci-v171-kpi .top{display:flex;justify-content:space-between;align-items:center;color:#5b7380;font-size:12px;font-weight:750}
+.ci-v171-kpi .icon{font-size:21px;background:#edf7f9;border-radius:11px;padding:8px}
+.ci-v171-kpi .num{font-size:38px;font-weight:850;line-height:1.15;color:#153344;margin-top:9px;letter-spacing:-.055em}
+.ci-v171-kpi .foot{font-size:11px;color:#728994;margin-top:8px}
+.ci-v171-section{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #dce8ed;margin:24px 0 14px;padding-bottom:10px}
+.ci-v171-section strong{font-size:17px;color:#173748;letter-spacing:-.02em}
+.ci-v171-section span{font-size:11px;color:#66818d;font-weight:700}
+@media(max-width:700px){.ci-v171-hero{padding:23px 19px;border-radius:17px}.ci-v171-kpi{min-height:122px;padding:14px}.ci-v171-kpi .num{font-size:30px}}
+</style>""",unsafe_allow_html=True)
+
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
 if ES_TECNICO:
     NAV_LABELS = {
@@ -1571,7 +1608,7 @@ def render_inicio():
     .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
-    st.markdown(f'<div class="ops-hero"><div class="k">Panel de situación · Complejos Industriales Repsol</div><div class="t">Visión operativa de los CI</div><div class="n">Disponibilidad, guardias, cobertura y PRL · Ámbito: {escape(centro)}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ci-v171-hero"><div class="eyebrow">CENTRO DE CONTROL · GESTIÓN OPERATIVA</div><div class="heading">Panel de coordinación</div><div class="description">Visión general de disponibilidad, cobertura, guardias y prevención de riesgos de los Complejos Industriales.</div><div class="chips"><span class="chip">🏭 {escape(centro)}</span><span class="chip">📅 Ejercicio {dd_anio}</span><span class="chip">● Entorno conectado</span><span class="chip">v17.1 · Diseño renovado</span></div></div>', unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -1586,7 +1623,7 @@ def render_inicio():
                 activa_ci = True; break
         guardias_hoy += int(activa_ci)
     activaciones_hoy = sum(1 for a in ACTIVACIONES_GUARDIA if a.get('fecha') == fecha.isoformat() and a.get('tecnico') in visibles)
-    st.markdown(f'<div class="ci-panel"><div class="ci-panel-title">Situación operativa · {fecha:%d/%m/%Y}</div><div class="ci-panel-note">👥 <b>{len(visibles)}</b> técnicos visibles &nbsp;·&nbsp; 🛡️ <b>{guardias_hoy}</b> CI con guardia activa &nbsp;·&nbsp; ⚡ <b>{activaciones_hoy}</b> activaciones registradas hoy</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ci-v171-section"><strong>📊 Resumen operativo · {fecha:%d/%m/%Y}</strong><span>👥 {len(visibles)} técnicos &nbsp;·&nbsp; 🛡️ {guardias_hoy} CI de guardia &nbsp;·&nbsp; ⚡ {activaciones_hoy} activaciones</span></div>', unsafe_allow_html=True)
     centros = sorted({TECNICOS[t]['ci'] for t in visibles})
     sin_cobertura = [c for c in centros if any(obtener_horas_jornada_real(t,fecha.year,fecha.month,fecha.day)>0 for t in visibles if TECNICOS[t]['ci']==c) and not any(estados[t][1]>0 for t in visibles if TECNICOS[t]['ci']==c)]
     avisos = [t for t in visibles if estado_prl(t)[0] != 'Vigente']
@@ -1599,8 +1636,9 @@ def render_inicio():
         ('Ausencias / parciales',len(ausentes),'warning' if ausentes else 'success','Incluye permisos parciales y formación'),
         ('Centros sin cobertura',len(sin_cobertura),'danger' if sin_cobertura else 'success','Requieren revisión de la planificación' if sin_cobertura else 'Sin centros laborables totalmente descubiertos'),
         ('PRL por revisar',len(avisos),'danger' if caducados else 'warning' if proximos else 'neutral' if faltan else 'success',f'{caducados} caducados · {proximos} próximos · {faltan} sin datos')]
-    for col,(label,value,color,nota) in zip(st.columns(4),indicadores):
-        col.markdown(f'<div class="home-box {color}"><div class="home-label">{label}</div><div class="home-value">{value}</div><div class="home-note">{nota}</div></div>',unsafe_allow_html=True)
+    for col,(label,value,color,nota),icono in zip(st.columns(4),indicadores,['👥','📆','🏭','🦺']):
+        acento = {'success':'#0d9279','warning':'#df9b28','danger':'#db5963','neutral':'#7695a4'}.get(color,'#0f8192')
+        col.markdown(f'<div class="ci-v171-kpi" style="--accent:{acento}"><div class="top"><span>{escape(label)}</span><span class="icon">{icono}</span></div><div class="num">{value}</div><div class="foot">{escape(nota)}</div></div>',unsafe_allow_html=True)
     st.caption('Disponibilidad prevista, no fichajes. PRL se evalúa a fecha de hoy. Cobertura alerta cuando un centro laborable queda sin personal disponible; no hay mínimos de dotación configurados.')
     if sin_cobertura:
         st.error('SIN COBERTURA PREVISTA: '+', '.join(sin_cobertura)+'. Revisa la asignación de personal.')
@@ -2929,6 +2967,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v17.1','16/10/2026','Nuevo panel y navegación','Rediseño visible del panel Inicio y del menú lateral; sin cambios en persistencia ni lógica de negocio.'),
       ('v17.0','16/10/2026','Rediseño visual seguro','Capa visual corporativa refinada y responsive. Conserva la lógica, los JSON y el almacenamiento existentes; recomendada para pruebas con Gist clonado.'),
       ('v16.14.4','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
       ('v16.14.2','30/09/2026','Ajuste visual ficha técnica','Compacta la tarjeta Horario del CI en el perfil Técnico, igualando su jerarquía visual con la vista Editor sin reintroducir HTML dinámico conflictivo ni el error React removeChild.'),
