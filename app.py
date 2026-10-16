@@ -2435,56 +2435,60 @@ def render_guardias():
     tecnico_vinculado = perfil_usuario.get('tecnico', st.session_state.usuario_actual)
     tecnico_sesion = tecnico_vinculado if tecnico_vinculado in TECNICOS else None
     with tab_plan:
-        st.markdown('#### Registrar guardia')
-        st.caption('La guardia puede abarcar cualquier periodo: lunes–domingo, miércoles–miércoles o el rango excepcional que corresponda.')
-        if EDITOR:
-            candidatos=visibles
-        elif tecnico_sesion and TECNICOS.get(tecnico_sesion,{}).get('activo',True):
-            candidatos=[tecnico_sesion]
-        else:
-            candidatos=[]
-            st.info('Tu usuario no está vinculado a un técnico con el mismo nombre. Un Editor puede registrar la guardia o ajustar el nombre del usuario en Secrets.')
-        if candidatos:
-            fecha_base=date.today() if date.today().year==dd_anio else date(dd_anio,1,1)
-            fecha_fin_base=min(fecha_base+timedelta(days=6),date(dd_anio,12,31))
-            with st.form('form_guardia'):
-                tg=st.selectbox('Técnico',candidatos,disabled=not EDITOR)
-                cg1,cg2=st.columns(2)
-                with cg1:
-                    inicio_guardia=st.date_input('Fecha de inicio',value=fecha_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_inicio')
-                with cg2:
-                    fin_guardia=st.date_input('Fecha de fin',value=fecha_fin_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_fin')
-                nota=st.text_input('Observaciones (opcional)')
-                guardar=st.form_submit_button('Registrar guardia',type='primary')
-            if inicio_guardia<=fin_guardia:
-                dias_guardia=(fin_guardia-inicio_guardia).days+1
-                st.caption(f'Periodo propuesto: {inicio_guardia:%d/%m/%Y} → {fin_guardia:%d/%m/%Y} · {dias_guardia} día(s)')
+        @st.dialog('Registrar guardia 12x7', width='large')
+        def _registrar_guardia_modal():
+            st.markdown('#### Registrar guardia')
+            st.caption('La guardia puede abarcar cualquier periodo: lunes–domingo, miércoles–miércoles o el rango excepcional que corresponda.')
+            if EDITOR:
+                candidatos=visibles
+            elif tecnico_sesion and TECNICOS.get(tecnico_sesion,{}).get('activo',True):
+                candidatos=[tecnico_sesion]
             else:
-                st.warning('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
-            if guardar:
-                ci=TECNICOS[tg]['ci']; conflicto=[]
-                for g in REGISTROS_GUARDIAS:
-                    if g.get('centro')!=ci or g.get('tecnico')==tg: continue
-                    gi,gf=_parse_fecha_iso(g.get('inicio')),_parse_fecha_iso(g.get('fin'))
-                    if gi and gf and inicio_guardia<=gf and fin_guardia>=gi: conflicto.append(g)
-                duplicada=any(
-                    g.get('tecnico')==tg and
-                    g.get('inicio')==inicio_guardia.isoformat() and
-                    g.get('fin')==fin_guardia.isoformat()
-                    for g in REGISTROS_GUARDIAS
-                )
-                if inicio_guardia>fin_guardia:
-                    st.error('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
-                elif duplicada:
-                    st.info('Ese periodo ya está registrado para el técnico.')
-                elif conflicto:
-                    detalle=', '.join(f"{x.get('tecnico','')} ({(_parse_fecha_iso(x.get('inicio')) or date.min):%d/%m}–{(_parse_fecha_iso(x.get('fin')) or date.min):%d/%m})" for x in conflicto)
-                    st.error('No se puede guardar: existe otra guardia que se solapa en el mismo CI: '+detalle)
+                candidatos=[]
+                st.info('Tu usuario no está vinculado a un técnico con el mismo nombre. Un Editor puede registrar la guardia o ajustar el nombre del usuario en Secrets.')
+            if candidatos:
+                fecha_base=date.today() if date.today().year==dd_anio else date(dd_anio,1,1)
+                fecha_fin_base=min(fecha_base+timedelta(days=6),date(dd_anio,12,31))
+                with st.form('form_guardia'):
+                    tg=st.selectbox('Técnico',candidatos,disabled=not EDITOR)
+                    cg1,cg2=st.columns(2)
+                    with cg1:
+                        inicio_guardia=st.date_input('Fecha de inicio',value=fecha_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_inicio')
+                    with cg2:
+                        fin_guardia=st.date_input('Fecha de fin',value=fecha_fin_base,min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31),key='guardia_fin')
+                    nota=st.text_input('Observaciones (opcional)')
+                    guardar=st.form_submit_button('Registrar guardia',type='primary')
+                if inicio_guardia<=fin_guardia:
+                    dias_guardia=(fin_guardia-inicio_guardia).days+1
+                    st.caption(f'Periodo propuesto: {inicio_guardia:%d/%m/%Y} → {fin_guardia:%d/%m/%Y} · {dias_guardia} día(s)')
                 else:
-                    nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
-                    gid=hashlib.sha256(f'{tg}|{inicio_guardia.isoformat()}|{fin_guardia.isoformat()}'.encode()).hexdigest()[:16]
-                    nuevo.append({'id':gid,'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':inicio_guardia.isoformat(),'fin':fin_guardia.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
-                    if guardar_guardias_autorizado(nuevo,f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}',tg): st.rerun()
+                    st.warning('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+                if guardar:
+                    ci=TECNICOS[tg]['ci']; conflicto=[]
+                    for g in REGISTROS_GUARDIAS:
+                        if g.get('centro')!=ci or g.get('tecnico')==tg: continue
+                        gi,gf=_parse_fecha_iso(g.get('inicio')),_parse_fecha_iso(g.get('fin'))
+                        if gi and gf and inicio_guardia<=gf and fin_guardia>=gi: conflicto.append(g)
+                    duplicada=any(
+                        g.get('tecnico')==tg and
+                        g.get('inicio')==inicio_guardia.isoformat() and
+                        g.get('fin')==fin_guardia.isoformat()
+                        for g in REGISTROS_GUARDIAS
+                    )
+                    if inicio_guardia>fin_guardia:
+                        st.error('La fecha de fin debe ser igual o posterior a la fecha de inicio.')
+                    elif duplicada:
+                        st.info('Ese periodo ya está registrado para el técnico.')
+                    elif conflicto:
+                        detalle=', '.join(f"{x.get('tecnico','')} ({(_parse_fecha_iso(x.get('inicio')) or date.min):%d/%m}–{(_parse_fecha_iso(x.get('fin')) or date.min):%d/%m})" for x in conflicto)
+                        st.error('No se puede guardar: existe otra guardia que se solapa en el mismo CI: '+detalle)
+                    else:
+                        nuevo=copy.deepcopy(REGISTROS_GUARDIAS)
+                        gid=hashlib.sha256(f'{tg}|{inicio_guardia.isoformat()}|{fin_guardia.isoformat()}'.encode()).hexdigest()[:16]
+                        nuevo.append({'id':gid,'anio':dd_anio,'tecnico':tg,'centro':ci,'inicio':inicio_guardia.isoformat(),'fin':fin_guardia.isoformat(),'nota':nota.strip(),'usuario':st.session_state.usuario_actual})
+                        if guardar_guardias_autorizado(nuevo,f'Guardia 12x7: {tg}, {inicio_guardia} a {fin_guardia}',tg): st.rerun()
+        if st.button('＋ Registrar guardia', type='primary', key='v174_nueva_guardia'):
+            _registrar_guardia_modal()
         filas=[]
         for g in sorted(guardias_anio,key=lambda x:x.get('inicio','')):
             if centro!='Todos' and g.get('centro')!=centro: continue
@@ -2505,34 +2509,38 @@ def render_guardias():
                     nuevo=[g for g in REGISTROS_GUARDIAS if g.get('id')!=gid]
                     if guardar_guardias_autorizado(nuevo,f'Eliminar guardia {gid}',objetivo): st.rerun()
     with tab_act:
-        st.markdown('#### Registrar activación')
-        if not EDITOR:
-            st.info('Las activaciones y su repercusión económica/HE solo pueden registrarlas los Editores.')
-        else:
-            with st.form('form_activacion'):
-                ta=st.selectbox('Técnico activado',visibles,key='act_tec')
-                fa=st.date_input('Fecha de activación',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
-                ca,cb=st.columns(2); hi=ca.time_input('Hora inicio',value=datetime.strptime('18:00','%H:%M').time()); hf=cb.time_input('Hora fin',value=datetime.strptime('20:00','%H:%M').time())
-                motivo=st.text_area('Motivo / detalle de la activación')
-                calcular=st.form_submit_button('Calcular activación',type='primary')
-            if calcular:
-                calc=calcular_activacion_guardia(fa,hi,hf,TECNICOS[ta]['ci'])
-                st.session_state['act_preview']={'tecnico':ta,'fecha':fa.isoformat(),'inicio':hi.strftime('%H:%M'),'fin':hf.strftime('%H:%M'),'motivo':motivo.strip(),**calc}
-            prev=st.session_state.get('act_preview')
-            if prev:
-                st.markdown('##### Resultado')
-                a1,a2,a3,a4=st.columns(4); a1.metric('Intervención',f"{prev['horas_totales']:g} h"); a2.metric('Fuera 08–20',f"{prev['horas_fuera']:g} h"); a3.metric('HE generadas',f"{prev['he_generadas']:g} h"); a4.metric('Importe bruto',f"{prev['importe']:,.2f} €")
-                st.caption(f"{prev['tipo_dia']} · {prev['horas_abono']:g} h a abonar × {prev['tarifa']:g} €/h. Las HE se incorporarán automáticamente a la bolsa del técnico.")
-                confirmar=st.checkbox('Confirmo los datos y quiero registrar la activación.',key='confirm_act')
-                if st.button('Guardar activación',type='primary',disabled=not confirmar):
-                    aid=hashlib.sha256(f"{prev['tecnico']}|{prev['fecha']}|{prev['inicio']}|{prev['fin']}|{time.time()}".encode()).hexdigest()[:16]
-                    act={**prev,'id':aid,'anio':dd_anio,'centro':TECNICOS[prev['tecnico']]['ci'],'usuario':st.session_state.usuario_actual,'registrado':datetime.now().isoformat(timespec='seconds')}
-                    nuevas_act=copy.deepcopy(ACTIVACIONES_GUARDIA); nuevas_act.append(act)
-                    nuevas_he=copy.deepcopy(REGISTROS_HE)
-                    if prev['he_generadas']:
-                        nuevas_he.setdefault(prev['tecnico'],[]).append({'anio':dd_anio,'horas_reales':prev['horas_totales'],'horas_compensadas':prev['he_generadas'],'motivo':f"Activación guardia {prev['fecha']} · {prev['motivo'] or 'Sin detalle'}",'usuario':st.session_state.usuario_actual,'fecha':datetime.now().strftime('%d/%m/%Y %H:%M'),'origen':'guardia','activacion_id':aid})
-                    if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f"Activación guardia: {prev['tecnico']} · {prev['fecha']} · {prev['he_generadas']:g} HE · {prev['importe']:.2f} €"):
-                        st.session_state.pop('act_preview',None); st.rerun()
+        @st.dialog('Registrar activación de guardia', width='large')
+        def _registrar_activacion_modal():
+            st.markdown('#### Registrar activación')
+            if not EDITOR:
+                st.info('Las activaciones y su repercusión económica/HE solo pueden registrarlas los Editores.')
+            else:
+                with st.form('form_activacion'):
+                    ta=st.selectbox('Técnico activado',visibles,key='act_tec')
+                    fa=st.date_input('Fecha de activación',value=date.today() if date.today().year==dd_anio else date(dd_anio,1,1),min_value=date(dd_anio,1,1),max_value=date(dd_anio,12,31))
+                    ca,cb=st.columns(2); hi=ca.time_input('Hora inicio',value=datetime.strptime('18:00','%H:%M').time()); hf=cb.time_input('Hora fin',value=datetime.strptime('20:00','%H:%M').time())
+                    motivo=st.text_area('Motivo / detalle de la activación')
+                    calcular=st.form_submit_button('Calcular activación',type='primary')
+                if calcular:
+                    calc=calcular_activacion_guardia(fa,hi,hf,TECNICOS[ta]['ci'])
+                    st.session_state['act_preview']={'tecnico':ta,'fecha':fa.isoformat(),'inicio':hi.strftime('%H:%M'),'fin':hf.strftime('%H:%M'),'motivo':motivo.strip(),**calc}
+                prev=st.session_state.get('act_preview')
+                if prev:
+                    st.markdown('##### Resultado')
+                    a1,a2,a3,a4=st.columns(4); a1.metric('Intervención',f"{prev['horas_totales']:g} h"); a2.metric('Fuera 08–20',f"{prev['horas_fuera']:g} h"); a3.metric('HE generadas',f"{prev['he_generadas']:g} h"); a4.metric('Importe bruto',f"{prev['importe']:,.2f} €")
+                    st.caption(f"{prev['tipo_dia']} · {prev['horas_abono']:g} h a abonar × {prev['tarifa']:g} €/h. Las HE se incorporarán automáticamente a la bolsa del técnico.")
+                    confirmar=st.checkbox('Confirmo los datos y quiero registrar la activación.',key='confirm_act')
+                    if st.button('Guardar activación',type='primary',disabled=not confirmar):
+                        aid=hashlib.sha256(f"{prev['tecnico']}|{prev['fecha']}|{prev['inicio']}|{prev['fin']}|{time.time()}".encode()).hexdigest()[:16]
+                        act={**prev,'id':aid,'anio':dd_anio,'centro':TECNICOS[prev['tecnico']]['ci'],'usuario':st.session_state.usuario_actual,'registrado':datetime.now().isoformat(timespec='seconds')}
+                        nuevas_act=copy.deepcopy(ACTIVACIONES_GUARDIA); nuevas_act.append(act)
+                        nuevas_he=copy.deepcopy(REGISTROS_HE)
+                        if prev['he_generadas']:
+                            nuevas_he.setdefault(prev['tecnico'],[]).append({'anio':dd_anio,'horas_reales':prev['horas_totales'],'horas_compensadas':prev['he_generadas'],'motivo':f"Activación guardia {prev['fecha']} · {prev['motivo'] or 'Sin detalle'}",'usuario':st.session_state.usuario_actual,'fecha':datetime.now().strftime('%d/%m/%Y %H:%M'),'origen':'guardia','activacion_id':aid})
+                        if guardar_cambios({RUTA_ACTIVACIONES:nuevas_act,RUTA_HE:nuevas_he},f"Activación guardia: {prev['tecnico']} · {prev['fecha']} · {prev['he_generadas']:g} HE · {prev['importe']:.2f} €"):
+                            st.session_state.pop('act_preview',None); st.rerun()
+        if EDITOR and st.button('＋ Registrar activación', type='primary', key='v174_nueva_activacion'):
+            _registrar_activacion_modal()
         filas_act=[]
         for a in sorted(acts_anio,key=lambda x:(x.get('fecha',''),x.get('inicio','')),reverse=True):
             if centro!='Todos' and a.get('centro')!=centro: continue
@@ -3145,10 +3153,16 @@ def render_config():
         c2.metric('Técnicos históricos', len(TECNICOS))
         c3.metric('Centros', len({d.get('ci','') for d in TECNICOS.values() if d.get('ci')}))
 
-        tab_nuevo, tab_editar = st.tabs(['➕ Añadir técnico','✏️ Editar / desactivar'])
         centros_existentes = sorted({d.get('ci','') for d in TECNICOS.values() if d.get('ci')})
 
-        with tab_nuevo:
+        acciones_a, acciones_b = st.columns(2)
+        with acciones_a:
+            alta_modal = st.button('＋ Añadir técnico', type='primary', use_container_width=True, key='v174_alta_tec')
+        with acciones_b:
+            editar_modal = st.button('✏️ Editar técnico', use_container_width=True, key='v174_editar_tec')
+
+        @st.dialog('Alta de técnico', width='large')
+        def _alta_tecnico_modal():
             st.markdown('#### Alta de nuevo técnico')
             with st.form('alta_tecnico', clear_on_submit=False):
                 nombre = st.text_input('Nombre y apellidos')
@@ -3178,7 +3192,9 @@ def render_config():
                     if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos,RUTA_PRL:nuevo_prl},f'Alta técnico: {nombre} · {ci}'):
                         st.rerun()
 
-        with tab_editar:
+
+        @st.dialog('Editar o desactivar técnico', width='large')
+        def _editar_tecnico_modal():
             st.markdown('#### Editar técnico existente')
             elegido = st.selectbox('Técnico', sorted(TECNICOS), key='config_tecnico_editar')
             actual = TECNICOS[elegido]
@@ -3204,6 +3220,10 @@ def render_config():
                 nuevos_perfiles[elegido] = perfil_editado
                 if guardar_cambios({RUTA_TECNICOS:nuevos_tecnicos,RUTA_PERFILES:nuevos_perfiles},f'Actualizar técnico: {elegido} · {nuevo_ci} · Código Indra {codigo_indra_cfg.strip() or "sin asignar"} · activo={activo}'):
                     st.rerun()
+        if alta_modal:
+            _alta_tecnico_modal()
+        if editar_modal:
+            _editar_tecnico_modal()
         return
 
     if opcion=='Vehículos':
@@ -3459,6 +3479,18 @@ def render_config():
             nuevo.setdefault(dd_anio,{})[c]=horas
             if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
 
+st.markdown("""<style>
+/* v17.4 · Enterprise visual system. Presentation only, no data writes. */
+[data-testid="stDialog"] [data-testid="stVerticalBlockBorderWrapper"]{border-radius:18px}
+[data-testid="stDialog"] [role="dialog"]{border-radius:20px!important;box-shadow:0 24px 90px rgba(12,35,48,.23)!important}
+[data-testid="stDialog"] h1,[data-testid="stDialog"] h2{letter-spacing:-.025em;color:#12313d}
+[data-testid="stDialog"] [data-testid="stForm"]{background:#f8fafc;border:1px solid #e4ebf0;border-radius:14px;padding:14px}
+[data-testid="stDialog"] button[kind="primary"]{border-radius:10px;font-weight:700}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:8px;flex-wrap:wrap}
+[data-testid="stTabs"] button[data-baseweb="tab"]{border-radius:10px 10px 0 0;padding:9px 16px}
+[data-testid="stMetric"]{background:#fff;border:1px solid #e1e9ef;border-radius:12px;padding:13px 15px}
+@media(max-width:700px){[data-testid="stDialog"] [role="dialog"]{width:96vw!important;max-width:96vw!important}}
+</style>""",unsafe_allow_html=True)
 {'Inicio':render_inicio,'Notificaciones':render_notificaciones,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
