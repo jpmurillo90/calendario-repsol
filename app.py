@@ -941,36 +941,32 @@ st.markdown("""<style>
 @media(max-width:700px){.ci-v171-hero{padding:23px 19px;border-radius:17px}.ci-v171-kpi{min-height:122px;padding:14px}.ci-v171-kpi .num{font-size:30px}}
 </style>""",unsafe_allow_html=True)
 
+# v17.2 · Navegación agrupada por funciones y persistente por sesión.
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
-if ES_TECNICO:
-    NAV_LABELS = {
-        '🏠 Mi espacio':'Inicio',
-        '🔔 Notificaciones':'Notificaciones',
-        '📨 Solicitudes':'Solicitudes',
-        '📅 Cuadrante':'Cuadrante',
-        '🛡️ Guardias':'Guardias',
-        '🖥️ Seguimiento CI':'Seguimiento CI',
-        '👥 Técnicos':'Técnicos',
-    }
-    st.sidebar.markdown('<div class="ci-section-label">PERSONAL · OPERACIÓN · INFORMACIÓN</div>', unsafe_allow_html=True)
-else:
-    NAV_LABELS = {
-        '🏠 Inicio':'Inicio',
-        '🔔 Notificaciones':'Notificaciones',
-        '📨 Solicitudes':'Solicitudes',
-        '📅 Cuadrante':'Cuadrante',
-        '🛡️ Guardias':'Guardias',
-        '🖥️ Seguimiento CI':'Seguimiento CI',
-        '👥 Técnicos':'Técnicos',
-        '⏱️ Horas extra':'Horas extra',
-        '📊 Informes':'Informes',
-        '📢 Avisos del coordinador':'Avisos',
-        '⚙️ Configuración':'Configuración',
-        '🧩 Versiones':'Versiones',
-    }
-    st.sidebar.markdown('<div class="ci-section-label">COORDINACIÓN · OPERACIÓN · GESTIÓN</div>', unsafe_allow_html=True)
-pagina_label = st.sidebar.radio('Navegación', list(NAV_LABELS), label_visibility='collapsed')
-pagina = NAV_LABELS[pagina_label]
+GRUPOS_MENU = (
+    [('MI ESPACIO', [('🏠 Inicio', 'Inicio'), ('🔔 Notificaciones', 'Notificaciones'), ('📨 Solicitudes', 'Solicitudes')]),
+      ('OPERATIVA', [('📅 Cuadrante', 'Cuadrante'), ('🛡️ Guardias', 'Guardias'), ('🖥️ Seguimiento CI', 'Seguimiento CI')]),
+      ('CONSULTA', [('👥 Técnicos', 'Técnicos')])]
+    if ES_TECNICO else
+    [('PANEL PRINCIPAL', [('🏠 Inicio', 'Inicio'), ('🔔 Notificaciones', 'Notificaciones')]),
+      ('OPERATIVA', [('📅 Cuadrante', 'Cuadrante'), ('🛡️ Guardias', 'Guardias'), ('🖥️ Seguimiento CI', 'Seguimiento CI'), ('⏱️ Horas extra', 'Horas extra')]),
+      ('PERSONAL', [('📨 Solicitudes', 'Solicitudes'), ('👥 Técnicos', 'Técnicos'), ('📢 Avisos', 'Avisos')]),
+      ('ADMINISTRACIÓN', [('📊 Informes', 'Informes'), ('⚙️ Configuración', 'Configuración'), ('🧩 Versiones', 'Versiones')])]
+)
+permitidas = {dest for _, items in GRUPOS_MENU for _, dest in items}
+if st.session_state.get('v172_pagina') not in permitidas:
+    st.session_state['v172_pagina'] = 'Inicio'
+st.sidebar.markdown('<div class="ci-section-label">NAVEGACIÓN · v17.2</div>', unsafe_allow_html=True)
+for titulo_grupo, entradas in GRUPOS_MENU:
+    st.sidebar.markdown(f'<div class="ci-section-label" style="margin-top:16px">{titulo_grupo}</div>', unsafe_allow_html=True)
+    for etiqueta, destino in entradas:
+        seleccionado = st.session_state['v172_pagina'] == destino
+        if st.sidebar.button(('▸ ' if seleccionado else '   ') + etiqueta,
+                             key=f'v172_nav_{destino}', use_container_width=True,
+                             type='primary' if seleccionado else 'secondary'):
+            st.session_state['v172_pagina'] = destino
+            st.rerun()
+pagina = st.session_state['v172_pagina']
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 if ES_TECNICO:
     _tec_login = str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
@@ -1295,6 +1291,57 @@ def _tabla_solapamientos(conflictos):
         'Planificación':x['descripcion']
     } for x in conflictos]
 
+@st.dialog('Retirar solicitud pendiente', width='large')
+def dialogo_retirar_solicitud(identificador_fila, t):
+    actual = next((x for x in SOLICITUDES if str(x.get('id')) == str(identificador_fila)), None)
+    if not actual or actual.get('tecnico') != t or actual.get('estado') != 'Pendiente' or actual.get('solicitud_origen'):
+        st.error('La solicitud ya no está pendiente o no pertenece a este usuario.')
+        if st.button('Cerrar', key='v172_cerrar_retirada'): st.session_state.pop('retirada_confirmar_id', None); st.rerun()
+        return
+    st.info(f"{actual.get('tipo')} · {actual.get('desde')} → {actual.get('hasta')}")
+    st.caption('La retirada quedará registrada y se avisará a Coordinación cuando esté configurado el correo.')
+    motivo_p = st.text_input('Motivo (opcional)', key='v172_motivo_retirada')
+    confirmar_p = st.checkbox('Confirmo que quiero retirar esta solicitud', key='v172_check_retirada')
+    c1, c2 = st.columns(2)
+    if c1.button('Volver', use_container_width=True, key='v172_volver_retirada'):
+        st.session_state.pop('retirada_confirmar_id', None)
+        st.rerun()
+    confirmar_btn = c2.button('Confirmar retirada', type='primary', use_container_width=True, key='v172_confirmar_retirada')
+    if confirmar_btn and not confirmar_p:
+        st.error('Marca la casilla de confirmación antes de retirar la solicitud.')
+    if confirmar_btn and confirmar_p:
+            actual_p=next((x for x in SOLICITUDES if x.get('id')==identificador_fila),None)
+            if (not actual_p or actual_p.get('tecnico')!=t or
+                actual_p.get('estado')!='Pendiente' or actual_p.get('solicitud_origen')):
+                st.error('Esta solicitud ya no puede retirarse. Actualiza la página.')
+            else:
+                nuevo_p=copy.deepcopy(SOLICITUDES)
+                for item_p in nuevo_p:
+                    if item_p.get('id')==identificador_fila:
+                        item_p.update({
+                            'estado':'Cancelada',
+                            'cancelada':datetime.now().isoformat(timespec='seconds'),
+                            'cancelada_por':st.session_state.usuario_actual,
+                            'resolucion':'Retirada por el técnico antes de su aprobación' +
+                                (f' · {motivo_p.strip()}' if motivo_p.strip() else '')
+                        })
+                        break
+                if guardar_portal({RUTA_SOLICITUDES:nuevo_p},
+                                 f"Solicitud pendiente retirada: {t} · {actual_p.get('tipo')} · {identificador_fila}",
+                                 'Solicitudes'):
+                    destino_p=str(secreto('GMAIL_DESTINATARIO','')).strip()
+                    if destino_p:
+                        enviar_email(
+                            f"Solicitud retirada · {t} · {actual_p.get('tipo')}",
+                            f"{t} ({TECNICOS[t]['ci']}) ha retirado una solicitud pendiente.\n\n"
+                            f"Tipo: {actual_p.get('tipo')}\n"
+                            f"Periodo: {actual_p.get('desde')} a {actual_p.get('hasta')}\n"
+                            f"Motivo: {motivo_p.strip() or 'No indicado'}",
+                            destino_p
+                        )
+                    st.session_state.pop('retirada_confirmar_id',None)
+                    st.rerun()
+
 def render_solicitudes():
     st.markdown('<div class="ops-hero"><div class="k">Workflow interno</div><div class="t">Buzón de solicitudes</div><div class="n">Vacaciones, vacaciones del año anterior, HLD y consumo de HE con aprobación, trazabilidad y actualización automática del cuadrante.</div></div>',unsafe_allow_html=True)
     if ES_TECNICO:
@@ -1392,50 +1439,9 @@ def render_solicitudes():
                 if estado_fila=='Pendiente':
                     if st.button('Cancelar',key=f'retirar_fila_{clave_fila}',use_container_width=True):
                         st.session_state['retirada_confirmar_id']=identificador_fila
-            if estado_fila=='Pendiente' and st.session_state.get('retirada_confirmar_id')==identificador_fila:
-                st.warning(f"Vas a retirar la solicitud de {solicitud_fila.get('tipo')} del {periodo_fila}. Esta acción quedará registrada.")
-                with st.form(f'confirmar_retirada_{clave_fila}'):
-                    motivo_p=st.text_input('Motivo (opcional)',key=f'motivo_retirada_{clave_fila}')
-                    confirmar_p=st.checkbox('Confirmo que deseo retirar esta solicitud',key=f'check_retirada_{clave_fila}')
-                    confirmar_btn=st.form_submit_button('Confirmar retirada')
-                if st.button('Volver',key=f'volver_retirada_{clave_fila}'):
-                    st.session_state.pop('retirada_confirmar_id',None)
-                    st.rerun()
-                if confirmar_btn and not confirmar_p:
-                    st.error('Marca la casilla de confirmación antes de retirar la solicitud.')
-                if confirmar_btn and confirmar_p:
-                    actual_p=next((x for x in SOLICITUDES if x.get('id')==identificador_fila),None)
-                    if (not actual_p or actual_p.get('tecnico')!=t or
-                        actual_p.get('estado')!='Pendiente' or actual_p.get('solicitud_origen')):
-                        st.error('Esta solicitud ya no puede retirarse. Actualiza la página.')
-                    else:
-                        nuevo_p=copy.deepcopy(SOLICITUDES)
-                        for item_p in nuevo_p:
-                            if item_p.get('id')==identificador_fila:
-                                item_p.update({
-                                    'estado':'Cancelada',
-                                    'cancelada':datetime.now().isoformat(timespec='seconds'),
-                                    'cancelada_por':st.session_state.usuario_actual,
-                                    'resolucion':'Retirada por el técnico antes de su aprobación' +
-                                        (f' · {motivo_p.strip()}' if motivo_p.strip() else '')
-                                })
-                                break
-                        if guardar_portal({RUTA_SOLICITUDES:nuevo_p},
-                                         f"Solicitud pendiente retirada: {t} · {actual_p.get('tipo')} · {identificador_fila}",
-                                         'Solicitudes'):
-                            destino_p=str(secreto('GMAIL_DESTINATARIO','')).strip()
-                            if destino_p:
-                                enviar_email(
-                                    f"Solicitud retirada · {t} · {actual_p.get('tipo')}",
-                                    f"{t} ({TECNICOS[t]['ci']}) ha retirado una solicitud pendiente.\n\n"
-                                    f"Tipo: {actual_p.get('tipo')}\n"
-                                    f"Periodo: {actual_p.get('desde')} a {actual_p.get('hasta')}\n"
-                                    f"Motivo: {motivo_p.strip() or 'No indicado'}",
-                                    destino_p
-                                )
-                            st.session_state.pop('retirada_confirmar_id',None)
-                            st.rerun()
             st.divider()
+        if st.session_state.get('retirada_confirmar_id'):
+            dialogo_retirar_solicitud(st.session_state['retirada_confirmar_id'], t)
         cancelables=[x for x in propias if x.get('estado')=='Aprobada']
         if cancelables:
             st.markdown('<div class="ci-section-label">CANCELAR UNA SOLICITUD APROBADA</div>',unsafe_allow_html=True)
@@ -1608,7 +1614,14 @@ def render_inicio():
     .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
-    st.markdown(f'<div class="ci-v171-hero"><div class="eyebrow">CENTRO DE CONTROL · GESTIÓN OPERATIVA</div><div class="heading">Panel de coordinación</div><div class="description">Visión general de disponibilidad, cobertura, guardias y prevención de riesgos de los Complejos Industriales.</div><div class="chips"><span class="chip">🏭 {escape(centro)}</span><span class="chip">📅 Ejercicio {dd_anio}</span><span class="chip">● Entorno conectado</span><span class="chip">v17.1 · Diseño renovado</span></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ci-v171-hero"><div class="eyebrow">CENTRO DE CONTROL · GESTIÓN OPERATIVA</div><div class="heading">Panel de coordinación</div><div class="description">Visión general de disponibilidad, cobertura, guardias y prevención de riesgos de los Complejos Industriales.</div><div class="chips"><span class="chip">🏭 {escape(centro)}</span><span class="chip">📅 Ejercicio {dd_anio}</span><span class="chip">● Entorno conectado</span><span class="chip">v17.2 · Navegación y diálogos</span></div></div>', unsafe_allow_html=True)
+    st.markdown('#### Accesos rápidos')
+    ac1, ac2, ac3, ac4 = st.columns(4)
+    for columna, texto, destino in [(ac1, '📨 Solicitudes', 'Solicitudes'), (ac2, '📅 Cuadrante', 'Cuadrante'), (ac3, '🛡️ Guardias', 'Guardias'), (ac4, '👥 Técnicos', 'Técnicos')]:
+        if columna.button(texto, key=f'v172_rapido_{destino}', use_container_width=True):
+            st.session_state['v172_pagina'] = destino
+            st.rerun()
+    st.divider()
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
