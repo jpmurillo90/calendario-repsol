@@ -2125,7 +2125,8 @@ def render_tecnicos():
                 except (ValueError,TypeError): pass
             st.info(f"{etiquetas_gestion.get(gestion,gestion)}{cita_txt} · Avisos repetitivos pausados. La caducidad PRL sigue siendo la indicada arriba.")
         if EDITOR:
-            with st.expander('✏️ Editar reconocimiento y acceso', expanded=gestion in ('cita_solicitada','cita_programada')):
+            @st.dialog('Reconocimiento y gestión PRL', width='large')
+            def _dialogo_prl_tecnico():
                 nip=st.text_input('NIP',value=datos.get('nip',''),key=f'nip_prl_{t}')
                 dni=st.text_input('DNI',value=datos.get('dni',''),key=f'dni_prl_{t}')
                 cad=st.date_input('Caducidad',value=f or date.today(),key=f'cad_prl_{t}')
@@ -2166,6 +2167,8 @@ def render_tecnicos():
                     nuevo[t]=d
                     accion=f'Actualización PRL: {t}' + (' · nueva caducidad, avisos reactivados' if fecha_nueva != fecha_anterior else '')
                     if guardar_cambios({RUTA_PRL:nuevo},accion): st.rerun()
+            if st.button('✏️ Editar reconocimiento y acceso',key=f'abrir_prl_{t}',use_container_width=True):
+                _dialogo_prl_tecnico()
     eventos=[]
     for (a,n,m,dia),val in REGISTROS.items():
         if n==t and a==dd_anio:
@@ -2842,26 +2845,30 @@ def render_seguimiento_ci():
     with tab_reg:
         if ci not in permitidos: st.info("Puedes consultar este CI, pero no registrar actividad.")
         else:
-            fecha=st.date_input("Fecha de trabajo",value=date.today(),min_value=date(anio,1,1),max_value=date(anio,12,31),key="seg_fecha"); actual=seg_registro(ci,fecha)
-            if actual["historico_excel"] and sum(actual["totales"].values()): st.info(f'Histórico Excel existente: P {actual["totales"]["Parches"]} · AV {actual["totales"]["AV"]} · B {actual["totales"]["BCK"]}.')
-            with st.form("form_seg_ci"):
-                vals={}
-                for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
-                    st.markdown(f"**{label}**"); cc=st.columns(3); vals[g]={}
-                    for col,r in zip(cc,["RS","RC","RCorp"]):
-                        with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual["redes"][g][r]),key=f"seg_{g}_{r}")
-                obs=st.text_input("Observaciones (opcional)",value=actual["obs"]); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
-            if ok:
-                cambios_detalle=[]
-                for _g,_label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
-                    for _r in ("RS","RC","RCorp"):
-                        _antes=int(actual["redes"][_g][_r]); _despues=int(vals[_g][_r])
-                        if _antes != _despues:
-                            cambios_detalle.append(f"{_label} · {_r}: {_antes} → {_despues}")
-                if actual.get("obs","") != obs.strip():
-                    cambios_detalle.append(f"Observaciones: {actual.get('obs','') or '—'} → {obs.strip() or '—'}")
-                nuevo=seg_guardar_dia(ci,fecha,vals,obs)
-                if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci,cambios_detalle,fecha): st.rerun()
+            @st.dialog('Registrar actividad · Seguimiento CI', width='large')
+            def _dialogo_actividad_ci():
+                fecha=st.date_input("Fecha de trabajo",value=date.today(),min_value=date(anio,1,1),max_value=date(anio,12,31),key="seg_fecha"); actual=seg_registro(ci,fecha)
+                if actual["historico_excel"] and sum(actual["totales"].values()): st.info(f'Histórico Excel existente: P {actual["totales"]["Parches"]} · AV {actual["totales"]["AV"]} · B {actual["totales"]["BCK"]}.')
+                with st.form("form_seg_ci"):
+                    vals={}
+                    for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+                        st.markdown(f"**{label}**"); cc=st.columns(3); vals[g]={}
+                        for col,r in zip(cc,["RS","RC","RCorp"]):
+                            with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual["redes"][g][r]),key=f"seg_{g}_{r}")
+                    obs=st.text_input("Observaciones (opcional)",value=actual["obs"]); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
+                if ok:
+                    cambios_detalle=[]
+                    for _g,_label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+                        for _r in ("RS","RC","RCorp"):
+                            _antes=int(actual["redes"][_g][_r]); _despues=int(vals[_g][_r])
+                            if _antes != _despues:
+                                cambios_detalle.append(f"{_label} · {_r}: {_antes} → {_despues}")
+                    if actual.get("obs","") != obs.strip():
+                        cambios_detalle.append(f"Observaciones: {actual.get('obs','') or '—'} → {obs.strip() or '—'}")
+                    nuevo=seg_guardar_dia(ci,fecha,vals,obs)
+                    if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci,cambios_detalle,fecha): st.rerun()
+            if st.button('➕ Registrar actividad del día',type='primary',key=f'abrir_seguimiento_{ci}_{anio}_{mes}'):
+                _dialogo_actividad_ci()
     with tab_ana:
         st.markdown('<div class="section-eyebrow">DISTRIBUCIÓN POR RED</div>',unsafe_allow_html=True)
         st.caption("Porcentaje de actividad de cada grupo repartido entre RS, RC y RCorp para el periodo seleccionado.")
@@ -3473,29 +3480,37 @@ def render_config():
         c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
         actual = HORARIOS_CI_ANUAL.get(dd_anio,HORARIOS_CI_DEFAULT[dd_anio]).get(c,{})
         st.info('La descripción del horario es informativa. Se mantienen las reglas originales de cálculo de jornada; cambiar el texto no modifica esas reglas. La bolsa de parada sí afecta al cálculo.')
-        with st.form(f'horario_{c}_{dd_anio}'):
-            horario = st.text_input('Horario',actual.get('horario',''))
-            semanal = st.text_input('Horas semanales (texto)',actual.get('h_sem',''))
-            obs = st.text_input('Observaciones',actual.get('obs',''))
-            bolsa = st.checkbox('Activar bolsa de parada (+2 h de lunes a jueves)',value=bool(actual.get('bolsa_ini')))
-            ini = st.date_input('Inicio',actual.get('bolsa_ini') or date(dd_anio,9,28))
-            fin = st.date_input('Fin',actual.get('bolsa_fin') or date(dd_anio,11,2))
-            guardar = st.form_submit_button('Guardar horario',type='primary')
-        if guardar:
-            if bolsa and (fin<ini or ini.year!=dd_anio or fin.year!=dd_anio): st.error('Revisa el rango y el año de la bolsa.'); return
-            nuevo = copy.deepcopy(HORARIOS_CI_ANUAL)
-            nuevo.setdefault(dd_anio,{})[c]={'horario':horario,'h_sem':semanal,'obs':obs,'bolsa_ini':ini if bolsa else None,'bolsa_fin':fin if bolsa else None}
-            if guardar_cambios({RUTA_HORARIOS_CI:nuevo},f'Horario: {c}, {dd_anio}'): st.rerun()
+        @st.dialog('Editar horario del CI', width='large')
+        def _dialogo_horario_ci():
+            with st.form(f'horario_{c}_{dd_anio}'):
+                horario = st.text_input('Horario',actual.get('horario',''))
+                semanal = st.text_input('Horas semanales (texto)',actual.get('h_sem',''))
+                obs = st.text_input('Observaciones',actual.get('obs',''))
+                bolsa = st.checkbox('Activar bolsa de parada (+2 h de lunes a jueves)',value=bool(actual.get('bolsa_ini')))
+                ini = st.date_input('Inicio',actual.get('bolsa_ini') or date(dd_anio,9,28))
+                fin = st.date_input('Fin',actual.get('bolsa_fin') or date(dd_anio,11,2))
+                guardar = st.form_submit_button('Guardar horario',type='primary')
+            if guardar:
+                if bolsa and (fin<ini or ini.year!=dd_anio or fin.year!=dd_anio): st.error('Revisa el rango y el año de la bolsa.'); return
+                nuevo = copy.deepcopy(HORARIOS_CI_ANUAL)
+                nuevo.setdefault(dd_anio,{})[c]={'horario':horario,'h_sem':semanal,'obs':obs,'bolsa_ini':ini if bolsa else None,'bolsa_fin':fin if bolsa else None}
+                if guardar_cambios({RUTA_HORARIOS_CI:nuevo},f'Horario: {c}, {dd_anio}'): st.rerun()
+        if st.button('✏️ Editar horario y bolsa de parada',type='primary'):
+            _dialogo_horario_ci()
     else:
         c = st.selectbox('Centro a configurar',CENTROS,index=CENTROS.index(centro) if centro in CENTROS else 0)
         valor = float(HLD_ANUAL_POR_ANIO.get(dd_anio,{}).get(c,87.))
-        with st.form(f'hld_{c}_{dd_anio}'):
-            horas = st.number_input('Horas HLD anuales',min_value=0.,max_value=1000.,value=valor,step=.5)
-            guardar = st.form_submit_button('Guardar HLD',type='primary')
-        if guardar:
-            nuevo = copy.deepcopy(HLD_ANUAL_POR_ANIO)
-            nuevo.setdefault(dd_anio,{})[c]=horas
-            if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
+        @st.dialog('Configurar horas HLD', width='large')
+        def _dialogo_hld_ci():
+            with st.form(f'hld_{c}_{dd_anio}'):
+                horas = st.number_input('Horas HLD anuales',min_value=0.,max_value=1000.,value=valor,step=.5)
+                guardar = st.form_submit_button('Guardar HLD',type='primary')
+            if guardar:
+                nuevo = copy.deepcopy(HLD_ANUAL_POR_ANIO)
+                nuevo.setdefault(dd_anio,{})[c]=horas
+                if guardar_cambios({RUTA_HLD_ANUAL:nuevo},f'HLD: {c}, {dd_anio}, {horas:g} h'): st.rerun()
+        if st.button('✏️ Modificar HLD anuales',type='primary'):
+            _dialogo_hld_ci()
 
 st.markdown("""<style>
 /* v17.4 · Enterprise visual system. Presentation only, no data writes. */
@@ -3508,6 +3523,18 @@ st.markdown("""<style>
 [data-testid="stTabs"] button[data-baseweb="tab"]{border-radius:10px 10px 0 0;padding:9px 16px}
 [data-testid="stMetric"]{background:#fff;border:1px solid #e1e9ef;border-radius:12px;padding:13px 15px}
 @media(max-width:700px){[data-testid="stDialog"] [role="dialog"]{width:96vw!important;max-width:96vw!important}}
+</style>""",unsafe_allow_html=True)
+
+st.markdown("""<style>
+/* v17.6: unified enterprise modals and section spacing */
+[data-testid="stDialog"] [role="dialog"]{max-height:88vh!important;overflow-y:auto!important;}
+[data-testid="stDialog"] [data-testid="stVerticalBlock"]{gap:.75rem;}
+[data-testid="stDialog"] [data-testid="stForm"]{box-shadow:none!important;}
+[data-testid="stDialog"] [data-testid="stFormSubmitButton"] button{min-height:42px;}
+[data-testid="stDialog"] [data-testid="stAlert"]{border-radius:10px;}
+[data-testid="stTabs"] [data-baseweb="tab-panel"]{padding-top:16px;}
+[data-testid="stExpander"]{border-radius:12px;overflow:hidden;}
+@media(min-width:900px){[data-testid="stDialog"] [role="dialog"]{min-width:580px;}}
 </style>""",unsafe_allow_html=True)
 {'Inicio':render_inicio,'Notificaciones':render_notificaciones,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
