@@ -368,6 +368,29 @@ button[kind="primary"]:hover {background:#064b5d!important;border-color:#064b5d!
 [data-testid="stTabs"] [data-baseweb="tab-list"]{overflow-x:auto!important;flex-wrap:nowrap!important;justify-content:flex-start!important}[data-testid="stTabs"] [data-baseweb="tab"]{flex:0 0 auto!important;padding:0 11px!important;white-space:nowrap!important}
 .stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{width:100%!important;min-height:2.75rem!important}.tag{font-size:10px;padding:4px 7px;margin:2px}}
 @media (max-width:480px){.block-container{padding-left:.55rem!important;padding-right:.55rem!important}h1{font-size:1.4rem!important}.tech-hero .name{font-size:18px!important}.ci-statusitem{font-size:10px}.info-row{display:block;padding:7px 0}.info-row span{display:block;margin-bottom:2px;font-size:10.5px}.info-row b{display:block;text-align:left;font-size:11.5px}.info-card .title,.resource-card .title{margin-bottom:8px}[data-testid="stMetric"]{padding:11px 12px!important}[data-testid="stMetricLabel"]{font-size:.72rem!important}[data-testid="stMetricValue"]{font-size:1.4rem!important}.grid{min-width:700px!important}}
+
+/* v17.0 · capa visual nueva, sin modificar persistencia ni reglas de negocio */
+:root{--ci-primary:#08677a;--ci-primary-dark:#103b4b;--ci-bg:#f3f6fa;--ci-border:#e0e8ef;--ci-radius:16px}
+.stApp{background:linear-gradient(145deg,#f7fafd 0%,#f2f6fa 55%,#f5f8fb 100%)}
+.block-container{max-width:1560px;padding-top:1.3rem}
+[data-testid="stSidebar"]{background:#fcfdff;border-right:1px solid #dde8ee;box-shadow:5px 0 24px rgba(20,54,75,.04)}
+[data-testid="stSidebar"] [role="radiogroup"] label{border-radius:11px;padding:.56rem .65rem}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#e8f5f8;color:#07566a;font-weight:750}
+[data-testid="stMetric"],.ci-panel,.ops-card,.info-card,.resource-card{border-radius:16px;box-shadow:0 8px 26px rgba(17,56,78,.045);border-color:#e0e8ef}
+[data-testid="stMetric"]{padding:18px 20px}
+[data-testid="stMetricValue"]{font-size:1.85rem;letter-spacing:-.045em}
+[data-testid="stForm"]{border:1px solid #e0e8ef!important;border-radius:16px!important;background:#fff!important;box-shadow:0 7px 24px rgba(17,56,78,.035)}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{border-radius:13px;background:#edf3f7}
+[data-testid="stTabs"] [aria-selected="true"]{color:#07566a!important}
+[data-testid="stExpander"]{border-radius:14px!important}
+[data-testid="stAlert"]{border-radius:12px!important}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{border-radius:11px!important;transition:transform .12s ease,box-shadow .12s ease}
+.stButton>button:hover,.stDownloadButton>button:hover{transform:translateY(-1px)}
+[data-testid="stDataFrame"]{border-radius:13px}
+.ci-statusbar{background:#fff;border-radius:13px;box-shadow:0 4px 16px rgba(17,56,78,.035)}
+/* Solicitudes: tarjetas de registro claras, sin alterar los botones o formularios */
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] > .sol-record){border:1px solid #e2eaf0;border-radius:14px;padding:12px}
+@media(max-width:768px){.block-container{padding:.9rem .75rem 1.8rem!important}[data-testid="stMetric"]{padding:12px 14px!important}[data-testid="stMetricValue"]{font-size:1.45rem!important}.ci-panel,.ops-card,.info-card{padding:13px!important}h1{font-size:1.55rem!important}}
 </style>''', unsafe_allow_html=True)
 
 BASE = Path(__file__).resolve().parent
@@ -2906,6 +2929,7 @@ def render_versiones():
     st.markdown('<div class="section-eyebrow">VERSIÓN ACTUAL</div>',unsafe_allow_html=True)
     st.markdown('<div class="seg-kpi total"><div class="label">RELEASE ACTUAL</div><div class="value">v16.14.1</div><div class="sub">Ficha técnica y registro persistente</div></div>',unsafe_allow_html=True)
     versiones=[
+      ('v17.0','16/10/2026','Rediseño visual seguro','Capa visual corporativa refinada y responsive. Conserva la lógica, los JSON y el almacenamiento existentes; recomendada para pruebas con Gist clonado.'),
       ('v16.14.4','30/09/2026','Horario CI unificado','Unifica el componente Horario del CI entre Editor y Técnico: ambos perfiles muestran exactamente la misma tarjeta corporativa; la edición de datos continúa reservada al rol Editor.'),
       ('v16.14.2','30/09/2026','Ajuste visual ficha técnica','Compacta la tarjeta Horario del CI en el perfil Técnico, igualando su jerarquía visual con la vista Editor sin reintroducir HTML dinámico conflictivo ni el error React removeChild.'),
       ('v16.14.1','30/09/2026','Ficha técnica y registro persistente','Unifica visualmente Horario del CI en la ficha del rol Técnico usando componentes estables y mueve Registrar novedad a la parte superior del Cuadrante del Editor con un panel destacado y apertura persistente durante los reruns.'),
@@ -3367,4 +3391,3 @@ def render_config():
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
