@@ -1,4 +1,4 @@
-"""Gestión de Técnicos CI — versión 19.0 · EmployeeHub HTML UI.
+"""Gestión de Técnicos CI — versión 17.5 · interfaz empresarial.
 Ejecutar: streamlit run app.py
 Dependencias: streamlit>=1.40,<2, pandas, requests, openpyxl.
 Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
@@ -29,6 +29,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 import streamlit as st
+import streamlit.components.v1 as components
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -905,7 +906,7 @@ CENTROS = sorted({v['ci'] for v in TECNICOS.values()})
 logo = BASE/'AF_INDRA_SIM_POS.png'
 if logo.exists():
     st.sidebar.image(str(logo), use_container_width=True)
-st.sidebar.markdown('<div class="eh-brand"><span class="eh-brand-icon">◈</span><span><strong>EmployeeHub</strong><small>GESTIÓN TÉCNICOS CI</small></span></div>', unsafe_allow_html=True)
+st.sidebar.title('Técnicos CI')
 
 st.markdown(r'''<style>
 .section-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.12em;color:#68808c;margin:20px 0 10px}.seg-card{background:#fff;border:1px solid #d9e3e8;border-radius:14px;padding:15px 17px;box-shadow:0 7px 20px rgba(15,50,65,.035);min-height:145px}.seg-title{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#0d5869;margin-bottom:8px}.seg-row{display:flex;justify-content:space-between;border-top:1px solid #edf2f4;padding:7px 0;font-size:.84rem}.seg-row span{color:#718692}.seg-row.total{font-weight:800}.seg-week{text-align:center;font-weight:800;color:#607985;padding:8px}.seg-day{position:relative;min-height:92px;background:#f8fafb;border:1px solid #e0e8ec;border-radius:12px;padding:9px 10px;margin-bottom:6px}.seg-day.active{background:#f0fafb;border-color:#86bec9;box-shadow:0 4px 12px rgba(13,88,105,.05)}.seg-num{font-weight:800;color:#102a3a}.seg-origin{position:absolute;right:7px;top:7px;font-size:.56rem;font-weight:800;color:#0d5869;background:#dff1f4;border-radius:20px;padding:2px 6px}.seg-values{font-size:.68rem;margin-top:12px;color:#3d5967}.seg-total{font-size:.62rem;color:#80939d;margin-top:7px}
@@ -966,7 +967,7 @@ GRUPOS_MENU = (
 permitidas = {dest for _, items in GRUPOS_MENU for _, dest in items}
 if st.session_state.get('v172_pagina') not in permitidas:
     st.session_state['v172_pagina'] = 'Inicio'
-st.sidebar.markdown('<div class="ci-section-label">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="ci-section-label">NAVEGACIÓN · v17.2</div>', unsafe_allow_html=True)
 for titulo_grupo, entradas in GRUPOS_MENU:
     st.sidebar.markdown(f'<div class="ci-section-label" style="margin-top:16px">{titulo_grupo}</div>', unsafe_allow_html=True)
     for etiqueta, destino in entradas:
@@ -977,6 +978,13 @@ for titulo_grupo, entradas in GRUPOS_MENU:
             st.session_state['v172_pagina'] = destino
             st.rerun()
 pagina = st.session_state['v172_pagina']
+if pagina == 'Inicio' and not ES_TECNICO:
+    st.markdown("""<style>
+    [data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']{display:none!important}
+    [data-testid='stAppViewContainer']>.main{margin-left:0!important}
+    .block-container{padding:0!important;max-width:none!important;width:100%!important}
+    iframe[title='employeehub_dashboard_v20.employeehub_dashboard_v20']{border:0!important}
+    </style>""",unsafe_allow_html=True)
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 if ES_TECNICO:
     _tec_login = str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
@@ -1618,7 +1626,45 @@ def render_avisos():
             if guardar_portal({RUTA_AVISOS_COORD:nuevo},f"Aviso archivado: {a.get('titulo')}",'Avisos'): st.rerun()
 
 
+# Frontend HTML real: componente Streamlit bidireccional (no localStorage, no credenciales en JS).
+_EMPLOYEEHUB_FRONTEND = BASE / 'frontend' / 'employeehub'
+_employeehub = components.declare_component('employeehub_dashboard_v20', path=str(_EMPLOYEEHUB_FRONTEND)) if (_EMPLOYEEHUB_FRONTEND / 'index.html').exists() else None
+
+def render_inicio_html():
+    if ES_TECNICO:
+        render_mi_espacio()
+        return
+    hoy = date.today()
+    fecha = hoy if hoy.year in ANOS_DISPONIBLES else date(dd_anio, 1, 1)
+    personas = [t for t in TECNICOS if TECNICOS[t].get('activo', True) and (centro == 'Todos' or TECNICOS[t]['ci'] == centro)]
+    estados = {t: disponibilidad(t, fecha) for t in personas}
+    disponibles = sum(1 for _, horas in estados.values() if horas > 0)
+    centros = sorted({TECNICOS[t]['ci'] for t in personas})
+    por_ci = []
+    for ci in centros:
+        tecnicos_ci = [t for t in personas if TECNICOS[t]['ci'] == ci]
+        por_ci.append({'name':ci, 'total':len(tecnicos_ci), 'available':sum(estados[t][1]>0 for t in tecnicos_ci)})
+    payload = {'user':st.session_state.get('usuario_actual',''), 'role':st.session_state.get('rol_actual',''),
+               'year':dd_anio,'center':centro,'date':fecha.strftime('%d/%m/%Y'),
+               'stats':{'total':len(personas),'available':disponibles,'centers':len(centros),
+                        'absent':len(personas)-disponibles},'centers':por_ci,
+               'navigation':[{'label':etiqueta,'page':destino,'group':grupo} for grupo,entradas in GRUPOS_MENU for etiqueta,destino in entradas]}
+    if _employeehub is None:
+        st.error('Falta la carpeta frontend/employeehub.'); return
+    action = _employeehub(data=payload, key='employeehub_dashboard', default=None)
+    if isinstance(action, dict) and action.get('type') == 'navigate':
+        destino = action.get('page')
+        if destino in permitidas and destino != 'Inicio':
+            st.session_state['v172_pagina'] = destino
+            st.rerun()
+    elif isinstance(action, dict) and action.get('type') == 'logout':
+        st.session_state.clear()
+        st.rerun()
+
 def render_inicio():
+    return render_inicio_html()
+
+def render_inicio_original():
     if ES_TECNICO:
         render_mi_espacio(); return
     st.markdown('''<style>
@@ -1644,14 +1690,14 @@ def render_inicio():
     .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
-    st.markdown(f"""<div class="eh-page-heading"><div><div class="eh-eyebrow">PANEL DE COORDINACIÓN · INDRA GROUP</div><h1>Dashboard</h1><p>Consulta la planificación y la actividad de los complejos industriales.</p></div><div class="eh-heading-chip">◉ &nbsp; {escape(centro)} &nbsp;·&nbsp; {dd_anio}</div></div>""",unsafe_allow_html=True)
-    st.markdown('<div class="eh-section-heading">ACCESOS RÁPIDOS</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="ci-v171-hero"><div class="eyebrow">CENTRO DE CONTROL · GESTIÓN OPERATIVA</div><div class="heading">Panel de coordinación</div><div class="description">Visión general de disponibilidad, cobertura, guardias y prevención de riesgos de los Complejos Industriales.</div><div class="chips"><span class="chip">🏭 {escape(centro)}</span><span class="chip">📅 Ejercicio {dd_anio}</span><span class="chip">● Entorno conectado</span><span class="chip">v17.2 · Navegación y diálogos</span></div></div>', unsafe_allow_html=True)
+    st.markdown('#### Accesos rápidos')
     ac1, ac2, ac3, ac4 = st.columns(4)
     for columna, texto, destino in [(ac1, '📨 Solicitudes', 'Solicitudes'), (ac2, '📅 Cuadrante', 'Cuadrante'), (ac3, '🛡️ Guardias', 'Guardias'), (ac4, '👥 Técnicos', 'Técnicos')]:
         if columna.button(texto, key=f'v172_rapido_{destino}', use_container_width=True):
             st.session_state['v172_pagina'] = destino
             st.rerun()
-    st.markdown('<div class="eh-section-heading">ESTADO DEL SERVICIO</div>', unsafe_allow_html=True)
+    st.divider()
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -1682,16 +1728,6 @@ def render_inicio():
     for col,(label,value,color,nota),icono in zip(st.columns(4),indicadores,['👥','📆','🏭','🦺']):
         acento = {'success':'#0d9279','warning':'#df9b28','danger':'#db5963','neutral':'#7695a4'}.get(color,'#0f8192')
         col.markdown(f'<div class="ci-v171-kpi" style="--accent:{acento}"><div class="top"><span>{escape(label)}</span><span class="icon">{icono}</span></div><div class="num">{value}</div><div class="foot">{escape(nota)}</div></div>',unsafe_allow_html=True)
-    # Resumen gráfico calculado con los mismos estados reales del dashboard.
-    datos_grafico=[]
-    for ci_g in centros:
-        miembros_g=[t for t in visibles if TECNICOS[t]['ci']==ci_g]
-        disponibles_g=sum(1 for t in miembros_g if estados[t][1]>0)
-        datos_grafico.append((ci_g, disponibles_g, len(miembros_g)))
-    if datos_grafico:
-        max_g=max((total for _,_,total in datos_grafico),default=1) or 1
-        barras=''.join(f'<div class="eh-chart-col"><div class="eh-chart-count">{disponibles}/{total}</div><div class="eh-chart-bars"><div class="eh-chart-total" style="height:{max(5,round(100*total/max_g))}%"></div><div class="eh-chart-available" style="height:{round(100*disponibles/max_g)}%"></div></div><div class="eh-chart-name">{escape(ci_g)}</div></div>' for ci_g,disponibles,total in datos_grafico)
-        st.markdown(f'<div class="eh-chart-card"><div class="eh-chart-head"><div><h3>Disponibilidad por complejo</h3><p>Personal disponible frente al total asignado · {fecha:%d/%m/%Y}</p></div><span class="eh-chart-legend">● Disponibles &nbsp; ◯ Total</span></div><div class="eh-chart-grid">{barras}</div></div>',unsafe_allow_html=True)
     st.caption('Disponibilidad prevista, no fichajes. PRL se evalúa a fecha de hoy. Cobertura alerta cuando un centro laborable queda sin personal disponible; no hay mínimos de dotación configurados.')
     if sin_cobertura:
         st.error('SIN COBERTURA PREVISTA: '+', '.join(sin_cobertura)+'. Revisa la asignación de personal.')
@@ -3546,11 +3582,6 @@ st.markdown("""<style>
 [data-testid="stExpander"]{border-radius:12px;overflow:hidden;}
 @media(min-width:900px){[data-testid="stDialog"] [role="dialog"]{min-width:580px;}}
 </style>""",unsafe_allow_html=True)
-# Tema visual HTML/CSS independiente. La lógica Python y el almacenamiento permanecen intactos.
-_THEME_FILE = BASE / 'frontend' / 'employeehub.css'
-if _THEME_FILE.is_file():
-    st.markdown('<style>' + _THEME_FILE.read_text(encoding='utf-8') + '</style>', unsafe_allow_html=True)
-
 {'Inicio':render_inicio,'Notificaciones':render_notificaciones,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
