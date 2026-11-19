@@ -29,7 +29,6 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 import streamlit as st
-import streamlit.components.v1 as components
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -978,13 +977,6 @@ for titulo_grupo, entradas in GRUPOS_MENU:
             st.session_state['v172_pagina'] = destino
             st.rerun()
 pagina = st.session_state['v172_pagina']
-if pagina == 'Inicio' and not ES_TECNICO:
-    st.markdown("""<style>
-    [data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']{display:none!important}
-    [data-testid='stAppViewContainer']>.main{margin-left:0!important}
-    .block-container{padding:0!important;max-width:none!important;width:100%!important}
-    iframe[title='employeehub_dashboard_v20.employeehub_dashboard_v20']{border:0!important}
-    </style>""",unsafe_allow_html=True)
 dd_anio = st.sidebar.selectbox('Año', ANOS_DISPONIBLES, index=ANOS_DISPONIBLES.index(date.today().year) if date.today().year in ANOS_DISPONIBLES else 0)
 if ES_TECNICO:
     _tec_login = str(usuarios.get(st.session_state.get('usuario_id',''),{}).get('tecnico','')).strip()
@@ -1626,45 +1618,7 @@ def render_avisos():
             if guardar_portal({RUTA_AVISOS_COORD:nuevo},f"Aviso archivado: {a.get('titulo')}",'Avisos'): st.rerun()
 
 
-# Frontend HTML real: componente Streamlit bidireccional (no localStorage, no credenciales en JS).
-_EMPLOYEEHUB_FRONTEND = BASE / 'frontend' / 'employeehub'
-_employeehub = components.declare_component('employeehub_dashboard_v20', path=str(_EMPLOYEEHUB_FRONTEND)) if (_EMPLOYEEHUB_FRONTEND / 'index.html').exists() else None
-
-def render_inicio_html():
-    if ES_TECNICO:
-        render_mi_espacio()
-        return
-    hoy = date.today()
-    fecha = hoy if hoy.year in ANOS_DISPONIBLES else date(dd_anio, 1, 1)
-    personas = [t for t in TECNICOS if TECNICOS[t].get('activo', True) and (centro == 'Todos' or TECNICOS[t]['ci'] == centro)]
-    estados = {t: disponibilidad(t, fecha) for t in personas}
-    disponibles = sum(1 for _, horas in estados.values() if horas > 0)
-    centros = sorted({TECNICOS[t]['ci'] for t in personas})
-    por_ci = []
-    for ci in centros:
-        tecnicos_ci = [t for t in personas if TECNICOS[t]['ci'] == ci]
-        por_ci.append({'name':ci, 'total':len(tecnicos_ci), 'available':sum(estados[t][1]>0 for t in tecnicos_ci)})
-    payload = {'user':st.session_state.get('usuario_actual',''), 'role':st.session_state.get('rol_actual',''),
-               'year':dd_anio,'center':centro,'date':fecha.strftime('%d/%m/%Y'),
-               'stats':{'total':len(personas),'available':disponibles,'centers':len(centros),
-                        'absent':len(personas)-disponibles},'centers':por_ci,
-               'navigation':[{'label':etiqueta,'page':destino,'group':grupo} for grupo,entradas in GRUPOS_MENU for etiqueta,destino in entradas]}
-    if _employeehub is None:
-        st.error('Falta la carpeta frontend/employeehub.'); return
-    action = _employeehub(data=payload, key='employeehub_dashboard', default=None)
-    if isinstance(action, dict) and action.get('type') == 'navigate':
-        destino = action.get('page')
-        if destino in permitidas and destino != 'Inicio':
-            st.session_state['v172_pagina'] = destino
-            st.rerun()
-    elif isinstance(action, dict) and action.get('type') == 'logout':
-        st.session_state.clear()
-        st.rerun()
-
 def render_inicio():
-    return render_inicio_html()
-
-def render_inicio_original():
     if ES_TECNICO:
         render_mi_espacio(); return
     st.markdown('''<style>
@@ -1690,14 +1644,14 @@ def render_inicio_original():
     .home-guard-next {font-size:12px;color:#536b78;margin-top:5px;}
     .home-box h3 {margin:0 0 8px;font-size:19px;color:var(--ink);}
     </style>''', unsafe_allow_html=True)
-    st.markdown(f'<div class="ci-v171-hero"><div class="eyebrow">CENTRO DE CONTROL · GESTIÓN OPERATIVA</div><div class="heading">Panel de coordinación</div><div class="description">Visión general de disponibilidad, cobertura, guardias y prevención de riesgos de los Complejos Industriales.</div><div class="chips"><span class="chip">🏭 {escape(centro)}</span><span class="chip">📅 Ejercicio {dd_anio}</span><span class="chip">● Entorno conectado</span><span class="chip">v17.2 · Navegación y diálogos</span></div></div>', unsafe_allow_html=True)
-    st.markdown('#### Accesos rápidos')
+    st.markdown(f"""<div class="eh-page-head"><div><div class="eh-overline">PANEL DE CONTROL / COORDINACIÓN</div><div class="eh-heading">Dashboard</div><div class="eh-subtitle">Visión global de los técnicos y la operativa de los Complejos Industriales</div></div><div class="eh-page-pill">● &nbsp; {escape(centro)} &nbsp; · &nbsp; {dd_anio}</div></div>""", unsafe_allow_html=True)
+    st.markdown('<div class="eh-searchline">GESTIÓN OPERATIVA <span>Accesos rápidos a las principales áreas</span></div>',unsafe_allow_html=True)
     ac1, ac2, ac3, ac4 = st.columns(4)
-    for columna, texto, destino in [(ac1, '📨 Solicitudes', 'Solicitudes'), (ac2, '📅 Cuadrante', 'Cuadrante'), (ac3, '🛡️ Guardias', 'Guardias'), (ac4, '👥 Técnicos', 'Técnicos')]:
-        if columna.button(texto, key=f'v172_rapido_{destino}', use_container_width=True):
+    for columna, texto, destino in [(ac1, '▦  Cuadrante', 'Cuadrante'), (ac2, '◷  Guardias', 'Guardias'), (ac3, '▤  Solicitudes', 'Solicitudes'), (ac4, '♙  Técnicos', 'Técnicos')]:
+        if columna.button(texto, key=f'eh_rapido_{destino}', use_container_width=True):
             st.session_state['v172_pagina'] = destino
             st.rerun()
-    st.divider()
+    st.markdown('<div class="eh-searchline">RESUMEN DEL EQUIPO <span>Selecciona el día de consulta</span></div>',unsafe_allow_html=True)
     fecha = st.date_input('Fecha de planificación', value=date.today())
     if fecha.year not in ANOS_DISPONIBLES:
         st.warning('Selecciona una fecha de los años configurados.'); return
@@ -1727,10 +1681,31 @@ def render_inicio_original():
         ('PRL por revisar',len(avisos),'danger' if caducados else 'warning' if proximos else 'neutral' if faltan else 'success',f'{caducados} caducados · {proximos} próximos · {faltan} sin datos')]
     for col,(label,value,color,nota),icono in zip(st.columns(4),indicadores,['👥','📆','🏭','🦺']):
         acento = {'success':'#0d9279','warning':'#df9b28','danger':'#db5963','neutral':'#7695a4'}.get(color,'#0f8192')
-        col.markdown(f'<div class="ci-v171-kpi" style="--accent:{acento}"><div class="top"><span>{escape(label)}</span><span class="icon">{icono}</span></div><div class="num">{value}</div><div class="foot">{escape(nota)}</div></div>',unsafe_allow_html=True)
+        col.markdown(f'<div class="eh-kpi" style="--accent:{acento}"><div class="eh-kpi-top"><span class="eh-kpi-icon">{icono}</span><span class="eh-kpi-dots">···</span></div><div class="eh-kpi-label">{escape(label)}</div><div class="eh-kpi-num">{value}</div><div class="eh-kpi-note"><span>↗</span> {escape(nota)}</div></div>',unsafe_allow_html=True)
     st.caption('Disponibilidad prevista, no fichajes. PRL se evalúa a fecha de hoy. Cobertura alerta cuando un centro laborable queda sin personal disponible; no hay mínimos de dotación configurados.')
     if sin_cobertura:
         st.error('SIN COBERTURA PREVISTA: '+', '.join(sin_cobertura)+'. Revisa la asignación de personal.')
+    # Analítica visual: calculada a partir de la misma disponibilidad que usa el resto de la app.
+    st.markdown('<div class="eh-searchline">ANÁLISIS DE DISPONIBILIDAD <span>Datos reales de planificación, no fichajes</span></div>',unsafe_allow_html=True)
+    _disponibles_ci = []
+    for _ci in centros:
+        _equipo = [t for t in visibles if TECNICOS[t]['ci'] == _ci]
+        _disponibles_ci.append({'Complejo': _ci, 'Disponibles': sum(estados[t][1] > 0 for t in _equipo), 'No disponibles': sum(estados[t][1] <= 0 for t in _equipo)})
+    _graf, _resumen = st.columns([1.8,1],gap='medium')
+    with _graf:
+        st.markdown('<div class="eh-panel-heading"><strong>Disponibilidad por complejo</strong><span>Comparativa de equipos · Fecha seleccionada</span></div>',unsafe_allow_html=True)
+        if _disponibles_ci:
+            _datos_graf = pd.DataFrame(_disponibles_ci).set_index('Complejo')
+            st.bar_chart(_datos_graf, color=['#1265f5','#b8d4fc'], stack=True, height=300)
+        else:
+            st.info('No hay datos para la selección actual.')
+    with _resumen:
+        st.markdown('<div class="eh-panel-heading"><strong>Estado general</strong><span>Resumen de coordinación</span></div>',unsafe_allow_html=True)
+        _tot = len(visibles)
+        _ok = sum(h>0 for _,h in estados.values())
+        _pct = round(_ok*100/_tot) if _tot else 0
+        st.markdown(f'<div class="eh-big-percent">{_pct}<span>%</span></div><div class="eh-small-text">Disponibilidad prevista del equipo</div><div class="eh-progress"><div style="width:{_pct}%"></div></div><div class="eh-statline"><span>Técnicos visibles</span><b>{_tot}</b></div><div class="eh-statline"><span>Disponibles</span><b>{_ok}</b></div><div class="eh-statline"><span>Ausencias o jornada sin horas</span><b>{_tot-_ok}</b></div><div class="eh-statline"><span>CI sin cobertura</span><b>{len(sin_cobertura)}</b></div>',unsafe_allow_html=True)
+    st.markdown('<div class="eh-searchline">EQUIPOS Y COBERTURA <span>Detalle por complejo industrial</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="ci-section-label">Cobertura y guardias</div>', unsafe_allow_html=True)
     st.subheader('Situación por CI')
     st.caption('Vista compacta por complejo industrial. Las tarjetas se distribuyen en dos columnas para aprovechar mejor el espacio y evitar huecos entre centros.')
@@ -3582,7 +3557,69 @@ st.markdown("""<style>
 [data-testid="stExpander"]{border-radius:12px;overflow:hidden;}
 @media(min-width:900px){[data-testid="stDialog"] [role="dialog"]{min-width:580px;}}
 </style>""",unsafe_allow_html=True)
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+:root{--ci-primary:#1265f5;--ci-primary-dark:#0b1220;--ci-bg:#f8fafc;--ci-border:#e5e7eb;--ci-radius:12px}
+html,body,.stApp{font-family:'Inter',sans-serif!important}
+.stApp{background:#f8fafc!important;color:#0f172a!important}
+.block-container{max-width:1500px!important;padding:1.5rem 2.2rem 2rem!important}
+[data-testid="stSidebar"]{background:#0b111e!important;border-right:1px solid #202b3b!important;box-shadow:none!important}
+[data-testid="stSidebar"] *{color:#cbd5e1!important}
+[data-testid="stSidebar"] h1{font-size:1.3rem!important;color:#fff!important;letter-spacing:-.04em!important}
+[data-testid="stSidebar"] [data-testid="stImage"]{background:transparent!important;padding:0!important;box-shadow:none!important;max-width:140px}
+[data-testid="stSidebar"] .ci-section-label{color:#778397!important;font-size:10px!important;font-weight:700!important;letter-spacing:.06em!important}
+[data-testid="stSidebar"] button{background:transparent!important;border:1px solid transparent!important;color:#cbd5e1!important;box-shadow:none!important;text-align:left!important;min-height:41px!important;border-radius:9px!important;font-weight:500!important}
+[data-testid="stSidebar"] button:hover{background:#202b3b!important;color:#fff!important}
+[data-testid="stSidebar"] button[kind="primary"]{background:#303948!important;color:#fff!important;border:1px solid #384457!important;box-shadow:none!important}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"]>div{background:#182232!important;border:1px solid #354255!important}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] label p{color:#a8b5c7!important}
+[data-testid="stSidebar"] hr{border-color:#273346!important}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"]{color:#9aa9bd!important}
+.block-container>div>div>div>div>h1{color:#0f172a!important}
+h1,h2,h3{color:#0f172a!important;letter-spacing:-.035em!important}
+.ci-statusbar{background:#fff!important;border:1px solid #e5e7eb!important;border-radius:10px!important;box-shadow:none!important}
+.ci-dot{background:#10b981!important;box-shadow:0 0 0 3px #dcfce7!important}
+.ci-page-intro .eyebrow{color:#2563eb!important}
+.eh-page-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0 18px}
+.eh-overline{color:#64748b;font-size:10px;font-weight:750;letter-spacing:.11em;margin-bottom:10px}
+.eh-heading{font-size:31px;font-weight:850;color:#101828;letter-spacing:-.05em;line-height:1.2}
+.eh-subtitle{color:#64748b;font-size:13px;margin-top:7px}
+.eh-page-pill{font-size:12px;color:#475569;font-weight:650;background:white;border:1px solid #e2e8f0;padding:10px 14px;border-radius:10px;white-space:nowrap}
+.eh-searchline{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;font-weight:800;color:#64748b;letter-spacing:.09em;margin:24px 0 12px}
+.eh-searchline span{font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0}
+.eh-kpi{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 3px 10px #0f172a08;padding:17px 21px;min-height:174px;margin-bottom:15px}
+.eh-kpi-top{display:flex;align-items:center;justify-content:space-between}
+.eh-kpi-icon{display:grid;place-items:center;width:39px;height:39px;border-radius:50%;background:color-mix(in srgb,var(--accent) 12%,white);color:var(--accent);font-size:19px}
+.eh-kpi-dots{font-weight:900;color:#0f172a;font-size:20px;letter-spacing:2px}
+.eh-kpi-label{font-size:12px;font-weight:700;color:#334155;margin-top:12px}
+.eh-kpi-num{font-size:34px;font-weight:850;color:#0f172a;letter-spacing:-.05em;margin-top:4px;line-height:1.15}
+.eh-kpi-note{font-size:10px;color:#94a3b8;margin-top:9px;line-height:1.5}
+.eh-kpi-note span{color:#16a34a;font-weight:900;font-size:13px}
+.eh-panel-heading{display:flex;flex-direction:column;gap:6px;padding:16px 18px 0}
+.eh-panel-heading strong{font-size:17px;color:#111827;letter-spacing:-.03em}
+.eh-panel-heading span{font-size:11px;color:#94a3b8}
+[data-testid="stVegaLiteChart"]{background:white!important;border:1px solid #e5e7eb!important;border-radius:12px!important;padding:10px!important}
+.eh-big-percent{font-size:60px;font-weight:850;letter-spacing:-.07em;color:#1265f5;margin:24px 20px 0;line-height:1}
+.eh-big-percent span{font-size:26px}
+.eh-small-text{font-size:12px;color:#64748b;margin:8px 20px 12px}
+.eh-progress{background:#e2e8f0;height:10px;border-radius:10px;margin:0 20px 25px;overflow:hidden}
+.eh-progress>div{background:#1265f5;height:100%;border-radius:10px}
+.eh-statline{display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding:12px 20px;font-size:12px;color:#64748b}
+.eh-statline b{color:#0f172a}
+.ci-v171-section{background:#fff!important;border:1px solid #e5e7eb!important;border-radius:11px!important;padding:13px 17px!important}
+.ci-v171-section strong{color:#111827!important}
+.ci-v171-section span{color:#64748b!important}
+.home-box,.ci-panel,.ops-card,.ci-v171-kpi,[data-testid="stMetric"]{background:#fff!important;border:1px solid #e5e7eb!important;border-radius:12px!important;box-shadow:0 3px 10px #0f172a08!important}
+.stButton>button[kind="primary"]{background:#1265f5!important;border-color:#1265f5!important;color:#fff!important}
+.stButton>button[kind="primary"]:hover{background:#0b52ce!important;border-color:#0b52ce!important}
+.stButton>button{border-radius:9px!important}
+[data-testid="stTabs"] [aria-selected="true"]{color:#1265f5!important}
+[data-testid="stDataFrame"]{border-radius:11px!important}
+@media(max-width:850px){.block-container{padding:1rem .7rem!important}.eh-page-head{display:block}.eh-page-pill{display:inline-block;margin-top:14px}.eh-heading{font-size:26px}.eh-searchline{display:block}.eh-searchline span{display:block;margin-top:5px}.eh-kpi{min-height:0}}
+</style>""",unsafe_allow_html=True)
+
 {'Inicio':render_inicio,'Notificaciones':render_notificaciones,'Solicitudes':render_solicitudes,'Avisos':render_avisos,'Cuadrante':render_cuadrante,'Técnicos':render_tecnicos,
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
