@@ -951,6 +951,46 @@ st.markdown("""<style>
 @media(max-width:700px){.ci-v171-hero{padding:23px 19px;border-radius:17px}.ci-v171-kpi{min-height:122px;padding:14px}.ci-v171-kpi .num{font-size:30px}}
 </style>""",unsafe_allow_html=True)
 
+# v17.6 · Tema visual corporativo inspirado en el diseño HTML de referencia.
+# Capa exclusivamente CSS: no altera navegación, formularios, cálculos ni persistencia.
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+:root{--ci-primary:#143252;--ci-primary-dark:#0c2036;--ci-bg:#f1f5f9;--ci-border:#dce5ee;--ci-text:#1e293b;--ci-muted:#64748b;--ci-radius:17px;--ci-accent:#00b0bd}
+html,body,[data-testid="stAppViewContainer"],.stApp{font-family:'Inter',sans-serif!important}
+.stApp{background:#f1f5f9!important;color:#1e293b}
+.block-container{max-width:1700px!important;padding-top:1.25rem!important}
+h1,h2,h3{color:#143252!important;letter-spacing:-.035em!important}
+h1{font-weight:850!important}h2,h3{font-weight:800!important}
+[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e2e8f0!important;box-shadow:5px 0 24px #1432520b!important}
+[data-testid="stSidebar"] .ci-section-label{color:#8090a4!important;letter-spacing:.13em!important;font-size:10px!important;margin-top:20px!important}
+[data-testid="stSidebar"] .stButton>button{background:transparent!important;color:#475569!important;border:1px solid transparent!important;box-shadow:none!important;justify-content:flex-start!important;text-align:left!important;font-size:13px!important;font-weight:700!important;border-radius:12px!important;min-height:42px!important;padding:9px 13px!important;transform:none!important}
+[data-testid="stSidebar"] .stButton>button:hover{background:#eff9fa!important;color:#143252!important;border-color:#d2edf0!important}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#143252!important;color:white!important;border-color:#143252!important;box-shadow:0 5px 13px #14325224!important}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]:hover{background:#0c2036!important;color:white!important}
+[data-testid="stMetric"],.ci-card,.ci-panel,.ops-card,.info-card,.resource-card,.ci-v171-kpi{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:18px!important;box-shadow:0 6px 20px #1432520a!important}
+[data-testid="stMetric"]{padding:18px 20px!important}
+[data-testid="stMetricLabel"]{font-size:12px!important;color:#64748b!important;font-weight:700!important}
+[data-testid="stMetricValue"]{color:#143252!important;font-weight:850!important}
+.ci-v171-kpi:before{background:#00b0bd!important}.ci-v171-kpi .num{color:#143252!important}
+.ci-v171-hero,.ops-hero,.tech-hero,.login-brand{background:linear-gradient(115deg,#143252,#0c2036)!important;border-radius:20px!important}
+.ci-v171-hero .chip{border-color:#ffffff38!important;background:#ffffff16!important}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{border-radius:12px!important;font-weight:750!important;min-height:42px!important}
+button[kind="primary"]{background:#143252!important;border-color:#143252!important;color:white!important;box-shadow:0 4px 12px #14325220!important}
+button[kind="primary"]:hover{background:#0c2036!important;border-color:#0c2036!important}
+[data-testid="stForm"],[data-testid="stExpander"],[data-testid="stDataFrame"]{border:1px solid #e2e8f0!important;border-radius:16px!important;box-shadow:0 4px 16px #14325208!important}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{background:#e9f0f5!important;border:1px solid #dce5ee!important;border-radius:13px!important}
+[data-testid="stTabs"] [aria-selected="true"]{color:#143252!important;border-radius:10px!important;box-shadow:0 2px 8px #14325212!important}
+[data-baseweb="select"]>div,[data-baseweb="input"]>div,[data-testid="stDateInput"]>div>div{border-radius:11px!important}
+.grid-wrap{border-color:#dce5ee!important;border-radius:16px!important;box-shadow:0 5px 18px #1432520a!important}
+.grid th,.grid th.name{background:#143252!important;color:white!important}
+.grid td{border-bottom-color:#e8edf3!important}.today{box-shadow:inset 0 0 0 2px #00b0bd!important}
+.ci-statusbar{background:#fff!important;border-color:#e2e8f0!important;border-radius:14px!important}
+.ci-badge.info{background:#e7f8fa!important;color:#12606c!important;border-color:#b4e6e9!important}
+[data-testid="stDialog"] div[role="dialog"]{border-radius:22px!important;border-color:#dce5ee!important}
+[data-testid="stDialog"] div[role="dialog"] h1,[data-testid="stDialog"] div[role="dialog"] h2{color:#143252!important}
+@media(max-width:768px){.block-container{padding:.8rem .7rem 1.7rem!important}.ci-v171-hero,.ops-hero,.tech-hero{border-radius:15px!important}[data-testid="stMetric"]{padding:12px!important}.ci-card,.ci-panel,.ops-card{padding:14px!important}}
+</style>""",unsafe_allow_html=True)
+
 # v17.2 · Navegación agrupada por funciones y persistente por sesión.
 ES_TECNICO = st.session_state.rol_actual == 'Tecnico'
 GRUPOS_MENU = (
@@ -3540,3 +3580,4 @@ st.markdown("""<style>
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
