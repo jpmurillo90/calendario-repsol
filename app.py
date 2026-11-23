@@ -2760,6 +2760,17 @@ def seg_raw_dia(ci,fecha):
     if seg_es_v2(): return copy.deepcopy(SEGUIMIENTO_CI.get("diario",{}).get(ci,{}).get(fecha.isoformat(),{}))
     return copy.deepcopy(SEGUIMIENTO_CI.get(seg_clave(ci,fecha),{})) if isinstance(SEGUIMIENTO_CI,dict) else {}
 
+def seg_tickets_dia(ci, fecha):
+    """Nuevas actuaciones: fuente única de registro desde esta versión."""
+    out = {g: {r: 0 for r in ("RS", "RC", "RCorp")} for g in ("Parches", "AV", "BCK")}
+    for x in TICKETS_CI:
+        if not isinstance(x, dict) or x.get("ci") != ci or x.get("fecha") != fecha.isoformat():
+            continue
+        g, r = x.get("actividad"), x.get("red")
+        if g in out and r in out[g]:
+            out[g][r] += _seg_int(x.get("maquinas"))
+    return out
+
 def seg_registro(ci,fecha):
     redes={g:{r:0 for r in ("RS","RC","RCorp")} for g in ("Parches","AV","BCK")}
     tot={"Parches":0,"AV":0,"BCK":0}; raw=seg_raw_dia(ci,fecha)
@@ -2772,6 +2783,13 @@ def seg_registro(ci,fecha):
         else:
             h=raw.get(alias[g],{})
             tot[g]=_seg_int(h.get("total",0) if isinstance(h,dict) else h)
+    # Los registros previos permanecen intactos; los nuevos tickets alimentan
+    # directamente calendario, KPIs, análisis e informes sin segundo formulario.
+    nuevas = seg_tickets_dia(ci, fecha)
+    for g in redes:
+        for r in redes[g]:
+            redes[g][r] += nuevas[g][r]
+        tot[g] += sum(nuevas[g].values())
     return {"redes":redes,"totales":tot,"historico_excel":bool(raw.get("detalle_red_no_disponible") or raw.get("origen")=="excel_historico"),"obs":str(raw.get("obs","") or "")}
 
 def seg_totales_diarios(ci,anio,mes=None):
@@ -2797,9 +2815,14 @@ def seg_totales_redes(ci,anio,mes=None):
     for m in ([mes] if mes else range(1,13)):
         for d in range(1,calendar.monthrange(anio,m)[1]+1):
             rr=seg_registro(ci,date(anio,m,d))
-            if rr["historico_excel"]: continue
+            if rr["historico_excel"]:
+                # En días históricos Excel, añadir solamente las actuaciones nuevas.
+                nuevas = seg_tickets_dia(ci, date(anio, m, d))
+                for g in out:
+                    for r in out[g]: out[g][r] += nuevas[g][r]
+                continue
             for g in out:
-                for r in out[g]: out[g][r]+=rr["redes"][g][r]
+                for r in out[g]: out[g][r] += rr["redes"][g][r]
     return out
 
 def seg_total_grupo(t,g): return sum(t[g].values())
@@ -2868,9 +2891,26 @@ def _ticket_ci_tabla(filas):
         "Técnico": x.get("tecnico", ""), "Observaciones": x.get("observaciones", "")
     } for x in filas])
 
+def _render_resumen_tickets_ci(ci, anio, mes=None):
+    """KPIs de tickets independientes de los contadores del calendario histórico."""
+    filas = _ticket_ci_filas(ci, anio, mes)
+    unicos = {(x.get("ci"), x.get("tipo"), str(x.get("numero", "")).strip().upper()) for x in filas}
+    columnas = st.columns(4)
+    columnas[0].metric("Tickets distintos", len(unicos))
+    columnas[1].metric("Actuaciones", len(filas))
+    columnas[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
+    columnas[3].metric("CI con tickets" if ci is None else "Redes utilizadas",len({x.get("ci") if ci is None else x.get("red") for x in filas}))
+    if not filas:
+        st.info("No hay tickets registrados para este periodo.")
+        return
+    resumen = _ticket_ci_tabla(filas)
+    st.dataframe(resumen.groupby(["Tipo", "Actividad", "Red"],as_index=False).agg(
+        Actuaciones=("Máquinas", "size"), Intervenciones=("Máquinas", "sum")),
+        hide_index=True, use_container_width=True)
+
 def render_tickets_ci(ci, anio, mes, permitidos):
     st.markdown("### Peticiones, incidencias y OT4IT")
-    st.caption("Cada fila es una actuación por actividad y red. Un mismo número puede tener varias actuaciones, fechas y técnicos. No modifica el calendario histórico.")
+    st.caption("Registro único: cada actividad y red genera una actuación asociada al mismo ticket. El calendario y los informes se actualizan automáticamente, conservando el histórico anterior.")
     filas = _ticket_ci_filas(ci, anio, mes)
     unicos = {(x.get("ci"), x.get("tipo"), str(x.get("numero", "")).strip().upper()) for x in filas}
     cols = st.columns(4)
@@ -2879,46 +2919,60 @@ def render_tickets_ci(ci, anio, mes, permitidos):
     cols[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
     cols[3].metric("Redes", len({x.get("red") for x in filas}))
     if ci in permitidos:
-        with st.expander("➕ Registrar nueva actuación", expanded=False):
-            with st.form("ticket_ci_nuevo", clear_on_submit=True):
+        with st.expander("➕ Registrar actuación", expanded=True):
+            with st.form("ticket_ci_unificado", clear_on_submit=True):
                 a,b,c = st.columns(3)
                 with a:
-                    fecha = st.date_input("Fecha de actuación", value=date(anio, mes, min(date.today().day, calendar.monthrange(anio, mes)[1])) if (anio, mes) != (date.today().year, date.today().month) else date.today(), key="tci_fecha")
-                    tipo = st.selectbox("Tipo", TIPOS_TICKET_CI)
+                    fecha = st.date_input("Fecha de actuación", value=date.today(), key="tci_fecha_unica")
+                    tipo = st.selectbox("Tipo de ticket", TIPOS_TICKET_CI)
                 with b:
-                    numero = st.text_input("Nº petición / incidencia / OT4IT", max_chars=80, placeholder="Ej. 123456")
-                    actividad = st.selectbox("Actividad", ACTIVIDADES_TICKET_CI, format_func=lambda v:{"AV":"Antivirus", "BCK":"Backups"}.get(v,v))
+                    numero = st.text_input("Nº de petición / incidencia / OT4IT", max_chars=80)
                 with c:
-                    red = st.selectbox("Red", REDES_TICKET_CI)
-                    maquinas = st.number_input("Máquinas intervenidas", min_value=0, step=1, value=1)
-                tecnico_asociado = tecnico_usuario_actual()
-                if EDITOR:
-                    opciones_tec = [t for t in sorted(TECNICOS) if TECNICOS[t].get("ci") == ci]
-                    if tecnico_asociado and tecnico_asociado not in opciones_tec:
-                        opciones_tec.append(tecnico_asociado)
-                    tecnico = st.selectbox("Técnico que realiza la actuación", opciones_tec or [st.session_state.usuario_actual])
-                else:
-                    tecnico = tecnico_asociado
-                    st.text_input("Técnico", value=tecnico, disabled=True)
-                obs = st.text_area("Observaciones", max_chars=2000, placeholder="Trabajo realizado, resultado y próximos pasos...")
-                enviar = st.form_submit_button("Guardar actuación", type="primary", use_container_width=True)
+                    tecnico_asociado = tecnico_usuario_actual()
+                    if EDITOR:
+                        opciones_tec = [t for t in sorted(TECNICOS) if TECNICOS[t].get("ci") == ci]
+                        if tecnico_asociado and tecnico_asociado not in opciones_tec:
+                            opciones_tec.append(tecnico_asociado)
+                        tecnico = st.selectbox("Técnico", opciones_tec or [st.session_state.usuario_actual])
+                    else:
+                        tecnico = tecnico_asociado
+                        st.text_input("Técnico", value=tecnico or "", disabled=True)
+                st.caption("Introduce las máquinas intervenidas en cada actividad y red. Puedes incluir varias actividades en el mismo ticket.")
+                valores = {}
+                for g, label in (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backups")):
+                    st.markdown(f"**{label}**")
+                    cc = st.columns(3)
+                    for col, red in zip(cc, REDES_TICKET_CI):
+                        with col:
+                            valores[(g, red)] = st.number_input(
+                                f"{label} · {red}", min_value=0, step=1, value=0,
+                                key=f"tci_unico_{g}_{red}")
+                obs = st.text_area("Observaciones de la actuación", max_chars=2000)
+                enviar = st.form_submit_button("Guardar actuación y actualizar seguimiento", type="primary", use_container_width=True)
             if enviar:
                 numero = numero.strip()
+                elegidas = [(g, red, int(n)) for (g, red), n in valores.items() if n > 0]
                 if not numero:
                     st.error("Indica el número de ticket.")
                 elif not tecnico:
                     st.error("No se ha identificado el técnico autorizado.")
-                elif len(obs.strip()) > 2000:
-                    st.error("Observaciones demasiado extensas.")
+                elif not elegidas:
+                    st.error("Indica al menos una máquina en una actividad y red.")
                 else:
-                    # Se mantiene el ticket por tipo + número + CI; cada fila es una actuación.
                     nuevo = list(TICKETS_CI)
-                    nuevo.append({"id": __import__("uuid").uuid4().hex, "fecha":fecha.isoformat(),
-                                  "ci":ci,"tipo":tipo,"numero":numero,"actividad":actividad,
-                                  "red":red,"maquinas":int(maquinas),"tecnico":tecnico,
-                                  "observaciones":obs.strip(),"creado":datetime.now().isoformat(timespec="seconds"),
-                                  "registrado_por":st.session_state.usuario_actual})
-                    if guardar_portal({RUTA_TICKETS_CI:nuevo},f"Seguimiento CI · actuación {tipo} {numero} · {ci}",modulo="Seguimiento CI"):
+                    for actividad, red, maquinas in elegidas:
+                        nuevo.append({
+                            "id": __import__("uuid").uuid4().hex,
+                            "fecha": fecha.isoformat(), "ci": ci, "tipo": tipo,
+                            "numero": numero, "actividad": actividad, "red": red,
+                            "maquinas": maquinas, "tecnico": tecnico,
+                            "observaciones": obs.strip(),
+                            "creado": datetime.now().isoformat(timespec="seconds"),
+                            "registrado_por": st.session_state.usuario_actual,
+                        })
+                    if guardar_portal({RUTA_TICKETS_CI: nuevo},
+                                     f"Seguimiento CI · {tipo} {numero} · {ci} · {len(elegidas)} actividades/redes",
+                                     modulo="Seguimiento CI"):
                         st.rerun()
     else:
         st.info("Este complejo es de consulta para tu usuario.")
@@ -2971,12 +3025,12 @@ def render_seguimiento_ci():
     st.markdown(f'<div class="section-eyebrow">RESUMEN · {MESES[mes].upper()} {anio} · {escape(ci).upper()}</div>',unsafe_allow_html=True)
     ks=st.columns(4)
     clases=["total","p","av","b"]
-    for col,clase,label,val,sub in zip(ks,clases,["Total máquinas","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
+    for col,clase,label,val,sub in zip(ks,clases,["Intervenciones","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
         with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
     redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
     for col,red in zip(cols,("RS","RC","RCorp")):
         with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
-    tab_cal,tab_reg,tab_tickets,tab_ana,tab_inf,tab_global=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","🎫 Peticiones e incidencias","📈 Análisis","📄 Informe CI","🌐 Informe global"])
+    tab_cal,tab_tickets,tab_ana,tab_inf,tab_global=st.tabs(["📅 Calendario operativo","➕ Registrar actuación","📈 Análisis","📄 Informe CI","🌐 Informe global"])
     with tab_tickets:
         render_tickets_ci(ci, anio, mes, permitidos)
     with tab_cal:
@@ -2992,35 +3046,11 @@ def render_seguimiento_ci():
                     rr=seg_registro(ci,f); p=rr["totales"]["Parches"]; av=rr["totales"]["AV"]; b=rr["totales"]["BCK"]; n=p+av+b; badge='<span class="seg-origin">Excel</span>' if rr["historico_excel"] and n else ''
                     st.markdown(f'<div class="seg-day {"active" if n else ""}"><div class="seg-num">{f.day}</div>{badge}<div class="seg-values">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div class="seg-total">Total {n}</div></div>',unsafe_allow_html=True)
         st.caption("Excel = dato histórico importado. El reparto RS/RC/RCorp de ese histórico está disponible a nivel mensual.")
-    with tab_reg:
-        if ci not in permitidos: st.info("Puedes consultar este CI, pero no registrar actividad.")
-        else:
-            @st.dialog('Registrar actividad · Seguimiento CI', width='large')
-            def _dialogo_actividad_ci():
-                fecha=st.date_input("Fecha de trabajo",value=date.today(),min_value=date(anio,1,1),max_value=date(anio,12,31),key="seg_fecha"); actual=seg_registro(ci,fecha)
-                if actual["historico_excel"] and sum(actual["totales"].values()): st.info(f'Histórico Excel existente: P {actual["totales"]["Parches"]} · AV {actual["totales"]["AV"]} · B {actual["totales"]["BCK"]}.')
-                with st.form("form_seg_ci"):
-                    vals={}
-                    for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
-                        st.markdown(f"**{label}**"); cc=st.columns(3); vals[g]={}
-                        for col,r in zip(cc,["RS","RC","RCorp"]):
-                            with col: vals[g][r]=st.number_input(r,min_value=0,step=1,value=int(actual["redes"][g][r]),key=f"seg_{g}_{r}")
-                    obs=st.text_input("Observaciones (opcional)",value=actual["obs"]); ok=st.form_submit_button("Guardar actividad del día",type="primary",use_container_width=True)
-                if ok:
-                    cambios_detalle=[]
-                    for _g,_label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
-                        for _r in ("RS","RC","RCorp"):
-                            _antes=int(actual["redes"][_g][_r]); _despues=int(vals[_g][_r])
-                            if _antes != _despues:
-                                cambios_detalle.append(f"{_label} · {_r}: {_antes} → {_despues}")
-                    if actual.get("obs","") != obs.strip():
-                        cambios_detalle.append(f"Observaciones: {actual.get('obs','') or '—'} → {obs.strip() or '—'}")
-                    nuevo=seg_guardar_dia(ci,fecha,vals,obs)
-                    if guardar_seguimiento_ci(nuevo,f"Seguimiento CI: {ci} · {fecha}",ci,cambios_detalle,fecha): st.rerun()
-            if st.button('➕ Registrar actividad del día',type='primary',key=f'abrir_seguimiento_{ci}_{anio}_{mes}'):
-                _dialogo_actividad_ci()
     with tab_ana:
-        st.markdown('<div class="section-eyebrow">DISTRIBUCIÓN POR RED</div>',unsafe_allow_html=True)
+        st.markdown("### Actividad operativa y tickets · visión conjunta")
+        st.caption("Las nuevas actuaciones se incorporan automáticamente a los totales del calendario. Los tickets se muestran aparte para conocer su trazabilidad; no se suman de nuevo.")
+        _render_resumen_tickets_ci(ci, anio, mes)
+        st.markdown('<div class="section-eyebrow">DISTRIBUCIÓN POR RED · REGISTRO DIARIO</div>',unsafe_allow_html=True)
         st.caption("Porcentaje de actividad de cada grupo repartido entre RS, RC y RCorp para el periodo seleccionado.")
         acols=st.columns(3)
         chart_colors={"RS":"#0d5869","RC":"#4a7894","RCorp":"#9bb7c5"}
@@ -3032,13 +3062,25 @@ def render_seguimiento_ci():
             legend=''.join([f'<div><span class="seg-dot2" style="background:{chart_colors[r]}"></span>{r}: <b>{vals[r]}</b> · {pct[r]:.1f}%</div>' for r in ("RS","RC","RCorp")])
             with col: st.markdown(f'<div class="seg-analysis"><div class="seg-analysis-title">{label}</div><div class="seg-analysis-sub">{MESES[mes]} {anio} · {ci}</div><div class="seg-donut-wrap"><div class="seg-donut" style="background:{grad}"><div class="seg-donut-center">{tot}</div></div><div class="seg-legend">{legend}</div></div></div>',unsafe_allow_html=True)
     with tab_inf:
+        st.markdown("### Informe operativo del CI")
+        st.caption("Incluye el histórico anterior y las nuevas actuaciones del registro único, además del detalle de tickets.")
         modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_ci"); imes=mes if modo=="Mes seleccionado" else None
         dsum,dias_i=seg_totales_diarios(ci,anio,imes); rsum=seg_totales_redes(ci,anio,imes)
+        st.markdown("#### Actividad total · histórico y registro único")
         df=pd.DataFrame([{"Grupo":"Parches",**rsum["Parches"],"Total actividad":dsum["Parches"]},{"Grupo":"Antivirus",**rsum["AV"],"Total actividad":dsum["AV"]},{"Grupo":"Backup",**rsum["BCK"],"Total actividad":dsum["BCK"]}]); st.dataframe(df,use_container_width=True,hide_index=True)
         st.caption("Histórico Excel 2026: el reparto por red es mensual; el total de actividad procede del calendario diario.")
+        st.markdown("#### Tickets y actuaciones · periodo del informe")
+        _render_resumen_tickets_ci(ci, anio, imes)
+        _filas_inf = _ticket_ci_filas(ci, anio, imes)
+        if _filas_inf:
+            st.download_button("⬇️ Descargar tickets del CI en Excel", _ticket_ci_excel(_ticket_ci_tabla(_filas_inf)),
+                file_name=f"Tickets_CI_{ci}_{anio}_{imes or 'anual'}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="tci_excel_informe_ci")
+        st.markdown("#### Informe HTML del seguimiento operativo")
         html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
         st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
     with tab_global:
+        st.markdown("### Consolidado de todos los complejos")
         st.markdown('<div class="section-eyebrow">INFORME CONSOLIDADO · TODOS LOS CI</div>',unsafe_allow_html=True)
         modo_g=st.radio("Periodo global",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_global"); gmes=mes if modo_g=="Mes seleccionado" else None
         resumen=[]
@@ -3051,6 +3093,19 @@ def render_seguimiento_ci():
         gc=st.columns(3)
         for i,(cix,gdays,gd,gt) in enumerate(resumen):
             with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
+        st.markdown("#### Tickets y actuaciones · todos los CI")
+        _render_resumen_tickets_ci(None, anio, gmes)
+        _filas_global = _ticket_ci_filas(None, anio, gmes)
+        if _filas_global:
+            _df_global = _ticket_ci_tabla(_filas_global)
+            st.markdown("**Distribución de actuaciones por complejo**")
+            st.dataframe(_df_global.groupby(["CI","Tipo","Actividad"],as_index=False).agg(
+                Actuaciones=("Máquinas","size"), Intervenciones=("Máquinas","sum")),
+                use_container_width=True,hide_index=True)
+            st.download_button("⬇️ Descargar tickets globales en Excel",_ticket_ci_excel(_df_global),
+                file_name=f"Tickets_Todos_CI_{anio}_{gmes or 'anual'}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="tci_excel_global")
+        st.markdown("#### Informe HTML del seguimiento operativo")
         ghtml=html_seguimiento_global(anio,gmes); gsuf=f"{anio}_{gmes:02d}" if gmes else str(anio)
         st.download_button("⬇️ Descargar informe global HTML",ghtml.encode("utf-8"),file_name=f"Seguimiento_CI_TODOS_{gsuf}.html",mime="text/html",type="primary",use_container_width=True)
 
