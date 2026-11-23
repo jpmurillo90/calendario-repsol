@@ -3121,6 +3121,19 @@ def render_tickets_ci(ci, anio, mes, permitidos):
     _ci_kpis(filas)
     if ci in permitidos:
         with st.expander("➕ Registrar actuación", expanded=True):
+            # Fuera del formulario para que Streamlit actualice los campos al cambiar de modalidad.
+            modalidad = st.radio(
+                "¿Cómo se distribuyen las máquinas de esta actuación?",
+                ["Mismas máquinas para todas las actividades", "Máquinas diferentes o parcialmente coincidentes"],
+                key="tci_modalidad", horizontal=True,
+            )
+            coincidencia = None
+            if modalidad == "Máquinas diferentes o parcialmente coincidentes":
+                coincidencia = st.radio(
+                    "¿Se repiten máquinas entre actividades?",
+                    ["No, son todas diferentes", "Sí, algunas máquinas coinciden"],
+                    key="tci_coincidencia", horizontal=True,
+                )
             with st.form("ticket_ci_unificado", clear_on_submit=True):
                 a,b,c = st.columns(3)
                 with a:
@@ -3138,18 +3151,38 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                     else:
                         tecnico = tecnico_asociado
                         st.text_input("Técnico", value=tecnico or "", disabled=True)
-                st.caption("Introduce las máquinas intervenidas en cada actividad y red. Puedes incluir varias actividades en el mismo ticket.")
                 valores = {}
-                for g, label in (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backups")):
-                    st.markdown(f"**{label}**")
-                    cc = st.columns(3)
-                    for col, red in zip(cc, REDES_TICKET_CI):
-                        with col:
-                            valores[(g, red)] = st.number_input(
-                                f"{label} · {red}", min_value=0, step=1, value=0,
-                                key=f"tci_unico_{g}_{red}")
-                total_distintas = st.number_input("💻 Total de máquinas distintas en esta actuación", min_value=1, step=1, value=1,
-                    help="Si instalas parches, AV y backups en el mismo servidor, indica 1. Si parcheas 20 servidores distintos, indica 20.")
+                if modalidad == "Mismas máquinas para todas las actividades":
+                    st.caption("Indica cuántas máquinas son y qué actividades se realizan sobre todas ellas.")
+                    cc = st.columns(2)
+                    with cc[0]:
+                        maquinas_comunes = st.number_input("Máquinas distintas", min_value=1, value=1, step=1, key="tci_maquinas_comunes")
+                    with cc[1]:
+                        red_comun = st.selectbox("Red de las máquinas", REDES_TICKET_CI, key="tci_red_comun")
+                    actividades_comunes = st.multiselect("Actividades realizadas", ["Parches", "Antivirus", "Backups"],
+                                                        default=[], key="tci_actividades_comunes")
+                    codigos = {"Parches": "Parches", "Antivirus": "AV", "Backups": "BCK"}
+                    for actividad in actividades_comunes:
+                        valores[(codigos[actividad], red_comun)] = int(maquinas_comunes)
+                    total_distintas = int(maquinas_comunes)
+                else:
+                    st.caption("Introduce las máquinas intervenidas en cada actividad y red.")
+                    for g, label in (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backups")):
+                        st.markdown(f"**{label}**")
+                        cc = st.columns(3)
+                        for col, red in zip(cc, REDES_TICKET_CI):
+                            with col:
+                                valores[(g, red)] = st.number_input(
+                                    f"{label} · {red}", min_value=0, step=1, value=0,
+                                    key=f"tci_unico_{g}_{red}")
+                    if coincidencia == "Sí, algunas máquinas coinciden":
+                        total_distintas = st.number_input(
+                            "💻 Total de máquinas distintas (sin repetir)", min_value=1, step=1, value=1,
+                            help="Cuenta cada equipo una sola vez aunque tenga parches, antivirus y backups.",
+                            key="tci_distintas_solapadas")
+                    else:
+                        total_distintas = sum(int(n) for n in valores.values())
+                        st.caption("El total de máquinas distintas se calculará automáticamente sumando las cantidades introducidas.")
                 obs = st.text_area("Observaciones de la actuación", max_chars=2000)
                 st.caption("Si el ticket ya existe en otro día o actividad, se añadirá al mismo histórico. "
                            "Se bloquea una segunda actuación idéntica en fecha, actividad y red.")
@@ -4150,6 +4183,7 @@ h1,h2,h3{color:#0f172a!important;letter-spacing:-.035em!important}
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
 
 
 
