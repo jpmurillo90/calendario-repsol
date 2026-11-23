@@ -65,6 +65,7 @@ RUTA_PERFILES = "perfiles_tecnicos_repsol.json"
 RUTA_VEHICULOS = "vehiculos_repsol.json"
 RUTA_CONFIG_NOTIFICACIONES = "config_notificaciones_repsol.json"
 RUTA_SEGUIMIENTO_CI = "seguimiento_ci_repsol.json"
+RUTA_TICKETS_CI = "tickets_seguimiento_ci_repsol.json"
 RUTA_SOLICITUDES = "solicitudes_repsol.json"
 RUTA_AVISOS_COORD = "avisos_coordinacion_repsol.json"
 RUTA_NOTIFICACIONES_LEIDAS = "notificaciones_leidas_repsol.json"
@@ -684,7 +685,7 @@ EDITOR = st.session_state.rol_actual == 'Editor'
 
 # -------------------- Persistencia compatible y verificable --------------------
 ARCHIVOS = [RUTA_BDD, RUTA_FESTIVOS, RUTA_FESTIVOS_META, RUTA_HE, RUTA_CONFIG_ANUAL,
-            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, 'auditoria_repsol.json']
+            RUTA_HORARIOS_CI, RUTA_HLD_ANUAL, RUTA_PRL, RUTA_TECNICOS, RUTA_GUARDIAS, RUTA_ACTIVACIONES, RUTA_PERFILES, RUTA_VEHICULOS, RUTA_CONFIG_NOTIFICACIONES, RUTA_SEGUIMIENTO_CI, RUTA_TICKETS_CI, RUTA_SOLICITUDES, RUTA_AVISOS_COORD, RUTA_NOTIFICACIONES_LEIDAS, 'auditoria_repsol.json']
 TOKEN, GIST = secreto('GITHUB_TOKEN', ''), secreto('GIST_ID', '')
 REMOTE = bool(TOKEN and GIST)
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json'}
@@ -829,6 +830,10 @@ CONFIG_NOTIFICACIONES.setdefault("notificar_tecnicos", True)
 CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_semanal", False)
 CONFIG_NOTIFICACIONES.setdefault("resumen_coordinacion_mensual", False)
 SEGUIMIENTO_CI = cargar_json(RUTA_SEGUIMIENTO_CI, {})
+TICKETS_CI = cargar_json(RUTA_TICKETS_CI, [])
+if not isinstance(TICKETS_CI, list):
+    st.error("Formato no válido en tickets_seguimiento_ci_repsol.json")
+    st.stop()
 SOLICITUDES = cargar_json(RUTA_SOLICITUDES, [])
 AVISOS_COORD = cargar_json(RUTA_AVISOS_COORD, [])
 NOTIFICACIONES_LEIDAS = cargar_json(RUTA_NOTIFICACIONES_LEIDAS, {})
@@ -2830,6 +2835,128 @@ def html_seguimiento(ci,anio,mes=None):
     parts.append(f'<p class="muted">Generado {datetime.now():%d/%m/%Y %H:%M} · Gestión Técnicos CI · REPSOL</p></body></html>')
     return "".join(parts)
 
+
+# -------------------- Tickets / actuaciones vinculadas a Seguimiento CI --------------------
+TIPOS_TICKET_CI = ("Petición Interna TI", "Incidencia", "OT4IT")
+ACTIVIDADES_TICKET_CI = ("Parches", "AV", "BCK")
+REDES_TICKET_CI = ("RS", "RC", "RCorp")
+
+def _ticket_ci_filas(ci=None, anio=None, mes=None):
+    salida = []
+    for item in TICKETS_CI:
+        if not isinstance(item, dict):
+            continue
+        if ci and item.get("ci") != ci:
+            continue
+        try:
+            f = date.fromisoformat(str(item.get("fecha", "")))
+        except ValueError:
+            continue
+        if anio and f.year != anio:
+            continue
+        if mes and f.month != mes:
+            continue
+        salida.append(item)
+    return sorted(salida, key=lambda x: (x.get("fecha", ""), x.get("creado", "")), reverse=True)
+
+def _ticket_ci_tabla(filas):
+    return pd.DataFrame([{
+        "Fecha": x.get("fecha", ""), "CI": x.get("ci", ""),
+        "Tipo": x.get("tipo", ""), "Nº ticket": x.get("numero", ""),
+        "Actividad": {"AV":"Antivirus", "BCK":"Backups"}.get(x.get("actividad"), x.get("actividad", "")),
+        "Red": x.get("red", ""), "Máquinas": _seg_int(x.get("maquinas")),
+        "Técnico": x.get("tecnico", ""), "Observaciones": x.get("observaciones", "")
+    } for x in filas])
+
+def render_tickets_ci(ci, anio, mes, permitidos):
+    st.markdown("### Peticiones, incidencias y OT4IT")
+    st.caption("Cada fila es una actuación por actividad y red. Un mismo número puede tener varias actuaciones, fechas y técnicos. No modifica el calendario histórico.")
+    filas = _ticket_ci_filas(ci, anio, mes)
+    unicos = {(x.get("ci"), x.get("tipo"), str(x.get("numero", "")).strip().upper()) for x in filas}
+    cols = st.columns(4)
+    cols[0].metric("Tickets distintos", len(unicos))
+    cols[1].metric("Actuaciones", len(filas))
+    cols[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
+    cols[3].metric("Redes", len({x.get("red") for x in filas}))
+    if ci in permitidos:
+        with st.expander("➕ Registrar nueva actuación", expanded=False):
+            with st.form("ticket_ci_nuevo", clear_on_submit=True):
+                a,b,c = st.columns(3)
+                with a:
+                    fecha = st.date_input("Fecha de actuación", value=date(anio, mes, min(date.today().day, calendar.monthrange(anio, mes)[1])) if (anio, mes) != (date.today().year, date.today().month) else date.today(), key="tci_fecha")
+                    tipo = st.selectbox("Tipo", TIPOS_TICKET_CI)
+                with b:
+                    numero = st.text_input("Nº petición / incidencia / OT4IT", max_chars=80, placeholder="Ej. 123456")
+                    actividad = st.selectbox("Actividad", ACTIVIDADES_TICKET_CI, format_func=lambda v:{"AV":"Antivirus", "BCK":"Backups"}.get(v,v))
+                with c:
+                    red = st.selectbox("Red", REDES_TICKET_CI)
+                    maquinas = st.number_input("Máquinas intervenidas", min_value=0, step=1, value=1)
+                tecnico_asociado = tecnico_usuario_actual()
+                if EDITOR:
+                    opciones_tec = [t for t in sorted(TECNICOS) if TECNICOS[t].get("ci") == ci]
+                    if tecnico_asociado and tecnico_asociado not in opciones_tec:
+                        opciones_tec.append(tecnico_asociado)
+                    tecnico = st.selectbox("Técnico que realiza la actuación", opciones_tec or [st.session_state.usuario_actual])
+                else:
+                    tecnico = tecnico_asociado
+                    st.text_input("Técnico", value=tecnico, disabled=True)
+                obs = st.text_area("Observaciones", max_chars=2000, placeholder="Trabajo realizado, resultado y próximos pasos...")
+                enviar = st.form_submit_button("Guardar actuación", type="primary", use_container_width=True)
+            if enviar:
+                numero = numero.strip()
+                if not numero:
+                    st.error("Indica el número de ticket.")
+                elif not tecnico:
+                    st.error("No se ha identificado el técnico autorizado.")
+                elif len(obs.strip()) > 2000:
+                    st.error("Observaciones demasiado extensas.")
+                else:
+                    # Se mantiene el ticket por tipo + número + CI; cada fila es una actuación.
+                    nuevo = list(TICKETS_CI)
+                    nuevo.append({"id": __import__("uuid").uuid4().hex, "fecha":fecha.isoformat(),
+                                  "ci":ci,"tipo":tipo,"numero":numero,"actividad":actividad,
+                                  "red":red,"maquinas":int(maquinas),"tecnico":tecnico,
+                                  "observaciones":obs.strip(),"creado":datetime.now().isoformat(timespec="seconds"),
+                                  "registrado_por":st.session_state.usuario_actual})
+                    if guardar_portal({RUTA_TICKETS_CI:nuevo},f"Seguimiento CI · actuación {tipo} {numero} · {ci}",modulo="Seguimiento CI"):
+                        st.rerun()
+    else:
+        st.info("Este complejo es de consulta para tu usuario.")
+    if not filas:
+        st.info("No hay actuaciones registradas en este CI y periodo.")
+        return
+    df = _ticket_ci_tabla(filas)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.download_button("⬇️ Exportar actuaciones a Excel",data=_ticket_ci_excel(df),
+                       file_name=f"Tickets_CI_{ci}_{anio}_{mes:02d}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="tci_excel")
+    st.markdown("#### Desglose por actividad y red")
+    resumen = df.pivot_table(index="Actividad",columns="Red",values="Máquinas",aggfunc="sum",fill_value=0)
+    resumen = resumen.reindex(columns=list(REDES_TICKET_CI),fill_value=0)
+    resumen["Total"] = resumen.sum(axis=1)
+    st.dataframe(resumen, use_container_width=True)
+    st.markdown("#### Histórico de un ticket")
+    claves = sorted({f'{x.get("tipo", "")} | {x.get("numero", "")}' for x in filas})
+    elegido = st.selectbox("Selecciona ticket", claves, key="tci_hist")
+    t, n = elegido.split(" | ", 1)
+    # Mostrar todo el histórico del ticket dentro del CI, no solo el mes elegido.
+    historial = [x for x in _ticket_ci_filas(ci) if x.get("tipo") == t and str(x.get("numero", "")) == n]
+    st.dataframe(_ticket_ci_tabla(historial), use_container_width=True, hide_index=True)
+    st.caption(f"{len(historial)} actuaciones registradas · {sum(_seg_int(x.get('maquinas')) for x in historial)} intervenciones por actividad/red. No representa máquinas únicas.")
+
+def _ticket_ci_excel(df):
+    salida = io.BytesIO()
+    with pd.ExcelWriter(salida, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Actuaciones", index=False)
+        ws = writer.sheets["Actuaciones"]
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        for columna in ws.columns:
+            letra = columna[0].column_letter
+            maximo = max(len(str(c.value or "")) for c in columna)
+            ws.column_dimensions[letra].width = min(max(13, maximo+2), 58)
+    return salida.getvalue()
+
 def render_seguimiento_ci():
     permitidos=centros_seguimiento_permitidos(); opciones=CENTROS if EDITOR else permitidos
     if not opciones:
@@ -2849,7 +2976,9 @@ def render_seguimiento_ci():
     redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
     for col,red in zip(cols,("RS","RC","RCorp")):
         with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
-    tab_cal,tab_reg,tab_ana,tab_inf,tab_global=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","📈 Análisis","📄 Informe CI","🌐 Informe global"])
+    tab_cal,tab_reg,tab_tickets,tab_ana,tab_inf,tab_global=st.tabs(["📅 Calendario operativo","➕ Registrar actividad","🎫 Peticiones e incidencias","📈 Análisis","📄 Informe CI","🌐 Informe global"])
+    with tab_tickets:
+        render_tickets_ci(ci, anio, mes, permitidos)
     with tab_cal:
         heads=st.columns(7)
         for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div class="seg-week">{w}</div>',unsafe_allow_html=True)
@@ -3423,7 +3552,7 @@ def render_config():
         return
 
     if opcion=='Copias de seguridad':
-        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_FESTIVOS_META:FESTIVOS_META,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
+        datos = {RUTA_BDD:serializar_registros(REGISTROS),RUTA_HE:REGISTROS_HE,RUTA_PRL:REGISTROS_PRL,RUTA_TECNICOS:TECNICOS,RUTA_FESTIVOS:FESTIVOS_POR_ANIO,RUTA_FESTIVOS_META:FESTIVOS_META,RUTA_CONFIG_ANUAL:CONFIG_ANUAL_POR_ANIO,RUTA_HORARIOS_CI:HORARIOS_CI_ANUAL,RUTA_HLD_ANUAL:HLD_ANUAL_POR_ANIO,RUTA_GUARDIAS:REGISTROS_GUARDIAS,RUTA_ACTIVACIONES:ACTIVACIONES_GUARDIA,RUTA_PERFILES:PERFILES_TECNICOS,RUTA_VEHICULOS:VEHICULOS,RUTA_CONFIG_NOTIFICACIONES:CONFIG_NOTIFICACIONES,RUTA_SEGUIMIENTO_CI:SEGUIMIENTO_CI,RUTA_TICKETS_CI:TICKETS_CI,RUTA_SOLICITUDES:SOLICITUDES,RUTA_AVISOS_COORD:AVISOS_COORD,RUTA_NOTIFICACIONES_LEIDAS:NOTIFICACIONES_LEIDAS,'auditoria_repsol.json':AUDITORIA}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
             for n,v in datos.items(): z.writestr(n,json_text(v))
