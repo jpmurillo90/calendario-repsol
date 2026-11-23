@@ -1,4 +1,4 @@
-"""Gestión de Técnicos CI — versión 17.5 · interfaz empresarial.
+"""Gestión de Técnicos CI — versión 18.1 · Seguimiento CI: actuaciones agrupadas.
 Ejecutar: streamlit run app.py
 Dependencias: streamlit>=1.40,<2, pandas, requests, openpyxl.
 Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
@@ -2864,6 +2864,41 @@ TIPOS_TICKET_CI = ("Petición Interna TI", "Incidencia", "OT4IT")
 ACTIVIDADES_TICKET_CI = ("Parches", "AV", "BCK")
 REDES_TICKET_CI = ("RS", "RC", "RCorp")
 
+def _ci_actuacion_id(x):
+    """Agrupa actividades de un mismo registro sin mezclar registros históricos."""
+    return str(x.get("actuacion_id") or x.get("id") or f"legado:{id(x)}")
+
+
+def _ci_resumen_actuaciones(filas):
+    grupos = {}
+    for x in filas:
+        grupos.setdefault(_ci_actuacion_id(x), []).append(x)
+    maquinas = 0
+    sin_dato = 0
+    for grupo in grupos.values():
+        valores = [x.get("maquinas_distintas") for x in grupo if x.get("maquinas_distintas") is not None]
+        if valores:
+            maquinas += max(0, _seg_int(valores[0]))
+        else:
+            sin_dato += 1
+    operaciones = sum(_seg_int(x.get("maquinas")) for x in filas)
+    return {"actuaciones": len(grupos), "maquinas": maquinas, "sin_dato": sin_dato,
+            "operaciones": operaciones, "actividades": len(filas)}
+
+
+def _ci_kpis(filas):
+    resumen = _ci_resumen_actuaciones(filas)
+    unicos = {_ci_ticket_clave(x) for x in filas}
+    cols = st.columns(5)
+    cols[0].metric("Tickets únicos", len(unicos))
+    cols[1].metric("Actuaciones", resumen["actuaciones"])
+    cols[2].metric("Máquinas distintas¹", resumen["maquinas"] if not resumen["sin_dato"] else f'{resumen["maquinas"]} + s/d')
+    cols[3].metric("Operaciones por actividad", resumen["operaciones"])
+    cols[4].metric("Técnicos", len({x.get("tecnico") for x in filas if x.get("tecnico")}))
+    if resumen["sin_dato"]:
+        st.caption(f'¹ {resumen["sin_dato"]} actuaciones antiguas no tienen total de máquinas distintas; no se inventa ese dato. Las máquinas se cuentan por actuación, no entre fechas.')
+
+
 def _ticket_ci_filas(ci=None, anio=None, mes=None):
     salida = []
     for item in TICKETS_CI:
@@ -2888,6 +2923,8 @@ def _ticket_ci_tabla(filas):
         "Tipo": x.get("tipo", ""), "Nº ticket": x.get("numero", ""),
         "Actividad": {"AV":"Antivirus", "BCK":"Backups"}.get(x.get("actividad"), x.get("actividad", "")),
         "Red": x.get("red", ""), "Máquinas": _seg_int(x.get("maquinas")),
+        "ID actuación": _ci_actuacion_id(x),
+        "Máquinas distintas (actuación)": x.get("maquinas_distintas", ""),
         "Técnico": x.get("tecnico", ""), "Observaciones": x.get("observaciones", "")
     } for x in filas])
 
@@ -2895,11 +2932,7 @@ def _render_resumen_tickets_ci(ci, anio, mes=None):
     """KPIs de tickets independientes de los contadores del calendario histórico."""
     filas = _ticket_ci_filas(ci, anio, mes)
     unicos = {(x.get("ci"), x.get("tipo"), str(x.get("numero", "")).strip().upper()) for x in filas}
-    columnas = st.columns(4)
-    columnas[0].metric("Tickets distintos", len(unicos))
-    columnas[1].metric("Actuaciones", len(filas))
-    columnas[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
-    columnas[3].metric("CI con tickets" if ci is None else "Redes utilizadas",len({x.get("ci") if ci is None else x.get("red") for x in filas}))
+    _ci_kpis(filas)
     if not filas:
         st.info("No hay tickets registrados para este periodo.")
         return
@@ -2917,6 +2950,78 @@ def _ticket_ci_puede_modificar(item):
             and bool(str(item.get("registrado_por", "")).strip()))
 
 
+def _ci_editar_grupo(original, ci):
+    """Editar una actuación completa y todas sus actividades/redes en una operación."""
+    grupo_id = original["actuacion_id"]
+    grupo = [x for x in TICKETS_CI if x.get("actuacion_id") == grupo_id]
+    if not grupo or not all(_ticket_ci_puede_modificar(x) for x in grupo):
+        st.error("No tienes permiso para modificar esta actuación.")
+        return
+    base = grupo[0]
+    st.info("Esta actuación contiene varias actividades. Editar o eliminar afecta a todo el registro, no a una sola fila.")
+    with st.form("ci_editar_grupo"):
+        a,b,c = st.columns(3)
+        with a:
+            fecha = st.date_input("Fecha", value=date.fromisoformat(base["fecha"]))
+            tipo = st.selectbox("Tipo", TIPOS_TICKET_CI, index=TIPOS_TICKET_CI.index(base["tipo"]) if base.get("tipo") in TIPOS_TICKET_CI else 0)
+        with b:
+            numero = st.text_input("Número de ticket", value=str(base.get("numero", "")), max_chars=80)
+        with c:
+            tecnico = base.get("tecnico", "")
+            if EDITOR:
+                opciones_tec = [t for t in sorted(TECNICOS) if TECNICOS[t].get("ci") == ci]
+                if tecnico not in opciones_tec: opciones_tec.append(tecnico)
+                tecnico = st.selectbox("Técnico", opciones_tec, index=opciones_tec.index(tecnico))
+            else:
+                st.text_input("Técnico", value=tecnico, disabled=True)
+        st.markdown("**Máquinas por actividad y red**")
+        anteriores = {(x.get("actividad"), x.get("red")): _seg_int(x.get("maquinas")) for x in grupo}
+        valores = {}
+        for actividad, etiqueta in (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backups")):
+            cols = st.columns(3)
+            for col, red in zip(cols, REDES_TICKET_CI):
+                with col:
+                    valores[(actividad, red)] = st.number_input(f"{etiqueta} · {red}", min_value=0, step=1,
+                        value=anteriores.get((actividad, red), 0), key=f"ci_ed_{grupo_id}_{actividad}_{red}")
+        distintas = st.number_input("Máquinas distintas en la actuación", min_value=1, step=1,
+            value=max(1, _seg_int(base.get("maquinas_distintas") or max(anteriores.values(), default=1))))
+        obs = st.text_area("Observaciones", value=str(base.get("observaciones", "")), max_chars=2000)
+        guardar = st.form_submit_button("💾 Guardar actuación completa", type="primary")
+    if guardar:
+        elegidas = [(g,r,int(n)) for (g,r),n in valores.items() if n > 0]
+        if not numero.strip() or not elegidas:
+            st.error("Indica un ticket y al menos una actividad con máquinas.")
+        elif not max(n for _,_,n in elegidas) <= int(distintas) <= sum(n for _,_,n in elegidas):
+            st.error("El total de máquinas distintas debe estar entre el mayor contador y la suma de los contadores.")
+        else:
+            otros = [x for x in TICKETS_CI if x.get("actuacion_id") != grupo_id]
+            if any(x.get("ci") == ci and x.get("tipo") == tipo and str(x.get("numero", "")).strip().upper() == numero.strip().upper()
+                   and x.get("fecha") == fecha.isoformat() and (x.get("actividad"), x.get("red")) in {(g,r) for g,r,_ in elegidas}
+                   for x in otros):
+                st.error("Ya existe otra actuación con el mismo ticket, fecha, actividad y red.")
+            else:
+                nuevo = copy.deepcopy(otros)
+                for g,r,n in elegidas:
+                    x = copy.deepcopy(base)
+                    x.update({"id": __import__("uuid").uuid4().hex, "actuacion_id": grupo_id,
+                              "fecha": fecha.isoformat(), "tipo": tipo, "numero": numero.strip(),
+                              "actividad": g, "red": r, "maquinas": n, "maquinas_distintas": int(distintas),
+                              "tecnico": tecnico, "observaciones": obs.strip(),
+                              "modificado": datetime.now().isoformat(timespec="seconds"),
+                              "modificado_por": st.session_state.get("usuario_actual", "")})
+                    nuevo.append(x)
+                if guardar_portal({RUTA_TICKETS_CI: nuevo}, f"Editar actuación completa · {ci} · {tipo} {numero.strip()}", modulo="Seguimiento CI"):
+                    st.success("Actuación actualizada.")
+                    st.rerun()
+    st.divider()
+    confirmar = st.checkbox("Confirmo que quiero eliminar toda esta actuación (todas sus actividades)", key="ci_borrar_grupo_confirmar")
+    if st.button("🗑️ Eliminar actuación completa", disabled=not confirmar, key="ci_borrar_grupo"):
+        nuevo = [copy.deepcopy(x) for x in TICKETS_CI if x.get("actuacion_id") != grupo_id]
+        if guardar_portal({RUTA_TICKETS_CI: nuevo}, f"Eliminar actuación completa · {ci} · {base.get('numero', '')}", modulo="Seguimiento CI"):
+            st.success("Actuación eliminada.")
+            st.rerun()
+
+
 def _ticket_ci_gestionar_registros(ci, anio, mes):
     st.markdown("#### ✏️ Editar o eliminar una actuación")
     st.caption("Cada línea corresponde a una actividad y red. Editar o eliminar recalcula automáticamente el calendario, los indicadores y los informes. Los registros históricos anteriores no se alteran.")
@@ -2931,6 +3036,9 @@ def _ticket_ci_gestionar_registros(ci, anio, mes):
                                f'{opciones[k].get("red", "")} · {opciones[k].get("maquinas", 0)} máquinas '
                                f'· {opciones[k].get("tecnico", "")}'), key="tci_editar_seleccion")
     original = opciones[elegido]
+    if original.get("actuacion_id"):
+        _ci_editar_grupo(original, ci)
+        return
     # Los registros creados por versiones anteriores pueden no tener id.
     posicion = next((idx for idx, x in enumerate(TICKETS_CI) if x is original), None)
     if posicion is None:
@@ -3007,14 +3115,10 @@ def _ticket_ci_gestionar_registros(ci, anio, mes):
 
 def render_tickets_ci(ci, anio, mes, permitidos):
     st.markdown("### Peticiones, incidencias y OT4IT")
-    st.caption("Registro único: cada actividad y red genera una actuación asociada al mismo ticket. El calendario y los informes se actualizan automáticamente, conservando el histórico anterior.")
+    st.caption("Un registro es una actuación, aunque incluya varias actividades y redes. Se conservan los contadores por actividad y el histórico anterior.")
     filas = _ticket_ci_filas(ci, anio, mes)
     unicos = {(x.get("ci"), x.get("tipo"), str(x.get("numero", "")).strip().upper()) for x in filas}
-    cols = st.columns(4)
-    cols[0].metric("Tickets distintos", len(unicos))
-    cols[1].metric("Actuaciones", len(filas))
-    cols[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
-    cols[3].metric("Redes", len({x.get("red") for x in filas}))
+    _ci_kpis(filas)
     if ci in permitidos:
         with st.expander("➕ Registrar actuación", expanded=True):
             with st.form("ticket_ci_unificado", clear_on_submit=True):
@@ -3044,6 +3148,8 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                             valores[(g, red)] = st.number_input(
                                 f"{label} · {red}", min_value=0, step=1, value=0,
                                 key=f"tci_unico_{g}_{red}")
+                total_distintas = st.number_input("💻 Total de máquinas distintas en esta actuación", min_value=1, step=1, value=1,
+                    help="Si instalas parches, AV y backups en el mismo servidor, indica 1. Si parcheas 20 servidores distintos, indica 20.")
                 obs = st.text_area("Observaciones de la actuación", max_chars=2000)
                 st.caption("Si el ticket ya existe en otro día o actividad, se añadirá al mismo histórico. "
                            "Se bloquea una segunda actuación idéntica en fecha, actividad y red.")
@@ -3057,6 +3163,8 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                     st.error("No se ha identificado el técnico autorizado.")
                 elif not elegidas:
                     st.error("Indica al menos una máquina en una actividad y red.")
+                elif int(total_distintas) < max(n for _, _, n in elegidas) or int(total_distintas) > sum(n for _, _, n in elegidas):
+                    st.error("El total de máquinas distintas debe estar entre el mayor contador de una actividad/red y la suma de todos los contadores.")
                 else:
                     existentes = [x for x in _ticket_ci_filas(ci) if
                         str(x.get("numero", "")).strip().upper() == numero.upper() and x.get("tipo") == tipo]
@@ -3068,8 +3176,10 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                                    "Revisa Gestión de tickets para evitar duplicados; no se ha guardado.")
                         st.stop()
                     nuevo = list(TICKETS_CI)
+                    id_actuacion = __import__("uuid").uuid4().hex
                     for actividad, red, maquinas in elegidas:
                         nuevo.append({
+                            "actuacion_id": id_actuacion, "maquinas_distintas": int(total_distintas),
                             "id": __import__("uuid").uuid4().hex,
                             "fecha": fecha.isoformat(), "ci": ci, "tipo": tipo,
                             "numero": numero, "actividad": actividad, "red": red,
@@ -3104,7 +3214,7 @@ def render_tickets_ci(ci, anio, mes, permitidos):
     # Mostrar todo el histórico del ticket dentro del CI, no solo el mes elegido.
     historial = [x for x in _ticket_ci_filas(ci) if x.get("tipo") == t and str(x.get("numero", "")) == n]
     st.dataframe(_ticket_ci_tabla(historial), use_container_width=True, hide_index=True)
-    st.caption(f"{len(historial)} actuaciones registradas · {sum(_seg_int(x.get('maquinas')) for x in historial)} intervenciones por actividad/red. No representa máquinas únicas.")
+    st.caption(f"{_ci_resumen_actuaciones(historial)['actuaciones']} actuaciones registradas · {_ci_resumen_actuaciones(historial)['operaciones']} operaciones por actividad/red.")
 
 def _ticket_ci_excel(df):
     salida = io.BytesIO()
@@ -3127,11 +3237,7 @@ def _ci_panel_operativo(ci, anio, mes):
     st.markdown("### 📊 Panel de control operativo")
     filas = _ticket_ci_filas(ci, anio, mes)
     grupos = {_ci_ticket_clave(x) for x in filas}
-    columnas = st.columns(4)
-    columnas[0].metric("Tickets diferentes", len(grupos))
-    columnas[1].metric("Actuaciones", len(filas))
-    columnas[2].metric("Intervenciones", sum(_seg_int(x.get("maquinas")) for x in filas))
-    columnas[3].metric("Técnicos participantes", len({x.get("tecnico") for x in filas if x.get("tecnico")}))
+    _ci_kpis(filas)
     if not filas:
         st.info("Todavía no hay actuaciones registradas en este periodo.")
         return
@@ -3148,7 +3254,7 @@ def _ci_panel_operativo(ci, anio, mes):
     st.dataframe(df.groupby(["Actividad", "Red"], as_index=False).agg(
         Actuaciones=("Máquinas", "size"), Intervenciones=("Máquinas", "sum")),
         use_container_width=True, hide_index=True)
-    st.caption("Los indicadores cuentan intervenciones, no máquinas físicas únicas. El histórico anterior se conserva en el calendario.")
+    st.caption("Las operaciones por actividad pueden superar el número de máquinas distintas. El histórico anterior se conserva en el calendario.")
 
 
 def _ci_gestion_tickets(ci, anio, mes):
@@ -3163,7 +3269,7 @@ def _ci_gestion_tickets(ci, anio, mes):
     if consulta:
         filas = [x for x in filas if consulta in " ".join(str(x.get(k, "")) for k in
                  ("numero", "tipo", "tecnico", "observaciones", "actividad", "red", "ci")).casefold()]
-    st.caption(f"{len(filas)} actuaciones encontradas · {len({_ci_ticket_clave(x) for x in filas})} tickets diferentes")
+    st.caption(f"{_ci_resumen_actuaciones(filas)['actuaciones']} actuaciones encontradas · {len({_ci_ticket_clave(x) for x in filas})} tickets diferentes")
     if filas:
         st.dataframe(_ticket_ci_tabla(filas), use_container_width=True, hide_index=True)
         st.download_button("⬇️ Exportar resultados a Excel", _ticket_ci_excel(_ticket_ci_tabla(filas)),
@@ -3201,7 +3307,7 @@ def _ci_informe_mensual_excel(ci, anio, mes):
     tickets = _ticket_ci_tabla(filas)
     resumen_tickets = pd.DataFrame([{"CI": ci, "Periodo": f"{mes:02d}/{anio}",
         "Tickets distintos": len({_ci_ticket_clave(x) for x in filas}),
-        "Actuaciones": len(filas), "Intervenciones": sum(_seg_int(x.get("maquinas")) for x in filas)}])
+        "Actuaciones": _ci_resumen_actuaciones(filas)["actuaciones"], "Máquinas distintas (conocidas)": _ci_resumen_actuaciones(filas)["maquinas"], "Actuaciones sin dato de máquinas": _ci_resumen_actuaciones(filas)["sin_dato"], "Operaciones por actividad": _ci_resumen_actuaciones(filas)["operaciones"]}])
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         resumen.to_excel(writer, sheet_name="Actividad", index=False)
