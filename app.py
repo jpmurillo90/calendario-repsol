@@ -2983,15 +2983,19 @@ def _ci_editar_grupo(original, ci):
                 with col:
                     valores[(actividad, red)] = st.number_input(f"{etiqueta} · {red}", min_value=0, step=1,
                         value=anteriores.get((actividad, red), 0), key=f"ci_ed_{grupo_id}_{actividad}_{red}")
-        distintas = st.number_input("Máquinas distintas en la actuación", min_value=1, step=1,
-            value=max(1, _seg_int(base.get("maquinas_distintas") or max(anteriores.values(), default=1))))
+        if base.get("maquinas_distintas") is None:
+            st.caption("Máquinas distintas: sin determinar (registro de varias máquinas). Se conserva así para evitar un total incorrecto.")
+            distintas = None
+        else:
+            distintas = st.number_input("Máquinas distintas en la actuación", min_value=1, step=1,
+                value=max(1, _seg_int(base.get("maquinas_distintas") or max(anteriores.values(), default=1))))
         obs = st.text_area("Observaciones", value=str(base.get("observaciones", "")), max_chars=2000)
         guardar = st.form_submit_button("💾 Guardar actuación completa", type="primary")
     if guardar:
         elegidas = [(g,r,int(n)) for (g,r),n in valores.items() if n > 0]
         if not numero.strip() or not elegidas:
             st.error("Indica un ticket y al menos una actividad con máquinas.")
-        elif not max(n for _,_,n in elegidas) <= int(distintas) <= sum(n for _,_,n in elegidas):
+        elif distintas is not None and not max(n for _,_,n in elegidas) <= int(distintas) <= sum(n for _,_,n in elegidas):
             st.error("El total de máquinas distintas debe estar entre el mayor contador y la suma de los contadores.")
         else:
             otros = [x for x in TICKETS_CI if x.get("actuacion_id") != grupo_id]
@@ -3005,7 +3009,7 @@ def _ci_editar_grupo(original, ci):
                     x = copy.deepcopy(base)
                     x.update({"id": __import__("uuid").uuid4().hex, "actuacion_id": grupo_id,
                               "fecha": fecha.isoformat(), "tipo": tipo, "numero": numero.strip(),
-                              "actividad": g, "red": r, "maquinas": n, "maquinas_distintas": int(distintas),
+                              "actividad": g, "red": r, "maquinas": n, "maquinas_distintas": int(distintas) if distintas is not None else None,
                               "tecnico": tecnico, "observaciones": obs.strip(),
                               "modificado": datetime.now().isoformat(timespec="seconds"),
                               "modificado_por": st.session_state.get("usuario_actual", "")})
@@ -3121,19 +3125,12 @@ def render_tickets_ci(ci, anio, mes, permitidos):
     _ci_kpis(filas)
     if ci in permitidos:
         with st.expander("➕ Registrar actuación", expanded=True):
-            # Fuera del formulario para que Streamlit actualice los campos al cambiar de modalidad.
             modalidad = st.radio(
-                "¿Cómo se distribuyen las máquinas de esta actuación?",
-                ["Mismas máquinas para todas las actividades", "Máquinas diferentes o parcialmente coincidentes"],
+                "Tipo de registro",
+                ["Una máquina", "Varias máquinas"],
                 key="tci_modalidad", horizontal=True,
+                help="Una máquina permite marcar varias actividades sobre el mismo equipo. Varias máquinas muestra el desglose por actividad y red.",
             )
-            coincidencia = None
-            if modalidad == "Máquinas diferentes o parcialmente coincidentes":
-                coincidencia = st.radio(
-                    "¿Se repiten máquinas entre actividades?",
-                    ["No, son todas diferentes", "Sí, algunas máquinas coinciden"],
-                    key="tci_coincidencia", horizontal=True,
-                )
             with st.form("ticket_ci_unificado", clear_on_submit=True):
                 a,b,c = st.columns(3)
                 with a:
@@ -3152,21 +3149,26 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                         tecnico = tecnico_asociado
                         st.text_input("Técnico", value=tecnico or "", disabled=True)
                 valores = {}
-                if modalidad == "Mismas máquinas para todas las actividades":
-                    st.caption("Indica cuántas máquinas son y qué actividades se realizan sobre todas ellas.")
+                nombre_equipo = ""
+                if modalidad == "Una máquina":
+                    st.markdown("**Equipo sobre el que se interviene**")
                     cc = st.columns(2)
                     with cc[0]:
-                        maquinas_comunes = st.number_input("Máquinas distintas", min_value=1, value=1, step=1, key="tci_maquinas_comunes")
+                        nombre_equipo = st.text_input("Nombre del equipo (opcional)", max_chars=120,
+                                                      placeholder="Ej.: SSRSCPU02DCS06")
                     with cc[1]:
-                        red_comun = st.selectbox("Red de las máquinas", REDES_TICKET_CI, key="tci_red_comun")
-                    actividades_comunes = st.multiselect("Actividades realizadas", ["Parches", "Antivirus", "Backups"],
-                                                        default=[], key="tci_actividades_comunes")
+                        red_comun = st.selectbox("Red del equipo", REDES_TICKET_CI, key="tci_red_un_equipo")
+                    actividades = st.multiselect("Actividades realizadas en esta máquina",
+                                                 ["Parches", "Antivirus", "Backups"],
+                                                 key="tci_actividades_un_equipo")
                     codigos = {"Parches": "Parches", "Antivirus": "AV", "Backups": "BCK"}
-                    for actividad in actividades_comunes:
-                        valores[(codigos[actividad], red_comun)] = int(maquinas_comunes)
-                    total_distintas = int(maquinas_comunes)
+                    for actividad in actividades:
+                        valores[(codigos[actividad], red_comun)] = 1
+                    total_distintas = 1
+                    st.caption("Se contabiliza una sola actuación y una sola máquina, aunque marques varias actividades.")
                 else:
-                    st.caption("Introduce las máquinas intervenidas en cada actividad y red.")
+                    st.markdown("**Número de máquinas por actividad y red**")
+                    st.caption("Introduce las cantidades por separado. No es necesario indicar nombres de equipos.")
                     for g, label in (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backups")):
                         st.markdown(f"**{label}**")
                         cc = st.columns(3)
@@ -3175,14 +3177,8 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                                 valores[(g, red)] = st.number_input(
                                     f"{label} · {red}", min_value=0, step=1, value=0,
                                     key=f"tci_unico_{g}_{red}")
-                    if coincidencia == "Sí, algunas máquinas coinciden":
-                        total_distintas = st.number_input(
-                            "💻 Total de máquinas distintas (sin repetir)", min_value=1, step=1, value=1,
-                            help="Cuenta cada equipo una sola vez aunque tenga parches, antivirus y backups.",
-                            key="tci_distintas_solapadas")
-                    else:
-                        total_distintas = sum(int(n) for n in valores.values())
-                        st.caption("El total de máquinas distintas se calculará automáticamente sumando las cantidades introducidas.")
+                    total_distintas = None
+                    st.caption("Las cantidades reflejan máquinas por actividad/red. Si un equipo aparece en varias actividades, no se suma como máquina única sin identificarlo.")
                 obs = st.text_area("Observaciones de la actuación", max_chars=2000)
                 st.caption("Si el ticket ya existe en otro día o actividad, se añadirá al mismo histórico. "
                            "Se bloquea una segunda actuación idéntica en fecha, actividad y red.")
@@ -3196,7 +3192,7 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                     st.error("No se ha identificado el técnico autorizado.")
                 elif not elegidas:
                     st.error("Indica al menos una máquina en una actividad y red.")
-                elif int(total_distintas) < max(n for _, _, n in elegidas) or int(total_distintas) > sum(n for _, _, n in elegidas):
+                elif total_distintas is not None and (int(total_distintas) < max(n for _, _, n in elegidas) or int(total_distintas) > sum(n for _, _, n in elegidas)):
                     st.error("El total de máquinas distintas debe estar entre el mayor contador de una actividad/red y la suma de todos los contadores.")
                 else:
                     existentes = [x for x in _ticket_ci_filas(ci) if
@@ -3212,7 +3208,8 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                     id_actuacion = __import__("uuid").uuid4().hex
                     for actividad, red, maquinas in elegidas:
                         nuevo.append({
-                            "actuacion_id": id_actuacion, "maquinas_distintas": int(total_distintas),
+                            "actuacion_id": id_actuacion, "maquinas_distintas": total_distintas,
+                            "modalidad_registro": modalidad, "nombre_equipo": nombre_equipo.strip(),
                             "id": __import__("uuid").uuid4().hex,
                             "fecha": fecha.isoformat(), "ci": ci, "tipo": tipo,
                             "numero": numero, "actividad": actividad, "red": red,
@@ -4183,7 +4180,5 @@ h1,h2,h3{color:#0f172a!important;letter-spacing:-.035em!important}
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
-
 
 
