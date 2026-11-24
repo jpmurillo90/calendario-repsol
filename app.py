@@ -3553,7 +3553,17 @@ def html_seguimiento_global(anio, mes=None):
     for ci,dias,d,r,total in filas:
         out.append(f'<div class="section"><h2>{escape(ci)}</h2><p class="muted">{periodo} · {dias} días con actividad · Total {total}</p><table><tr><th>Grupo</th><th>RS</th><th>RC</th><th>RCorp</th><th>Actividad</th></tr>')
         for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: out.append(f'<tr><td>{label}</td><td>{r[g]["RS"]}</td><td>{r[g]["RC"]}</td><td>{r[g]["RCorp"]}</td><td><b>{d[g]}</b></td></tr>')
-        out.append('</table><div class="donuts">')
+        # Desglose de tickets y actuaciones del CI, junto a su actividad por redes.
+        detalle_ci = detalle[detalle["CI"] == ci]
+        out.append('</table><h3>Tickets y actuaciones por tipo</h3>')
+        out.append('<table><tr><th>Tipo de ticket</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+        for tipo in TIPOS_TICKET_CI:
+            coincidencias = detalle_ci[detalle_ci["Tipo de ticket"] == tipo]
+            nt = int(coincidencias["Tickets únicos"].sum())
+            na = int(coincidencias["Actuaciones"].sum())
+            out.append(f'<tr><td>{escape(tipo)}</td><td>{nt}</td><td>{na}</td></tr>')
+        out.append(f'<tr><th>TOTAL</th><th>{int(detalle_ci["Tickets únicos"].sum())}</th><th>{int(detalle_ci["Actuaciones"].sum())}</th></tr></table>')
+        out.append('<div class="donuts">')
         for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
             tv=sum(r[g].values()); prs=[(r[g][x]*100/tv if tv else 0) for x in ("RS","RC","RCorp")]
             out.append(f'<div class="dc"><b>{label}</b><div class="bar"><span class="rs" style="width:{prs[0]:.2f}%"></span><span class="rc" style="width:{prs[1]:.2f}%"></span><span class="corp" style="width:{prs[2]:.2f}%"></span></div><div class="muted">RS {prs[0]:.1f}% · RC {prs[1]:.1f}% · RCorp {prs[2]:.1f}%</div></div>')
