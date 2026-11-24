@@ -1,4 +1,4 @@
-"""Gestión de Técnicos CI — versión 18.1 · Seguimiento CI: actuaciones agrupadas.
+"""Gestión de Técnicos CI — versión 18.4 · Seguimiento CI: interfaz corporativa organizada.
 Ejecutar: streamlit run app.py
 Dependencias: streamlit>=1.40,<2, pandas, requests, openpyxl.
 Mantener los JSON y AF_INDRA_SIM_POS.png junto a app.py.
@@ -3377,37 +3377,38 @@ def render_seguimiento_ci():
     with c2: mes=st.selectbox("Mes",range(1,13),index=date.today().month-1,format_func=lambda x:MESES[x],key="seg_mes")
     anos=seg_anios_disponibles()
     with c3: anio=st.selectbox("Ejercicio",anos,index=anos.index(dd_anio) if dd_anio in anos else 0,key="seg_anio")
-    diarios,dias=seg_totales_diarios(ci,anio,mes); total=sum(diarios.values())
-    st.markdown(f'<div class="section-eyebrow">RESUMEN · {MESES[mes].upper()} {anio} · {escape(ci).upper()}</div>',unsafe_allow_html=True)
-    ks=st.columns(4)
-    clases=["total","p","av","b"]
-    for col,clase,label,val,sub in zip(ks,clases,["Intervenciones","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
-        with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
-    redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
-    for col,red in zip(cols,("RS","RC","RCorp")):
-        with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
-    tab_panel,tab_tickets,tab_gestion,tab_cal,tab_inf,tab_global=st.tabs([
-        "📊 Panel de control", "➕ Registrar actuación", "📋 Gestión de tickets",
-        "📅 Calendario operativo", "📄 Informe CI", "🌐 Informe global"])
+    st.caption("Selecciona un área de trabajo. El registro y la información histórica se conservan.")
+    tab_panel,tab_tickets,tab_gestion,tab_informes=st.tabs([
+        "📊 Resumen operativo", "➕ Registrar actuación", "📋 Gestión de tickets", "📄 Informes"])
     with tab_panel:
+        diarios,dias=seg_totales_diarios(ci,anio,mes); total=sum(diarios.values())
+        st.markdown(f'<div class="section-eyebrow">RESUMEN · {MESES[mes].upper()} {anio} · {escape(ci).upper()}</div>',unsafe_allow_html=True)
+        ks=st.columns(4)
+        clases=["total","p","av","b"]
+        for col,clase,label,val,sub in zip(ks,clases,["Intervenciones","Parches","Antivirus","Backup"],[total,diarios["Parches"],diarios["AV"],diarios["BCK"]],[f"{dias} días con actividad","Sistemas parcheados","Actuaciones AV","Copias / BCK"]):
+            with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{sub}</div></div>',unsafe_allow_html=True)
+        redes=seg_totales_redes(ci,anio,mes); cols=st.columns(3)
+        for col,red in zip(cols,("RS","RC","RCorp")):
+            with col: st.markdown(f'<div class="seg-card"><div class="seg-title">{red}</div><div class="seg-row"><span>Parches</span><b>{redes["Parches"][red]}</b></div><div class="seg-row"><span>Antivirus</span><b>{redes["AV"][red]}</b></div><div class="seg-row"><span>Backup</span><b>{redes["BCK"][red]}</b></div><div class="seg-row total"><span>Total</span><b>{seg_total_red(redes,red)}</b></div></div>',unsafe_allow_html=True)
         _ci_panel_operativo(ci, anio, mes)
     with tab_tickets:
         render_tickets_ci(ci, anio, mes, permitidos)
     with tab_gestion:
         _ci_gestion_tickets(ci, anio, mes)
-    with tab_cal:
-        heads=st.columns(7)
-        for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div class="seg-week">{w}</div>',unsafe_allow_html=True)
-        first=date(anio,mes,1); cells=[None]*first.weekday()+[date(anio,mes,d) for d in range(1,calendar.monthrange(anio,mes)[1]+1)]
-        while len(cells)%7: cells.append(None)
-        for i in range(0,len(cells),7):
-            cols=st.columns(7,gap="small")
-            for col,f in zip(cols,cells[i:i+7]):
-                with col:
-                    if not f: st.markdown('<div style="height:100px"></div>',unsafe_allow_html=True); continue
-                    rr=seg_registro(ci,f); p=rr["totales"]["Parches"]; av=rr["totales"]["AV"]; b=rr["totales"]["BCK"]; n=p+av+b; badge='<span class="seg-origin">Excel</span>' if rr["historico_excel"] and n else ''
-                    st.markdown(f'<div class="seg-day {"active" if n else ""}"><div class="seg-num">{f.day}</div>{badge}<div class="seg-values">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div class="seg-total">Total {n}</div></div>',unsafe_allow_html=True)
-        st.caption("Excel = dato histórico importado. El reparto RS/RC/RCorp de ese histórico está disponible a nivel mensual.")
+    with tab_panel:
+        with st.expander("📅 Calendario operativo · consultar actividad por día", expanded=False):
+            heads=st.columns(7)
+            for c,w in zip(heads,["L","M","X","J","V","S","D"]): c.markdown(f'<div class="seg-week">{w}</div>',unsafe_allow_html=True)
+            first=date(anio,mes,1); cells=[None]*first.weekday()+[date(anio,mes,d) for d in range(1,calendar.monthrange(anio,mes)[1]+1)]
+            while len(cells)%7: cells.append(None)
+            for i in range(0,len(cells),7):
+                cols=st.columns(7,gap="small")
+                for col,f in zip(cols,cells[i:i+7]):
+                    with col:
+                        if not f: st.markdown('<div style="height:100px"></div>',unsafe_allow_html=True); continue
+                        rr=seg_registro(ci,f); p=rr["totales"]["Parches"]; av=rr["totales"]["AV"]; b=rr["totales"]["BCK"]; n=p+av+b; badge='<span class="seg-origin">Excel</span>' if rr["historico_excel"] and n else ''
+                        st.markdown(f'<div class="seg-day {"active" if n else ""}"><div class="seg-num">{f.day}</div>{badge}<div class="seg-values">P <b>{p}</b> · AV <b>{av}</b> · B <b>{b}</b></div><div class="seg-total">Total {n}</div></div>',unsafe_allow_html=True)
+            st.caption("Excel = dato histórico importado. El reparto RS/RC/RCorp de ese histórico está disponible a nivel mensual.")
     with tab_panel:
         st.markdown("### Actividad operativa y tickets · visión conjunta")
         st.caption("Las nuevas actuaciones se incorporan automáticamente a los totales del calendario. Los tickets se muestran aparte para conocer su trazabilidad; no se suman de nuevo.")
@@ -3423,80 +3424,82 @@ def render_seguimiento_ci():
             grad=f'conic-gradient({chart_colors["RS"]} 0 {a:.2f}%, {chart_colors["RC"]} {a:.2f}% {b:.2f}%, {chart_colors["RCorp"]} {b:.2f}% 100%)' if tot else '#edf2f4'
             legend=''.join([f'<div><span class="seg-dot2" style="background:{chart_colors[r]}"></span>{r}: <b>{vals[r]}</b> · {pct[r]:.1f}%</div>' for r in ("RS","RC","RCorp")])
             with col: st.markdown(f'<div class="seg-analysis"><div class="seg-analysis-title">{label}</div><div class="seg-analysis-sub">{MESES[mes]} {anio} · {ci}</div><div class="seg-donut-wrap"><div class="seg-donut" style="background:{grad}"><div class="seg-donut-center">{tot}</div></div><div class="seg-legend">{legend}</div></div></div>',unsafe_allow_html=True)
-    with tab_inf:
-        st.markdown("### Informe operativo del CI")
-        st.caption("Incluye el histórico anterior y las nuevas actuaciones del registro único, además del detalle de tickets.")
-        modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_ci"); imes=mes if modo=="Mes seleccionado" else None
-        dsum,dias_i=seg_totales_diarios(ci,anio,imes); rsum=seg_totales_redes(ci,anio,imes)
-        st.markdown("#### Actividad total · histórico y registro único")
-        df=pd.DataFrame([{"Grupo":"Parches",**rsum["Parches"],"Total actividad":dsum["Parches"]},{"Grupo":"Antivirus",**rsum["AV"],"Total actividad":dsum["AV"]},{"Grupo":"Backup",**rsum["BCK"],"Total actividad":dsum["BCK"]}]); st.dataframe(df,use_container_width=True,hide_index=True)
-        st.caption("Histórico Excel 2026: el reparto por red es mensual; el total de actividad procede del calendario diario.")
-        st.markdown("#### Tickets y actuaciones · periodo del informe")
-        _render_resumen_tickets_ci(ci, anio, imes)
-        _filas_inf = _ticket_ci_filas(ci, anio, imes)
-        if _filas_inf:
-            st.download_button("⬇️ Descargar tickets del CI en Excel", _ticket_ci_excel(_ticket_ci_tabla(_filas_inf)),
-                file_name=f"Tickets_CI_{ci}_{anio}_{imes or 'anual'}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="tci_excel_informe_ci")
-        st.markdown("#### Informe mensual consolidado · Excel")
-        st.download_button("📥 Generar informe mensual automático del CI (Excel)",
-            _ci_informe_mensual_excel(ci, anio, mes),
-            file_name=f"Informe_Mensual_{ci}_{anio}_{mes:02d}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="ci_informe_mensual_auto", use_container_width=True)
-        st.markdown("#### Informe HTML del seguimiento operativo")
-        html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
-        st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
-    with tab_global:
-        st.markdown("### Consolidado de todos los complejos")
-        st.markdown('<div class="section-eyebrow">INFORME CONSOLIDADO · TODOS LOS CI</div>',unsafe_allow_html=True)
-        modo_g=st.radio("Periodo global",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_global"); gmes=mes if modo_g=="Mes seleccionado" else None
-        resumen=[]
-        for cix in CENTROS:
-            gd,gdays=seg_totales_diarios(cix,anio,gmes); resumen.append((cix,gdays,gd,sum(gd.values())))
-        gtotal=sum(x[3] for x in resumen); gp=sum(x[2]["Parches"] for x in resumen); gav=sum(x[2]["AV"] for x in resumen); gb=sum(x[2]["BCK"] for x in resumen)
-        kk=st.columns(4)
-        for col,clase,label,val in zip(kk,["total","p","av","b"],["Total todos los CI","Parches","Antivirus","Backup"],[gtotal,gp,gav,gb]):
-            with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{MESES[gmes] if gmes else "Año completo"} · {anio}</div></div>',unsafe_allow_html=True)
-        gc=st.columns(3)
-        for i,(cix,gdays,gd,gt) in enumerate(resumen):
-            with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
-        st.markdown("#### Tickets y actuaciones · todos los CI")
-        _render_resumen_tickets_ci(None, anio, gmes)
-        _filas_global = _ticket_ci_filas(None, anio, gmes)
-        if _filas_global:
-            _df_global = _ticket_ci_tabla(_filas_global)
-            st.markdown("**Distribución de actuaciones por complejo**")
-            st.dataframe(_df_global.groupby(["CI","Tipo","Actividad"],as_index=False).agg(
-                Actuaciones=("Máquinas","size"), Intervenciones=("Máquinas","sum")),
-                use_container_width=True,hide_index=True)
-            st.download_button("⬇️ Descargar tickets globales en Excel",_ticket_ci_excel(_df_global),
-                file_name=f"Tickets_Todos_CI_{anio}_{gmes or 'anual'}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="tci_excel_global")
-        st.markdown("#### Informes mensuales automáticos · todos los CI")
-        st.caption("Genera un libro Excel con una hoja de resumen y el detalle de tickets por complejo.")
-        if gmes is not None:
-            salida = io.BytesIO()
-            with pd.ExcelWriter(salida, engine="openpyxl") as writer:
-                datos_global = []
-                for cix in CENTROS:
-                    d, _ = seg_totales_diarios(cix, anio, gmes)
-                    fx = _ticket_ci_filas(cix, anio, gmes)
-                    datos_global.append({"CI": cix, "Parches": d["Parches"], "Antivirus": d["AV"],
-                        "Backups": d["BCK"], "Tickets distintos": len({_ci_ticket_clave(x) for x in fx}),
-                        "Actuaciones": len(fx), "Intervenciones de tickets": sum(_seg_int(x.get("maquinas")) for x in fx)})
-                pd.DataFrame(datos_global).to_excel(writer, sheet_name="Resumen CI", index=False)
-                pd.DataFrame(_ticket_ci_tabla(_ticket_ci_filas(None, anio, gmes))).to_excel(
-                    writer, sheet_name="Detalle tickets", index=False)
-            st.download_button("📥 Generar informe mensual global (Excel)", salida.getvalue(),
-                file_name=f"Informe_Global_CI_{anio}_{gmes:02d}.xlsx",
+    with tab_informes:
+        informe_ci_tab, informe_global_tab = st.tabs(["📄 Informe del CI", "🌐 Informe global"] )
+        with informe_ci_tab:
+            st.markdown("### Informe operativo del CI")
+            st.caption("Incluye el histórico anterior y las nuevas actuaciones del registro único, además del detalle de tickets.")
+            modo=st.radio("Periodo del informe",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_ci"); imes=mes if modo=="Mes seleccionado" else None
+            dsum,dias_i=seg_totales_diarios(ci,anio,imes); rsum=seg_totales_redes(ci,anio,imes)
+            st.markdown("#### Actividad total · histórico y registro único")
+            df=pd.DataFrame([{"Grupo":"Parches",**rsum["Parches"],"Total actividad":dsum["Parches"]},{"Grupo":"Antivirus",**rsum["AV"],"Total actividad":dsum["AV"]},{"Grupo":"Backup",**rsum["BCK"],"Total actividad":dsum["BCK"]}]); st.dataframe(df,use_container_width=True,hide_index=True)
+            st.caption("Histórico Excel 2026: el reparto por red es mensual; el total de actividad procede del calendario diario.")
+            st.markdown("#### Tickets y actuaciones · periodo del informe")
+            _render_resumen_tickets_ci(ci, anio, imes)
+            _filas_inf = _ticket_ci_filas(ci, anio, imes)
+            if _filas_inf:
+                st.download_button("⬇️ Descargar tickets del CI en Excel", _ticket_ci_excel(_ticket_ci_tabla(_filas_inf)),
+                    file_name=f"Tickets_CI_{ci}_{anio}_{imes or 'anual'}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="tci_excel_informe_ci")
+            st.markdown("#### Informe mensual consolidado · Excel")
+            st.download_button("📥 Generar informe mensual automático del CI (Excel)",
+                _ci_informe_mensual_excel(ci, anio, mes),
+                file_name=f"Informe_Mensual_{ci}_{anio}_{mes:02d}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="ci_global_mensual_auto", use_container_width=True)
-        else:
-            st.info("Selecciona 'Mes seleccionado' para generar el informe mensual automático.")
-        st.markdown("#### Informe HTML del seguimiento operativo")
-        ghtml=html_seguimiento_global(anio,gmes); gsuf=f"{anio}_{gmes:02d}" if gmes else str(anio)
-        st.download_button("⬇️ Descargar informe global HTML",ghtml.encode("utf-8"),file_name=f"Seguimiento_CI_TODOS_{gsuf}.html",mime="text/html",type="primary",use_container_width=True)
+                key="ci_informe_mensual_auto", use_container_width=True)
+            st.markdown("#### Informe HTML del seguimiento operativo")
+            html=html_seguimiento(ci,anio,imes); suf=f"{anio}_{mes:02d}" if imes else str(anio)
+            st.download_button("⬇️ Descargar informe HTML",html.encode("utf-8"),file_name=f"Seguimiento_CI_{ci}_{suf}.html",mime="text/html",type="primary",use_container_width=True)
+        with informe_global_tab:
+            st.markdown("### Consolidado de todos los complejos")
+            st.markdown('<div class="section-eyebrow">INFORME CONSOLIDADO · TODOS LOS CI</div>',unsafe_allow_html=True)
+            modo_g=st.radio("Periodo global",["Mes seleccionado","Año completo"],horizontal=True,key="seg_inf_global"); gmes=mes if modo_g=="Mes seleccionado" else None
+            resumen=[]
+            for cix in CENTROS:
+                gd,gdays=seg_totales_diarios(cix,anio,gmes); resumen.append((cix,gdays,gd,sum(gd.values())))
+            gtotal=sum(x[3] for x in resumen); gp=sum(x[2]["Parches"] for x in resumen); gav=sum(x[2]["AV"] for x in resumen); gb=sum(x[2]["BCK"] for x in resumen)
+            kk=st.columns(4)
+            for col,clase,label,val in zip(kk,["total","p","av","b"],["Total todos los CI","Parches","Antivirus","Backup"],[gtotal,gp,gav,gb]):
+                with col: st.markdown(f'<div class="seg-kpi {clase}"><div class="label">{label}</div><div class="value">{val}</div><div class="sub">{MESES[gmes] if gmes else "Año completo"} · {anio}</div></div>',unsafe_allow_html=True)
+            gc=st.columns(3)
+            for i,(cix,gdays,gd,gt) in enumerate(resumen):
+                with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
+            st.markdown("#### Tickets y actuaciones · todos los CI")
+            _render_resumen_tickets_ci(None, anio, gmes)
+            _filas_global = _ticket_ci_filas(None, anio, gmes)
+            if _filas_global:
+                _df_global = _ticket_ci_tabla(_filas_global)
+                st.markdown("**Distribución de actuaciones por complejo**")
+                st.dataframe(_df_global.groupby(["CI","Tipo","Actividad"],as_index=False).agg(
+                    Actuaciones=("Máquinas","size"), Intervenciones=("Máquinas","sum")),
+                    use_container_width=True,hide_index=True)
+                st.download_button("⬇️ Descargar tickets globales en Excel",_ticket_ci_excel(_df_global),
+                    file_name=f"Tickets_Todos_CI_{anio}_{gmes or 'anual'}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="tci_excel_global")
+            st.markdown("#### Informes mensuales automáticos · todos los CI")
+            st.caption("Genera un libro Excel con una hoja de resumen y el detalle de tickets por complejo.")
+            if gmes is not None:
+                salida = io.BytesIO()
+                with pd.ExcelWriter(salida, engine="openpyxl") as writer:
+                    datos_global = []
+                    for cix in CENTROS:
+                        d, _ = seg_totales_diarios(cix, anio, gmes)
+                        fx = _ticket_ci_filas(cix, anio, gmes)
+                        datos_global.append({"CI": cix, "Parches": d["Parches"], "Antivirus": d["AV"],
+                            "Backups": d["BCK"], "Tickets distintos": len({_ci_ticket_clave(x) for x in fx}),
+                            "Actuaciones": len(fx), "Intervenciones de tickets": sum(_seg_int(x.get("maquinas")) for x in fx)})
+                    pd.DataFrame(datos_global).to_excel(writer, sheet_name="Resumen CI", index=False)
+                    pd.DataFrame(_ticket_ci_tabla(_ticket_ci_filas(None, anio, gmes))).to_excel(
+                        writer, sheet_name="Detalle tickets", index=False)
+                st.download_button("📥 Generar informe mensual global (Excel)", salida.getvalue(),
+                    file_name=f"Informe_Global_CI_{anio}_{gmes:02d}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="ci_global_mensual_auto", use_container_width=True)
+            else:
+                st.info("Selecciona 'Mes seleccionado' para generar el informe mensual automático.")
+            st.markdown("#### Informe HTML del seguimiento operativo")
+            ghtml=html_seguimiento_global(anio,gmes); gsuf=f"{anio}_{gmes:02d}" if gmes else str(anio)
+            st.download_button("⬇️ Descargar informe global HTML",ghtml.encode("utf-8"),file_name=f"Seguimiento_CI_TODOS_{gsuf}.html",mime="text/html",type="primary",use_container_width=True)
 
 def html_seguimiento_global(anio, mes=None):
     periodo=f"{MESES[mes]} {anio}" if mes else f"Año {anio}"
@@ -4195,6 +4198,5 @@ h1,h2,h3{color:#0f172a!important;letter-spacing:-.035em!important}
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
-
 
 
