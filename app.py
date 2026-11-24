@@ -3278,6 +3278,20 @@ def _ci_ticket_clave(x):
     return (str(x.get("ci", "")), str(x.get("tipo", "")), str(x.get("numero", "")).strip().upper())
 
 
+def _ci_desglose_tipos_global(anio, mes=None):
+    """Tickets únicos y actuaciones agrupadas por tipo y complejo industrial."""
+    filas = _ticket_ci_filas(None, anio, mes)
+    resultado = []
+    for ci in CENTROS:
+        for tipo in TIPOS_TICKET_CI:
+            grupo = [x for x in filas if x.get("ci") == ci and x.get("tipo") == tipo]
+            tickets = {_ci_ticket_clave(x) for x in grupo if str(x.get("numero", "")).strip()}
+            actuaciones = {_ci_actuacion_id(x) for x in grupo}
+            resultado.append({"CI": ci, "Tipo de ticket": tipo,
+                              "Tickets únicos": len(tickets), "Actuaciones": len(actuaciones)})
+    return pd.DataFrame(resultado)
+
+
 def _ci_panel_operativo(ci, anio, mes):
     st.markdown("### 📊 Panel de control operativo")
     filas = _ticket_ci_filas(ci, anio, mes)
@@ -3464,6 +3478,16 @@ def render_seguimiento_ci():
             gc=st.columns(3)
             for i,(cix,gdays,gd,gt) in enumerate(resumen):
                 with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
+            st.markdown("#### Actividad por tipo de ticket")
+            st.caption("Cada ticket se cuenta una vez por CI, tipo y número; cada actuación, una sola vez aunque incluya varias actividades o redes.")
+            desglose_tipos = _ci_desglose_tipos_global(anio, gmes)
+            tabla_tipos = desglose_tipos.groupby("Tipo de ticket", as_index=False, sort=False)[["Tickets únicos", "Actuaciones"]].sum()
+            tabla_tipos = pd.concat([tabla_tipos, pd.DataFrame([{
+                "Tipo de ticket": "TOTAL", "Tickets únicos": int(tabla_tipos["Tickets únicos"].sum()),
+                "Actuaciones": int(tabla_tipos["Actuaciones"].sum())}])], ignore_index=True)
+            st.dataframe(tabla_tipos, hide_index=True, use_container_width=True)
+            st.markdown("**Comparativa por Complejo Industrial y tipo de ticket**")
+            st.dataframe(desglose_tipos, hide_index=True, use_container_width=True)
             st.markdown("#### Tickets y actuaciones · todos los CI")
             _render_resumen_tickets_ci(None, anio, gmes)
             _filas_global = _ticket_ci_filas(None, anio, gmes)
@@ -3489,6 +3513,8 @@ def render_seguimiento_ci():
                             "Backups": d["BCK"], "Tickets distintos": len({_ci_ticket_clave(x) for x in fx}),
                             "Actuaciones": len(fx), "Intervenciones de tickets": sum(_seg_int(x.get("maquinas")) for x in fx)})
                     pd.DataFrame(datos_global).to_excel(writer, sheet_name="Resumen CI", index=False)
+                    tabla_tipos.to_excel(writer, sheet_name="Tickets por tipo", index=False)
+                    desglose_tipos.to_excel(writer, sheet_name="Tipos por CI", index=False)
                     pd.DataFrame(_ticket_ci_tabla(_ticket_ci_filas(None, anio, gmes))).to_excel(
                         writer, sheet_name="Detalle tickets", index=False)
                 st.download_button("📥 Generar informe mensual global (Excel)", salida.getvalue(),
@@ -3514,6 +3540,16 @@ def html_seguimiento_global(anio, mes=None):
     out.append('</div><h2>Comparativa</h2><table><tr><th>CI</th><th>Parches</th><th>Antivirus</th><th>Backup</th><th>Total</th></tr>')
     for ci,dias,d,r,total in filas: out.append(f'<tr><td>{escape(ci)}</td><td>{d["Parches"]}</td><td>{d["AV"]}</td><td>{d["BCK"]}</td><td><b>{total}</b></td></tr>')
     out.append(f'<tr><th>TOTAL</th><th>{gp}</th><th>{ga}</th><th>{gb}</th><th>{total_global}</th></tr></table>')
+    detalle = _ci_desglose_tipos_global(anio, mes)
+    out.append('<h2>Tickets y actuaciones por tipo</h2><table><tr><th>Tipo</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+    for tipo in TIPOS_TICKET_CI:
+        dt = detalle[detalle["Tipo de ticket"] == tipo]
+        out.append(f'<tr><td>{escape(tipo)}</td><td>{int(dt["Tickets únicos"].sum())}</td><td>{int(dt["Actuaciones"].sum())}</td></tr>')
+    out.append(f'<tr><th>TOTAL</th><th>{int(detalle["Tickets únicos"].sum())}</th><th>{int(detalle["Actuaciones"].sum())}</th></tr></table>')
+    out.append('<h2>Comparativa por CI y tipo de ticket</h2><table><tr><th>CI</th><th>Tipo</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+    for registro in detalle.to_dict("records"):
+        out.append(f'<tr><td>{escape(str(registro["CI"]))}</td><td>{escape(str(registro["Tipo de ticket"]))}</td><td>{registro["Tickets únicos"]}</td><td>{registro["Actuaciones"]}</td></tr>')
+    out.append('</table><p class="muted">Los tickets se cuentan por CI, tipo y número. Las actuaciones agrupadas se cuentan una vez aunque incluyan varias actividades o redes. Solo se consideran registros de tickets disponibles en el periodo.</p>')
     for ci,dias,d,r,total in filas:
         out.append(f'<div class="section"><h2>{escape(ci)}</h2><p class="muted">{periodo} · {dias} días con actividad · Total {total}</p><table><tr><th>Grupo</th><th>RS</th><th>RC</th><th>RCorp</th><th>Actividad</th></tr>')
         for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: out.append(f'<tr><td>{label}</td><td>{r[g]["RS"]}</td><td>{r[g]["RC"]}</td><td>{r[g]["RCorp"]}</td><td><b>{d[g]}</b></td></tr>')
