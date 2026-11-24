@@ -3131,13 +3131,26 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                 key="tci_modalidad", horizontal=True,
                 help="Una máquina permite marcar varias actividades sobre el mismo equipo. Varias máquinas muestra el desglose por actividad y red.",
             )
-            with st.form("ticket_ci_unificado", clear_on_submit=True):
-                a,b,c = st.columns(3)
+            # Comprobación reactiva antes de abrir el formulario: no elimina ni sobrescribe registros.
+            tipo = st.selectbox("Tipo de ticket", TIPOS_TICKET_CI, key="tci_tipo_previo")
+            numero = st.text_input("Nº de petición / incidencia / OT4IT", max_chars=80,
+                                   key="tci_numero_previo").strip()
+            coincidencias_ticket = [x for x in _ticket_ci_filas(ci)
+                if str(x.get("numero", "")).strip().casefold() == numero.casefold()
+                and str(x.get("tipo", "")).strip() == tipo] if numero else []
+            confirmar_ampliacion = True
+            if coincidencias_ticket:
+                st.warning(f"⚠️ El nº **{numero}** ya ha sido registrado como **{tipo}** en {ci}. "
+                           "¿Estás seguro de que quieres ampliar datos sobre este registro? "
+                           "Las actuaciones anteriores se conservarán.")
+                confirmar_ampliacion = st.checkbox(
+                    "Sí, quiero añadir una nueva actuación a este ticket sin modificar las anteriores",
+                    key="tci_confirmar_ampliacion")
+                st.caption(f"Actualmente existen {len({str(x.get('actuacion_id') or x.get('id') or i) for i, x in enumerate(coincidencias_ticket)})} actuaciones asociadas a este ticket.")
+            with st.form("ticket_ci_unificado", clear_on_submit=False):
+                a, c = st.columns([1, 2])
                 with a:
                     fecha = st.date_input("Fecha de actuación", value=date.today(), key="tci_fecha_unica")
-                    tipo = st.selectbox("Tipo de ticket", TIPOS_TICKET_CI)
-                with b:
-                    numero = st.text_input("Nº de petición / incidencia / OT4IT", max_chars=80)
                 with c:
                     tecnico_asociado = tecnico_usuario_actual()
                     if EDITOR:
@@ -3188,6 +3201,8 @@ def render_tickets_ci(ci, anio, mes, permitidos):
                 elegidas = [(g, red, int(n)) for (g, red), n in valores.items() if n > 0]
                 if not numero:
                     st.error("Indica el número de ticket.")
+                elif coincidencias_ticket and not confirmar_ampliacion:
+                    st.warning("Para ampliar este ticket existente, confirma primero que quieres añadir una nueva actuación. No se ha guardado nada.")
                 elif not tecnico:
                     st.error("No se ha identificado el técnico autorizado.")
                 elif not elegidas:
@@ -4180,5 +4195,6 @@ h1,h2,h3{color:#0f172a!important;letter-spacing:-.035em!important}
  'Guardias':render_guardias,'Horas extra':render_he,'Seguimiento CI':render_seguimiento_ci,'Informes':render_informes,'Versiones':render_versiones,'Configuración':render_config}[pagina]()
 st.divider()
 st.caption('Gestión Técnicos CI · REPSOL · Indra Group / RPECII')
+
 
 
