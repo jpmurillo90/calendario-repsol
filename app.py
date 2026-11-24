@@ -3279,17 +3279,34 @@ def _ci_ticket_clave(x):
 
 
 def _ci_desglose_tipos_global(anio, mes=None):
-    """Tickets únicos y actuaciones agrupadas por tipo y complejo industrial."""
+    """Tickets únicos y volumen de máquinas registradas por tipo y CI."""
     filas = _ticket_ci_filas(None, anio, mes)
     resultado = []
     for ci in CENTROS:
         for tipo in TIPOS_TICKET_CI:
             grupo = [x for x in filas if x.get("ci") == ci and x.get("tipo") == tipo]
             tickets = {_ci_ticket_clave(x) for x in grupo if str(x.get("numero", "")).strip()}
-            actuaciones = {_ci_actuacion_id(x) for x in grupo}
+            maquinas = sum(_seg_int(x.get("maquinas")) for x in grupo)
             resultado.append({"CI": ci, "Tipo de ticket": tipo,
-                              "Tickets únicos": len(tickets), "Actuaciones": len(actuaciones)})
+                              "Tickets únicos": len(tickets), "Máquinas gestionadas": maquinas})
     return pd.DataFrame(resultado)
+
+
+def _ci_tickets_por_actividad(ci, anio, mes=None):
+    """Número de tickets únicos que incluyen cada actividad, por tipo de ticket."""
+    filas = _ticket_ci_filas(ci, anio, mes)
+    grupos = (("Parches", "Parches"), ("AV", "Antivirus"), ("BCK", "Backup"))
+    resultado = {}
+    for codigo, etiqueta in grupos:
+        subconjunto = [x for x in filas if x.get("actividad") == codigo]
+        resultado[codigo] = {tipo: len({_ci_ticket_clave(x) for x in subconjunto
+                                      if x.get("tipo") == tipo and str(x.get("numero", "")).strip()})
+                             for tipo in TIPOS_TICKET_CI}
+    # El total no es la suma de las filas: un ticket puede incluir varias actividades.
+    resultado["TOTAL"] = {tipo: len({_ci_ticket_clave(x) for x in filas
+                                     if x.get("tipo") == tipo and str(x.get("numero", "")).strip()})
+                          for tipo in TIPOS_TICKET_CI}
+    return resultado
 
 
 def _ci_panel_operativo(ci, anio, mes):
@@ -3479,12 +3496,12 @@ def render_seguimiento_ci():
             for i,(cix,gdays,gd,gt) in enumerate(resumen):
                 with gc[i%3]: st.markdown(f'<div class="global-ci"><div class="name">{cix}</div><div class="big">{gt}</div><div class="mini">{gdays} días con actividad · P {gd["Parches"]} · AV {gd["AV"]} · B {gd["BCK"]}</div></div>',unsafe_allow_html=True)
             st.markdown("#### Actividad por tipo de ticket")
-            st.caption("Cada ticket se cuenta una vez por CI, tipo y número; cada actuación, una sola vez aunque incluya varias actividades o redes.")
+            st.caption("Cada ticket se cuenta una vez por CI, tipo y número; las máquinas se suman por actividad y red, pudiendo repetirse entre actividades.")
             desglose_tipos = _ci_desglose_tipos_global(anio, gmes)
-            tabla_tipos = desglose_tipos.groupby("Tipo de ticket", as_index=False, sort=False)[["Tickets únicos", "Actuaciones"]].sum()
+            tabla_tipos = desglose_tipos.groupby("Tipo de ticket", as_index=False, sort=False)[["Tickets únicos", "Máquinas gestionadas"]].sum()
             tabla_tipos = pd.concat([tabla_tipos, pd.DataFrame([{
                 "Tipo de ticket": "TOTAL", "Tickets únicos": int(tabla_tipos["Tickets únicos"].sum()),
-                "Actuaciones": int(tabla_tipos["Actuaciones"].sum())}])], ignore_index=True)
+                "Máquinas gestionadas": int(tabla_tipos["Máquinas gestionadas"].sum())}])], ignore_index=True)
             st.dataframe(tabla_tipos, hide_index=True, use_container_width=True)
             st.markdown("**Comparativa por Complejo Industrial y tipo de ticket**")
             st.dataframe(desglose_tipos, hide_index=True, use_container_width=True)
@@ -3513,7 +3530,7 @@ def render_seguimiento_ci():
                             "Backups": d["BCK"], "Tickets distintos": len({_ci_ticket_clave(x) for x in fx}),
                             "Actuaciones": len(fx), "Intervenciones de tickets": sum(_seg_int(x.get("maquinas")) for x in fx)})
                     pd.DataFrame(datos_global).to_excel(writer, sheet_name="Resumen CI", index=False)
-                    tabla_tipos.to_excel(writer, sheet_name="Tickets por tipo", index=False)
+                    tabla_tipos.to_excel(writer, sheet_name="Tickets y máquinas", index=False)
                     desglose_tipos.to_excel(writer, sheet_name="Tipos por CI", index=False)
                     pd.DataFrame(_ticket_ci_tabla(_ticket_ci_filas(None, anio, gmes))).to_excel(
                         writer, sheet_name="Detalle tickets", index=False)
@@ -3541,28 +3558,34 @@ def html_seguimiento_global(anio, mes=None):
     for ci,dias,d,r,total in filas: out.append(f'<tr><td>{escape(ci)}</td><td>{d["Parches"]}</td><td>{d["AV"]}</td><td>{d["BCK"]}</td><td><b>{total}</b></td></tr>')
     out.append(f'<tr><th>TOTAL</th><th>{gp}</th><th>{ga}</th><th>{gb}</th><th>{total_global}</th></tr></table>')
     detalle = _ci_desglose_tipos_global(anio, mes)
-    out.append('<h2>Tickets y actuaciones por tipo</h2><table><tr><th>Tipo</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+    out.append('<h2>Tickets y máquinas gestionadas por tipo</h2><table><tr><th>Tipo</th><th>Tickets únicos</th><th>Máquinas gestionadas*</th></tr>')
     for tipo in TIPOS_TICKET_CI:
         dt = detalle[detalle["Tipo de ticket"] == tipo]
-        out.append(f'<tr><td>{escape(tipo)}</td><td>{int(dt["Tickets únicos"].sum())}</td><td>{int(dt["Actuaciones"].sum())}</td></tr>')
-    out.append(f'<tr><th>TOTAL</th><th>{int(detalle["Tickets únicos"].sum())}</th><th>{int(detalle["Actuaciones"].sum())}</th></tr></table>')
-    out.append('<h2>Comparativa por CI y tipo de ticket</h2><table><tr><th>CI</th><th>Tipo</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+        out.append(f'<tr><td>{escape(tipo)}</td><td>{int(dt["Tickets únicos"].sum())}</td><td>{int(dt["Máquinas gestionadas"].sum())}</td></tr>')
+    out.append(f'<tr><th>TOTAL</th><th>{int(detalle["Tickets únicos"].sum())}</th><th>{int(detalle["Máquinas gestionadas"].sum())}</th></tr></table>')
+    out.append('<h2>Comparativa por CI y tipo de ticket</h2><table><tr><th>CI</th><th>Tipo</th><th>Tickets únicos</th><th>Máquinas gestionadas*</th></tr>')
     for registro in detalle.to_dict("records"):
-        out.append(f'<tr><td>{escape(str(registro["CI"]))}</td><td>{escape(str(registro["Tipo de ticket"]))}</td><td>{registro["Tickets únicos"]}</td><td>{registro["Actuaciones"]}</td></tr>')
-    out.append('</table><p class="muted">Los tickets se cuentan por CI, tipo y número. Las actuaciones agrupadas se cuentan una vez aunque incluyan varias actividades o redes. Solo se consideran registros de tickets disponibles en el periodo.</p>')
+        out.append(f'<tr><td>{escape(str(registro["CI"]))}</td><td>{escape(str(registro["Tipo de ticket"]))}</td><td>{registro["Tickets únicos"]}</td><td>{registro["Máquinas gestionadas"]}</td></tr>')
+    out.append('</table><p class="muted">Los tickets se cuentan por CI, tipo y número. Las máquinas gestionadas son la suma de cantidades registradas por actividad y red; si una misma máquina recibió varias actividades, puede aparecer más de una vez. Solo se consideran registros de tickets disponibles en el periodo.</p>')
     for ci,dias,d,r,total in filas:
-        out.append(f'<div class="section"><h2>{escape(ci)}</h2><p class="muted">{periodo} · {dias} días con actividad · Total {total}</p><table><tr><th>Grupo</th><th>RS</th><th>RC</th><th>RCorp</th><th>Actividad</th></tr>')
-        for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]: out.append(f'<tr><td>{label}</td><td>{r[g]["RS"]}</td><td>{r[g]["RC"]}</td><td>{r[g]["RCorp"]}</td><td><b>{d[g]}</b></td></tr>')
+        out.append(f'<div class="section"><h2>{escape(ci)}</h2><p class="muted">{periodo} · {dias} días con actividad · Total {total}</p><table><tr><th>Grupo</th><th>RS</th><th>RC</th><th>RCorp</th><th>Actividad</th><th>PET</th><th>INC</th><th>OT4IT</th></tr>')
+        tickets_actividad = _ci_tickets_por_actividad(ci, anio, mes)
+        for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
+            conteos = tickets_actividad[g]
+            out.append(f'<tr><td>{label}</td><td>{r[g]["RS"]}</td><td>{r[g]["RC"]}</td><td>{r[g]["RCorp"]}</td><td><b>{d[g]}</b></td><td>{conteos["Petición Interna TI"]}</td><td>{conteos["Incidencia"]}</td><td>{conteos["OT4IT"]}</td></tr>')
+        out.append('<tr><th>TOTAL</th>' + ''.join(f'<th>{sum(r[g][red] for g in ("Parches", "AV", "BCK"))}</th>' for red in ("RS", "RC", "RCorp")) + f'<th>{total}</th>' + ''.join(f'<th>{tickets_actividad["TOTAL"][tipo]}</th>' for tipo in TIPOS_TICKET_CI) + '</tr>')
+        out.append('</table><p class="muted">PET, INC y OT4IT: número de tickets únicos con trabajo en cada actividad. Un mismo ticket puede aparecer en varias filas, pero solo una vez en el TOTAL.</p>')
         # Desglose de tickets y actuaciones del CI, junto a su actividad por redes.
         detalle_ci = detalle[detalle["CI"] == ci]
-        out.append('</table><h3>Tickets y actuaciones por tipo</h3>')
-        out.append('<table><tr><th>Tipo de ticket</th><th>Tickets únicos</th><th>Actuaciones</th></tr>')
+        out.append('<h3>Tickets y máquinas gestionadas por tipo</h3>')
+        out.append('<table><tr><th>Tipo de ticket</th><th>Tickets únicos</th><th>Máquinas gestionadas*</th></tr>')
         for tipo in TIPOS_TICKET_CI:
             coincidencias = detalle_ci[detalle_ci["Tipo de ticket"] == tipo]
             nt = int(coincidencias["Tickets únicos"].sum())
-            na = int(coincidencias["Actuaciones"].sum())
+            na = int(coincidencias["Máquinas gestionadas"].sum())
             out.append(f'<tr><td>{escape(tipo)}</td><td>{nt}</td><td>{na}</td></tr>')
-        out.append(f'<tr><th>TOTAL</th><th>{int(detalle_ci["Tickets únicos"].sum())}</th><th>{int(detalle_ci["Actuaciones"].sum())}</th></tr></table>')
+        out.append(f'<tr><th>TOTAL</th><th>{int(detalle_ci["Tickets únicos"].sum())}</th><th>{int(detalle_ci["Máquinas gestionadas"].sum())}</th></tr></table>')
+        out.append('<p class="muted">*Suma de máquinas registradas por actividad y red. Un mismo equipo puede contabilizarse varias veces si se le realizaron distintos trabajos.</p>')
         out.append('<div class="donuts">')
         for g,label in [("Parches","Parches"),("AV","Antivirus"),("BCK","Backup")]:
             tv=sum(r[g].values()); prs=[(r[g][x]*100/tv if tv else 0) for x in ("RS","RC","RCorp")]
